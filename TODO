@@ -1,0 +1,3 @@
+- Add Postgres users for each service and implement
+- Change Mongo migrations to flyway
+- Add ES256 client-jwt signing to api-dev-site client in Keycloak
