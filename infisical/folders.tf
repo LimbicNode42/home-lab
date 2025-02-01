@@ -22,6 +22,14 @@ resource "infisical_secret_folder" "mongo" {
   folder_path = "/"
 }
 
+resource "infisical_secret_folder" "omv" {
+  project_id       = infisical_project.dev_site.id
+  environment_slug = "prod"
+
+  name        = "omv"
+  folder_path = "/"
+}
+
 resource "infisical_secret_folder" "postgres" {
   project_id       = infisical_project.dev_site.id
   environment_slug = "prod"
