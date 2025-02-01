@@ -11,4 +11,4 @@ infisical_client_id = "$TF_VAR_INF_TF_CLIENT_ID"
 infisical_client_secret = "$TF_VAR_INF_TF_CLIENT_SECRET"
 EOF
 
-t init -backend-config=backend.hcl
+terraform init -backend-config=backend.hcl
