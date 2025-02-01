@@ -18,9 +18,3 @@ provider "infisical" {
     }
   }
 }
-
-data "infisical_secrets" "postgres_secrets" {
-  workspace_id = infisical_project.dev_site.id
-  env_slug     = "prod"
-  folder_path  = "/postgres"
-}
