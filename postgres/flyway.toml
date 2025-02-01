@@ -1,0 +1,30 @@
+databaseType = "PostgreSQL"
+id = "3b62c7f8-5436-4768-b50f-50461a815ead"
+name = "migrations"
+
+[flyway]
+locations = [ "filesystem:migrations" ]
+mixed = true
+outOfOrder = true
+schemaModelLocation = "schema-model"
+validateMigrationNaming = true
+environment = "postgres"
+
+[environments.postgres]
+url = "jdbc:postgresql://\${TF_VAR_PG_HOST}:5432/terraform"
+user = "\${TF_VAR_PG_MASTER_USER}"
+password = "\${TF_VAR_PG_MASTER_PASS}"
+
+[flyway.check]
+majorTolerance = 0
+buildEnvironment = "build"
+
+[flywayDesktop]
+developmentEnvironment = "development"
+shadowEnvironment = "shadow"
+
+[redgateCompare]
+filterFile = "filter.rgf"
+
+[redgateCompare.postgresql.options.ignores]
+ignoreNewlinesInTextObjects = "off"
