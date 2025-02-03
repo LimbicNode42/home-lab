@@ -24,29 +24,31 @@ echo "export HTTPS_KEYSTORE_PASS=$(infisical secrets get --env prod --path /keyc
 echo "export PG_HOST=$(infisical secrets get --env prod --path /postgres PG_HOST --plain --silent)" >> .env
 echo "export PG_KEYCLOAK_USER=$(infisical secrets get --env prod --path /postgres PG_KEYCLOAK_USER --plain --silent)" >> .env
 echo "export PG_KEYCLOAK_PASS=$(infisical secrets get --env prod --path /postgres PG_KEYCLOAK_PASS --plain --silent)" >> .env
+echo "export PG_MASTER_USER=$(infisical secrets get --env prod --path /postgres PG_MASTER_USER --plain --silent)" >> .env
+echo "export PG_MASTER_PASS=$(infisical secrets get --env prod --path /postgres PG_MASTER_PASS --plain --silent)" >> .env
 echo "export RSYNC_PASS=$(infisical secrets get --env prod --path /omv RSYNC_PASS --plain --silent)" >> .env
 echo "export OMV_HOST=$(infisical secrets get --env prod --path /omv OMV_HOST --plain --silent)" >> .env
 source .env
 
-docker pull quay.io/keycloak/keycloak:latest
+sudo docker pull quay.io/keycloak/keycloak:latest
 
-docker run -d --name keycloak \
+sudo docker run -d --name keycloak --restart unless-stopped \
     -p 8443:8443 \
     -e KC_HOSTNAME=$KEYCLOAK_HOST \
     -e KC_HTTPS_KEY_STORE_FILE=/opt/keycloak/certs/keycloak.p12 \
     -e KC_HTTPS_KEY_STORE_PASSWORD=$HTTPS_KEYSTORE_PASS \
+    -e KC_DB_URL="jdbc:postgresql://$PG_HOST:5432/keycloak?sslmode=verify-full&sslrootcert=/opt/keycloak/certs/postgres.crt" \
     -e KC_DB=postgres \
     -e KC_DB_URL_HOST=$PG_HOST \
     -e KC_DB_URL_DATABASE=keycloak \
-    -e KC_DB_USERNAME=$PG_KEYCLOAK_USER \
-    -e KC_DB_PASSWORD=$PG_KEYCLOAK_PASS \
+    -e KC_DB_USERNAME=$PG_MASTER_USER \
+    -e KC_DB_PASSWORD=$PG_MASTER_PASS \
     -v /srv/keycloak/data:/opt/keycloak/data \
     -v /srv/keycloak/certs:/opt/keycloak/certs \
+    -v /mnt/nas/services/postgres/certs/postgres.crt:/opt/keycloak/certs/postgres.crt \
     quay.io/keycloak/keycloak:latest start
 
-docker exec -it keycloak /opt/keycloak/bin/kc.sh bootstrap-admin user
-
-docker update --restart unless-stopped keycloak
+sudo docker exec -it keycloak /opt/keycloak/bin/kc.sh bootstrap-admin user
 
 echo $RSYNC_PASS > /etc/rsync_pass
 sudo chmod 600 /etc/rsync_pass
