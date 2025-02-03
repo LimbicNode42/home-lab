@@ -1,7 +1,7 @@
 #!/bin/bash
 
 cat <<EOF > backend.hcl
-conn_str      = "postgres://${TF_VAR_PG_MASTER_USER}:${TF_VAR_PG_MASTER_PASS}@${TF_VAR_PG_HOST}:5432/terraform?sslmode=disable"
+conn_str      = "postgres://${TF_VAR_PG_MASTER_USER}:${TF_VAR_PG_MASTER_PASS}@${TF_VAR_PG_HOST}:5432/terraform?sslmode=require"
 schema_name   = "infisical"
 EOF
 

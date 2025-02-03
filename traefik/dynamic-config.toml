@@ -1,0 +1,16 @@
+[http.services]
+  # External Facing Services
+  [http.services.jellyfin.loadBalancer]
+    [[http.services.jellyfin.loadBalancer.servers]]
+      url = "http://<node-ip>:8096"
+
+  # Internal only services
+
+[http.routers]
+  # External Facings Services
+  [http.routers.jellyfin]
+    entryPoints = ["web"]
+    rule = "Host(`jellyfin.wheeler-network.com`)"
+    service = "jellyfin"
+
+  # Internal only services

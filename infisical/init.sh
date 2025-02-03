@@ -18,16 +18,15 @@ sudo docker pull infisical/infisical:v0.106.0-postgres
 
 sudo docker run --env DB_CONNECTION_URI=postgresql://$PG_INFISICAL_USER:$PG_INFISICAL_PASS@$PG_HOST:5432/infisical infisical/infisical:v0.106.0-postgres npm run migration:latest
 
-sudo docker run -d --name infisical \
+sudo docker run -d --name infisical --restart unless-stopped \
     -p 8080:8080  \
     -e ENCRYPTION_KEY=$(cat ./encryption_key) \
     -e AUTH_SECRET=$(cat ./auth_secret) \
-    -e DB_CONNECTION_URI="postgresql://$PG_INFISICAL_USER:$PG_INFISICAL_PASS@$PG_HOST:5432/infisical" \
+    -e DB_CONNECTION_URI="postgresql://$PG_INFISICAL_USER:$PG_INFISICAL_PASS@$PG_HOST:5432/infisical?sslmode=verify-full&sslrootcert=/opt/infisical/certs/postgres.crt" \
     -e REDIS_URL="redis://$REDIS_HOST:6379" \
     -e SITE_URL="$INF_URL" \
+    -v /mnt/nas/services/postgres/certs/postgres.crt:/opt/infisical/certs/postgres.crt \
     infisical/infisical:v0.106.0-postgres
-
-sudo docker update --restart unless-stopped keycloak
 
 # TODO: need to sleep or add readiness probe before this command
 infisical secrets set --env prod --path /infisical ENCRYPTION_KEY=$(cat ./encryption_key) AUTH_SECRET=$(cat ./auth_secret)
