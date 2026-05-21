@@ -1,0 +1,2125 @@
+{
+  "api_base": "https://192.168.0.20:8006",
+  "cluster": {
+    "cluster_status": [
+      {
+        "id": "cluster",
+        "name": "Nippon",
+        "nodes": 5,
+        "quorate": 1,
+        "type": "cluster",
+        "version": 8
+      },
+      {
+        "id": "node/toyota",
+        "ip": "192.168.0.21",
+        "level": "",
+        "local": 0,
+        "name": "toyota",
+        "nodeid": 5,
+        "online": 1,
+        "type": "node"
+      },
+      {
+        "id": "node/shogun",
+        "ip": "192.168.0.7",
+        "level": "",
+        "local": 0,
+        "name": "shogun",
+        "nodeid": 3,
+        "online": 1,
+        "type": "node"
+      },
+      {
+        "id": "node/tori",
+        "ip": "192.168.0.20",
+        "level": "",
+        "local": 1,
+        "name": "tori",
+        "nodeid": 4,
+        "online": 1,
+        "type": "node"
+      },
+      {
+        "id": "node/emperor",
+        "ip": "192.168.0.6",
+        "level": "",
+        "local": 0,
+        "name": "emperor",
+        "nodeid": 1,
+        "online": 1,
+        "type": "node"
+      },
+      {
+        "id": "node/jester",
+        "ip": "192.168.0.8",
+        "level": "",
+        "local": 0,
+        "name": "jester",
+        "nodeid": 2,
+        "online": 1,
+        "type": "node"
+      }
+    ],
+    "nodes": [
+      {
+        "cpu": 0.00686274509803922,
+        "disk": 25049841664,
+        "id": "node/jester",
+        "level": "",
+        "maxcpu": 4,
+        "maxdisk": 125578338304,
+        "maxmem": 8439300096,
+        "mem": 2777890816,
+        "node": "jester",
+        "ssl_fingerprint": "52:5B:B8:11:19:A9:FF:45:08:6B:26:C8:5D:90:A9:CC:A0:DA:D4:16:96:A8:B8:4B:C9:7C:37:DA:4E:DC:A7:19",
+        "status": "online",
+        "type": "node",
+        "uptime": 3535873
+      },
+      {
+        "cpu": 0.0258668134287287,
+        "disk": 45396086784,
+        "id": "node/emperor",
+        "level": "",
+        "maxcpu": 4,
+        "maxdisk": 125568774144,
+        "maxmem": 8200556544,
+        "mem": 1761861632,
+        "node": "emperor",
+        "ssl_fingerprint": "DE:01:EB:A7:EB:AE:DA:47:9B:85:4C:31:E3:E0:08:A4:DD:05:BE:91:2D:B5:88:7D:AF:4B:39:8F:4C:79:18:F8",
+        "status": "online",
+        "type": "node",
+        "uptime": 2890782
+      },
+      {
+        "id": "node/toyota",
+        "node": "toyota",
+        "ssl_fingerprint": "35:3C:C3:A3:CD:FD:8F:57:1A:EA:86:D1:D7:02:E8:51:63:E2:49:DB:54:4B:2E:8C:1D:42:30:9D:11:0C:56:41",
+        "status": "unknown",
+        "type": "node"
+      },
+      {
+        "id": "node/tori",
+        "node": "tori",
+        "ssl_fingerprint": "52:41:FB:A3:28:CD:87:41:43:72:8F:45:2A:4B:96:D8:64:8F:AF:07:A4:0C:89:9B:EC:34:7A:E9:41:27:4F:0C",
+        "status": "unknown",
+        "type": "node"
+      },
+      {
+        "cpu": 0.0143377885783718,
+        "disk": 64202178560,
+        "id": "node/shogun",
+        "level": "",
+        "maxcpu": 4,
+        "maxdisk": 125578338304,
+        "maxmem": 8200691712,
+        "mem": 1311420416,
+        "node": "shogun",
+        "ssl_fingerprint": "C8:98:8E:F5:7C:2A:4D:4E:1A:0F:5D:B2:05:CA:C0:89:9C:2F:07:51:AE:7C:DE:E1:1A:C9:3D:01:F5:16:91:5C",
+        "status": "online",
+        "type": "node",
+        "uptime": 2662525
+      }
+    ],
+    "resources": [
+      {
+        "cpu": 0.000983225983339911,
+        "disk": 2688933888,
+        "diskread": 3373903872,
+        "diskwrite": 0,
+        "id": "lxc/100",
+        "maxcpu": 4,
+        "maxdisk": 67049664512,
+        "maxmem": 4294967296,
+        "mem": 0,
+        "memhost": 0,
+        "name": "critical",
+        "netin": 2675643635,
+        "netout": 1829991034,
+        "node": "emperor",
+        "status": "running",
+        "template": 0,
+        "type": "lxc",
+        "uptime": 2858132,
+        "vmid": 100
+      },
+      {
+        "cpu": 0,
+        "disk": 0,
+        "diskread": 0,
+        "diskwrite": 0,
+        "id": "qemu/103",
+        "maxcpu": 4,
+        "maxdisk": 68719476736,
+        "maxmem": 6442450944,
+        "mem": 0,
+        "name": "NAS-OMV",
+        "netin": 0,
+        "netout": 0,
+        "node": "shogun",
+        "status": "stopped",
+        "template": 0,
+        "type": "qemu",
+        "uptime": 0,
+        "vmid": 103
+      },
+      {
+        "id": "lxc/110",
+        "node": "toyota",
+        "status": "unknown",
+        "type": "lxc",
+        "vmid": 110
+      },
+      {
+        "id": "lxc/111",
+        "node": "toyota",
+        "status": "unknown",
+        "type": "lxc",
+        "vmid": 111
+      },
+      {
+        "id": "lxc/112",
+        "node": "toyota",
+        "status": "unknown",
+        "type": "lxc",
+        "vmid": 112
+      },
+      {
+        "cgroup-mode": 2,
+        "cpu": 0.00686274509803922,
+        "disk": 25049841664,
+        "id": "node/jester",
+        "level": "",
+        "maxcpu": 4,
+        "maxdisk": 125578338304,
+        "maxmem": 8439300096,
+        "mem": 2777890816,
+        "node": "jester",
+        "status": "online",
+        "type": "node",
+        "uptime": 3535873
+      },
+      {
+        "cgroup-mode": 2,
+        "cpu": 0.0258668134287287,
+        "disk": 45396086784,
+        "id": "node/emperor",
+        "level": "",
+        "maxcpu": 4,
+        "maxdisk": 125568774144,
+        "maxmem": 8200556544,
+        "mem": 1761861632,
+        "node": "emperor",
+        "status": "online",
+        "type": "node",
+        "uptime": 2890782
+      },
+      {
+        "cgroup-mode": 2,
+        "id": "node/toyota",
+        "node": "toyota",
+        "status": "unknown",
+        "type": "node"
+      },
+      {
+        "id": "node/tori",
+        "node": "tori",
+        "status": "unknown",
+        "type": "node"
+      },
+      {
+        "cgroup-mode": 2,
+        "cpu": 0.0143377885783718,
+        "disk": 64202178560,
+        "id": "node/shogun",
+        "level": "",
+        "maxcpu": 4,
+        "maxdisk": 125578338304,
+        "maxmem": 8200691712,
+        "mem": 1311420416,
+        "node": "shogun",
+        "status": "online",
+        "type": "node",
+        "uptime": 2662525
+      },
+      {
+        "content": "backup,snippets,rootdir,iso,vztmpl,images",
+        "disk": 25049841664,
+        "id": "storage/jester/local",
+        "maxdisk": 125578338304,
+        "node": "jester",
+        "plugintype": "dir",
+        "shared": 0,
+        "status": "available",
+        "storage": "local",
+        "type": "storage"
+      },
+      {
+        "content": "backup,snippets,rootdir,iso,vztmpl,images",
+        "disk": 45396086784,
+        "id": "storage/emperor/local",
+        "maxdisk": 125568774144,
+        "node": "emperor",
+        "plugintype": "dir",
+        "shared": 0,
+        "status": "available",
+        "storage": "local",
+        "type": "storage"
+      },
+      {
+        "content": "backup,snippets,rootdir,iso,vztmpl,images",
+        "id": "storage/toyota/local",
+        "node": "toyota",
+        "plugintype": "dir",
+        "shared": 0,
+        "status": "unknown",
+        "storage": "local",
+        "type": "storage"
+      },
+      {
+        "content": "backup,snippets,rootdir,iso,vztmpl,images",
+        "id": "storage/tori/local",
+        "node": "tori",
+        "plugintype": "dir",
+        "shared": 0,
+        "status": "unknown",
+        "storage": "local",
+        "type": "storage"
+      },
+      {
+        "content": "backup,snippets,rootdir,iso,vztmpl,images",
+        "disk": 64202178560,
+        "id": "storage/shogun/local",
+        "maxdisk": 125578338304,
+        "node": "shogun",
+        "plugintype": "dir",
+        "shared": 0,
+        "status": "available",
+        "storage": "local",
+        "type": "storage"
+      },
+      {
+        "content": "vztmpl,images,import,rootdir,iso,backup,snippets",
+        "id": "storage/jester/NAS",
+        "node": "jester",
+        "plugintype": "nfs",
+        "shared": 1,
+        "status": "unknown",
+        "storage": "NAS",
+        "type": "storage"
+      },
+      {
+        "content": "vztmpl,images,import,rootdir,iso,backup,snippets",
+        "id": "storage/emperor/NAS",
+        "node": "emperor",
+        "plugintype": "nfs",
+        "shared": 1,
+        "status": "unknown",
+        "storage": "NAS",
+        "type": "storage"
+      },
+      {
+        "content": "vztmpl,images,import,rootdir,iso,backup,snippets",
+        "id": "storage/toyota/NAS",
+        "node": "toyota",
+        "plugintype": "nfs",
+        "shared": 1,
+        "status": "unknown",
+        "storage": "NAS",
+        "type": "storage"
+      },
+      {
+        "content": "vztmpl,images,import,rootdir,iso,backup,snippets",
+        "id": "storage/tori/NAS",
+        "node": "tori",
+        "plugintype": "nfs",
+        "shared": 1,
+        "status": "unknown",
+        "storage": "NAS",
+        "type": "storage"
+      },
+      {
+        "content": "vztmpl,images,import,rootdir,iso,backup,snippets",
+        "id": "storage/shogun/NAS",
+        "node": "shogun",
+        "plugintype": "nfs",
+        "shared": 1,
+        "status": "unknown",
+        "storage": "NAS",
+        "type": "storage"
+      },
+      {
+        "id": "network/jester/zone/localnetwork",
+        "network": "localnetwork",
+        "network-type": "zone",
+        "node": "jester",
+        "status": "ok",
+        "type": "network"
+      },
+      {
+        "id": "network/emperor/zone/localnetwork",
+        "network": "localnetwork",
+        "network-type": "zone",
+        "node": "emperor",
+        "status": "ok",
+        "type": "network"
+      },
+      {
+        "id": "network/toyota/zone/localnetwork",
+        "network": "localnetwork",
+        "network-type": "zone",
+        "node": "toyota",
+        "status": "ok",
+        "type": "network"
+      },
+      {
+        "id": "network/tori/zone/localnetwork",
+        "network": "localnetwork",
+        "network-type": "zone",
+        "node": "tori",
+        "status": "ok",
+        "type": "network"
+      },
+      {
+        "id": "network/shogun/zone/localnetwork",
+        "network": "localnetwork",
+        "network-type": "zone",
+        "node": "shogun",
+        "status": "ok",
+        "type": "network"
+      }
+    ],
+    "storage": [
+      {
+        "content": "snippets,backup,iso,rootdir,images,vztmpl",
+        "digest": "54f6cb41b9b7a3e805f501ac9513ba84b96a5731",
+        "path": "/var/lib/vz",
+        "prune-backups": "keep-all=1",
+        "storage": "local",
+        "type": "dir"
+      },
+      {
+        "content": "vztmpl,images,rootdir,import,iso,backup,snippets",
+        "digest": "54f6cb41b9b7a3e805f501ac9513ba84b96a5731",
+        "export": "/export/nas",
+        "path": "/mnt/pve/NAS",
+        "prune-backups": "keep-all=1",
+        "server": "192.168.0.250",
+        "shared": 1,
+        "storage": "NAS",
+        "type": "nfs"
+      }
+    ],
+    "version": {
+      "release": "9.1",
+      "repoid": "ee7bad0a3d1546c9",
+      "version": "9.1.9"
+    }
+  },
+  "generated_at": "2026-05-21T10:25:30.709808+00:00",
+  "node_details": {
+    "emperor": {
+      "lxc": [
+        {
+          "cpu": 0.00294450858203694,
+          "cpus": 4,
+          "disk": 2688933888,
+          "diskread": 3373903872,
+          "diskwrite": 0,
+          "maxdisk": 67049664512,
+          "maxmem": 4294967296,
+          "maxswap": 2147483648,
+          "mem": 0,
+          "name": "critical",
+          "netin": 2675674881,
+          "netout": 1830003807,
+          "pid": 119092,
+          "pressurecpufull": null,
+          "pressurecpusome": null,
+          "pressureiofull": null,
+          "pressureiosome": null,
+          "pressurememoryfull": null,
+          "pressurememorysome": null,
+          "status": "running",
+          "swap": 0,
+          "type": "lxc",
+          "uptime": 2858158,
+          "vmid": 100
+        }
+      ],
+      "lxc_details": [
+        {
+          "config": {
+            "arch": "arm64",
+            "cores": 4,
+            "digest": "a5d48536f1516975998e320fdef009b4ae58929e",
+            "features": "nesting=1,keyctl=1",
+            "hostname": "critical",
+            "lxc": [
+              [
+                "lxc.apparmor.profile",
+                "unconfined"
+              ],
+              [
+                "lxc.cgroup.devices.allow",
+                "a"
+              ],
+              [
+                "lxc.cap.drop",
+                ""
+              ]
+            ],
+            "memory": 4096,
+            "mp0": "/mnt/pve/NAS,mp=/mnt/nas",
+            "net0": "name=eth0,bridge=vmbr0,firewall=1,gw=192.168.0.1,hwaddr=BC:24:11:7B:2A:33,ip=192.168.0.50/24,ip6=dhcp,type=veth",
+            "ostype": "alpine",
+            "rootfs": "local:100/vm-100-disk-0.raw,size=64G",
+            "swap": 2048
+          },
+          "current": {
+            "cpu": 0.00227292230994973,
+            "cpus": 4,
+            "disk": 2688933888,
+            "diskread": 3373916160,
+            "diskwrite": 0,
+            "ha": {
+              "managed": 0
+            },
+            "maxdisk": 67049664512,
+            "maxmem": 4294967296,
+            "maxswap": 2147483648,
+            "mem": 0,
+            "name": "critical",
+            "netin": 2675679868,
+            "netout": 1830005871,
+            "pid": 119092,
+            "pressurecpufull": null,
+            "pressurecpusome": null,
+            "pressureiofull": null,
+            "pressureiosome": null,
+            "pressurememoryfull": null,
+            "pressurememorysome": null,
+            "status": "running",
+            "swap": 0,
+            "type": "lxc",
+            "uptime": 2858160,
+            "vmid": 100
+          },
+          "name": "critical",
+          "status": "running",
+          "vmid": 100
+        }
+      ],
+      "qemu": [],
+      "qemu_details": [],
+      "services": [
+        {
+          "active-state": "inactive",
+          "desc": "chrony.service",
+          "name": "chrony",
+          "service": "chrony",
+          "state": "dead",
+          "unit-state": "not-found"
+        },
+        {
+          "active-state": "active",
+          "desc": "Corosync Cluster Engine",
+          "name": "corosync",
+          "service": "corosync",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Regular background program processing daemon",
+          "name": "cron",
+          "service": "cron",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "inactive",
+          "desc": "ksmtuned.service",
+          "name": "ksmtuned",
+          "service": "ksmtuned",
+          "state": "dead",
+          "unit-state": "not-found"
+        },
+        {
+          "active-state": "active",
+          "desc": "FUSE filesystem for LXC",
+          "name": "lxcfs",
+          "service": "lxcfs",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Postfix Mail Transport Agent (main/default instance)",
+          "name": "postfix",
+          "service": "postfix",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Proxmox nftables firewall",
+          "name": "proxmox-firewall",
+          "service": "proxmox-firewall",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "The Proxmox VE cluster filesystem",
+          "name": "pve-cluster",
+          "service": "pve-cluster",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Proxmox VE firewall",
+          "name": "pve-firewall",
+          "service": "pve-firewall",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE Cluster HA Resource Manager Daemon",
+          "name": "pve-ha-crm",
+          "service": "pve-ha-crm",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE Local HA Resource Manager Daemon",
+          "name": "pve-ha-lrm",
+          "service": "pve-ha-lrm",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Proxmox VE LXC Syscall Daemon",
+          "name": "pve-lxc-syscalld",
+          "service": "pve-lxc-syscalld",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE API Daemon",
+          "name": "pvedaemon",
+          "service": "pvedaemon",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Proxmox VE firewall logger",
+          "name": "pvefw-logger",
+          "service": "pvefw-logger",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE API Proxy Server",
+          "name": "pveproxy",
+          "service": "pveproxy",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Proxmox VE scheduler",
+          "name": "pvescheduler",
+          "service": "pvescheduler",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE Status Daemon",
+          "name": "pvestatd",
+          "service": "pvestatd",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE Qemu Event Daemon",
+          "name": "qmeventd",
+          "service": "qmeventd",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE SPICE Proxy Server",
+          "name": "spiceproxy",
+          "service": "spiceproxy",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "OpenBSD Secure Shell server",
+          "name": "sshd",
+          "service": "sshd",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "inactive",
+          "desc": "syslog.service",
+          "name": "syslog",
+          "service": "syslog",
+          "state": "dead",
+          "unit-state": "not-found"
+        },
+        {
+          "active-state": "active",
+          "desc": "Journal Service",
+          "name": "systemd-journald",
+          "service": "systemd-journald",
+          "state": "running",
+          "unit-state": "static"
+        },
+        {
+          "active-state": "active",
+          "desc": "Network Time Synchronization",
+          "name": "systemd-timesyncd",
+          "service": "systemd-timesyncd",
+          "state": "running",
+          "unit-state": "enabled"
+        }
+      ],
+      "status": {
+        "boot-info": {
+          "mode": "legacy-bios"
+        },
+        "cpu": 0,
+        "cpuinfo": {
+          "cores": 1,
+          "cpus": 4,
+          "flags": "",
+          "hvm": "",
+          "mhz": 0,
+          "model": "Cortex-A72",
+          "sockets": 1,
+          "user_hz": 100
+        },
+        "current-kernel": {
+          "machine": "aarch64",
+          "release": "6.12.75+rpt-rpi-v8",
+          "sysname": "Linux",
+          "version": "#1 SMP PREEMPT Debian 1:6.12.75-1+rpt1 (2026-03-11)"
+        },
+        "idle": 0,
+        "ksm": {
+          "shared": 0
+        },
+        "kversion": "Linux 6.12.75+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.12.75-1+rpt1 (2026-03-11)",
+        "loadavg": [
+          "9.20",
+          "9.22",
+          "9.24"
+        ],
+        "memory": {
+          "available": 6448361472,
+          "free": 555982848,
+          "total": 8200556544,
+          "used": 1752195072
+        },
+        "pveversion": "pve-manager/9.0.10-2/74d1bcc54a6e6730",
+        "rootfs": {
+          "avail": 74994937856,
+          "free": 80172683264,
+          "total": 125568774144,
+          "used": 45396090880
+        },
+        "swap": {
+          "free": 1256501248,
+          "total": 2147479552,
+          "used": 890978304
+        },
+        "uptime": 2890802,
+        "wait": 0
+      },
+      "storage": [
+        {
+          "active": 1,
+          "avail": 74994933760,
+          "content": "rootdir,backup,vztmpl,images,snippets,iso",
+          "enabled": 1,
+          "shared": 0,
+          "storage": "local",
+          "total": 125568774144,
+          "type": "dir",
+          "used": 45396094976,
+          "used_fraction": 0.361523756885136
+        },
+        {
+          "active": 0,
+          "avail": 0,
+          "content": "import,rootdir,vztmpl,backup,snippets,images,iso",
+          "enabled": 1,
+          "shared": 1,
+          "storage": "NAS",
+          "total": 0,
+          "type": "nfs",
+          "used": 0
+        }
+      ],
+      "version": {
+        "release": "9.0",
+        "repoid": "74d1bcc54a6e6730",
+        "version": "9.0.10-2"
+      }
+    },
+    "jester": {
+      "lxc": [],
+      "lxc_details": [],
+      "qemu": [],
+      "qemu_details": [],
+      "services": [
+        {
+          "active-state": "inactive",
+          "desc": "chrony.service",
+          "name": "chrony",
+          "service": "chrony",
+          "state": "dead",
+          "unit-state": "not-found"
+        },
+        {
+          "active-state": "active",
+          "desc": "Corosync Cluster Engine",
+          "name": "corosync",
+          "service": "corosync",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Regular background program processing daemon",
+          "name": "cron",
+          "service": "cron",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "inactive",
+          "desc": "ksmtuned.service",
+          "name": "ksmtuned",
+          "service": "ksmtuned",
+          "state": "dead",
+          "unit-state": "not-found"
+        },
+        {
+          "active-state": "active",
+          "desc": "Postfix Mail Transport Agent (instance -)",
+          "name": "postfix",
+          "service": "postfix",
+          "state": "running",
+          "unit-state": "enabled-runtime"
+        },
+        {
+          "active-state": "active",
+          "desc": "The Proxmox VE cluster filesystem",
+          "name": "pve-cluster",
+          "service": "pve-cluster",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Proxmox VE firewall",
+          "name": "pve-firewall",
+          "service": "pve-firewall",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE Cluster HA Resource Manager Daemon",
+          "name": "pve-ha-crm",
+          "service": "pve-ha-crm",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE Local HA Resource Manager Daemon",
+          "name": "pve-ha-lrm",
+          "service": "pve-ha-lrm",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE API Daemon",
+          "name": "pvedaemon",
+          "service": "pvedaemon",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Proxmox VE firewall logger",
+          "name": "pvefw-logger",
+          "service": "pvefw-logger",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE API Proxy Server",
+          "name": "pveproxy",
+          "service": "pveproxy",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Proxmox VE scheduler",
+          "name": "pvescheduler",
+          "service": "pvescheduler",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE Status Daemon",
+          "name": "pvestatd",
+          "service": "pvestatd",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE SPICE Proxy Server",
+          "name": "spiceproxy",
+          "service": "spiceproxy",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "OpenBSD Secure Shell server",
+          "name": "sshd",
+          "service": "sshd",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "inactive",
+          "desc": "syslog.service",
+          "name": "syslog",
+          "service": "syslog",
+          "state": "dead",
+          "unit-state": "not-found"
+        },
+        {
+          "active-state": "active",
+          "desc": "Journal Service",
+          "name": "systemd-journald",
+          "service": "systemd-journald",
+          "state": "running",
+          "unit-state": "static"
+        },
+        {
+          "active-state": "active",
+          "desc": "Network Time Synchronization",
+          "name": "systemd-timesyncd",
+          "service": "systemd-timesyncd",
+          "state": "running",
+          "unit-state": "enabled"
+        }
+      ],
+      "status": {
+        "boot-info": {
+          "mode": "legacy-bios"
+        },
+        "cpu": 0.172680219290079,
+        "cpuinfo": {
+          "cores": 1,
+          "cpus": 4,
+          "flags": "",
+          "hvm": "",
+          "mhz": 0,
+          "model": "Cortex-A76",
+          "sockets": 1,
+          "user_hz": 100
+        },
+        "current-kernel": {
+          "machine": "aarch64",
+          "release": "6.6.51+rpt-rpi-2712",
+          "sysname": "Linux",
+          "version": "#1 SMP PREEMPT Debian 1:6.6.51-1+rpt3 (2024-10-08)"
+        },
+        "idle": 0,
+        "ksm": {
+          "shared": 0
+        },
+        "kversion": "Linux 6.6.51+rpt-rpi-2712 #1 SMP PREEMPT Debian 1:6.6.51-1+rpt3 (2024-10-08)",
+        "loadavg": [
+          "2.73",
+          "2.61",
+          "2.62"
+        ],
+        "memory": {
+          "free": 417038336,
+          "total": 8439300096,
+          "used": 2778611712
+        },
+        "pveversion": "pve-manager/8.4.18-pxvirt2/4a46a28b26b7ab63",
+        "rootfs": {
+          "avail": 94129897472,
+          "free": 100528496640,
+          "total": 125578338304,
+          "used": 25049841664
+        },
+        "swap": {
+          "free": 1015808,
+          "total": 209698816,
+          "used": 208683008
+        },
+        "uptime": 3535874,
+        "wait": 0.00929835691221324
+      },
+      "storage": [
+        {
+          "active": 1,
+          "avail": 94129893376,
+          "content": "iso,rootdir,images,snippets,backup,vztmpl",
+          "enabled": 1,
+          "shared": 0,
+          "storage": "local",
+          "total": 125578338304,
+          "type": "dir",
+          "used": 25049845760,
+          "used_fraction": 0.199475849882321
+        },
+        {
+          "active": 0,
+          "avail": 0,
+          "content": "vztmpl,backup,snippets,import,iso,rootdir,images",
+          "enabled": 1,
+          "shared": 1,
+          "storage": "NAS",
+          "total": 0,
+          "type": "nfs",
+          "used": 0
+        }
+      ],
+      "version": {
+        "release": "8.4",
+        "repoid": "4a46a28b26b7ab63",
+        "version": "8.4.18-pxvirt2"
+      }
+    },
+    "shogun": {
+      "lxc": [],
+      "lxc_details": [],
+      "qemu": [
+        {
+          "arch": "aarch64",
+          "cpu": 0,
+          "cpus": 4,
+          "disk": 0,
+          "diskread": 0,
+          "diskwrite": 0,
+          "maxdisk": 68719476736,
+          "maxmem": 6442450944,
+          "mem": 0,
+          "name": "NAS-OMV",
+          "netin": 0,
+          "netout": 0,
+          "serial": 1,
+          "status": "stopped",
+          "uptime": 0,
+          "uuid": "a781914e-ed5b-4611-8d48-afbe484596f3",
+          "vmid": 103
+        }
+      ],
+      "qemu_details": [
+        {
+          "config": {
+            "agent": "1",
+            "arch": "aarch64",
+            "bios": "ovmf",
+            "boot": "order=scsi0;net0",
+            "cores": 4,
+            "cpu": "host",
+            "digest": "14ab86d59658730a2d7db668287fd6659719e68a",
+            "efidisk0": "local:103/vm-103-disk-0.qcow2,efitype=4m,size=64M",
+            "kvm": 1,
+            "machine": "virt",
+            "memory": "6144",
+            "meta": "creation-qemu=10.0.2,ctime=1776474475",
+            "name": "NAS-OMV",
+            "net0": "virtio=BC:24:11:76:AD:BB,bridge=link0",
+            "numa": 0,
+            "ostype": "l26",
+            "scsi0": "local:103/vm-103-disk-1.qcow2,size=64G",
+            "scsi2": "none,media=cdrom",
+            "scsihw": "virtio-scsi-pci",
+            "serial0": "socket",
+            "smbios1": "uuid=4d15b80b-4c9d-4dc1-b4b2-c92ff3542455",
+            "sockets": 1,
+            "unused0": "local:103/vm-103-disk-3.qcow2",
+            "usb0": "host=152d:0567",
+            "uuid": "a781914e-ed5b-4611-8d48-afbe484596f3",
+            "vga": "serial0"
+          },
+          "current": {
+            "agent": 1,
+            "arch": "aarch64",
+            "clipboard": null,
+            "cpu": 0,
+            "cpus": 4,
+            "disk": 0,
+            "diskread": 0,
+            "diskwrite": 0,
+            "ha": {
+              "managed": 0
+            },
+            "maxdisk": 68719476736,
+            "maxmem": 6442450944,
+            "mem": 0,
+            "name": "NAS-OMV",
+            "netin": 0,
+            "netout": 0,
+            "qmpstatus": "stopped",
+            "serial": 1,
+            "status": "stopped",
+            "uptime": 0,
+            "uuid": "a781914e-ed5b-4611-8d48-afbe484596f3",
+            "vmid": 103
+          },
+          "name": "NAS-OMV",
+          "status": "stopped",
+          "vmid": 103
+        }
+      ],
+      "services": [
+        {
+          "active-state": "inactive",
+          "desc": "chrony.service",
+          "name": "chrony",
+          "service": "chrony",
+          "state": "dead",
+          "unit-state": "not-found"
+        },
+        {
+          "active-state": "active",
+          "desc": "Corosync Cluster Engine",
+          "name": "corosync",
+          "service": "corosync",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Regular background program processing daemon",
+          "name": "cron",
+          "service": "cron",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "inactive",
+          "desc": "ksmtuned.service",
+          "name": "ksmtuned",
+          "service": "ksmtuned",
+          "state": "dead",
+          "unit-state": "not-found"
+        },
+        {
+          "active-state": "active",
+          "desc": "Postfix Mail Transport Agent (instance -)",
+          "name": "postfix",
+          "service": "postfix",
+          "state": "running",
+          "unit-state": "enabled-runtime"
+        },
+        {
+          "active-state": "active",
+          "desc": "The Proxmox VE cluster filesystem",
+          "name": "pve-cluster",
+          "service": "pve-cluster",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Proxmox VE firewall",
+          "name": "pve-firewall",
+          "service": "pve-firewall",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE Cluster HA Resource Manager Daemon",
+          "name": "pve-ha-crm",
+          "service": "pve-ha-crm",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE Local HA Resource Manager Daemon",
+          "name": "pve-ha-lrm",
+          "service": "pve-ha-lrm",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE API Daemon",
+          "name": "pvedaemon",
+          "service": "pvedaemon",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Proxmox VE firewall logger",
+          "name": "pvefw-logger",
+          "service": "pvefw-logger",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE API Proxy Server",
+          "name": "pveproxy",
+          "service": "pveproxy",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Proxmox VE scheduler",
+          "name": "pvescheduler",
+          "service": "pvescheduler",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE Status Daemon",
+          "name": "pvestatd",
+          "service": "pvestatd",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE SPICE Proxy Server",
+          "name": "spiceproxy",
+          "service": "spiceproxy",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "OpenBSD Secure Shell server",
+          "name": "sshd",
+          "service": "sshd",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "inactive",
+          "desc": "syslog.service",
+          "name": "syslog",
+          "service": "syslog",
+          "state": "dead",
+          "unit-state": "not-found"
+        },
+        {
+          "active-state": "active",
+          "desc": "Journal Service",
+          "name": "systemd-journald",
+          "service": "systemd-journald",
+          "state": "running",
+          "unit-state": "static"
+        },
+        {
+          "active-state": "active",
+          "desc": "Network Time Synchronization",
+          "name": "systemd-timesyncd",
+          "service": "systemd-timesyncd",
+          "state": "running",
+          "unit-state": "enabled"
+        }
+      ],
+      "status": {
+        "boot-info": {
+          "mode": "legacy-bios"
+        },
+        "cpu": 0,
+        "cpuinfo": {
+          "cores": 1,
+          "cpus": 4,
+          "flags": "",
+          "hvm": "",
+          "mhz": 0,
+          "model": "Cortex-A72",
+          "sockets": 1,
+          "user_hz": 100
+        },
+        "current-kernel": {
+          "machine": "aarch64",
+          "release": "6.12.75+rpt-rpi-v8",
+          "sysname": "Linux",
+          "version": "#1 SMP PREEMPT Debian 1:6.12.75-1+rpt1~bookworm (2026-03-11)"
+        },
+        "idle": 0,
+        "ksm": {
+          "shared": 0
+        },
+        "kversion": "Linux 6.12.75+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.12.75-1+rpt1~bookworm (2026-03-11)",
+        "loadavg": [
+          "0.02",
+          "0.07",
+          "0.11"
+        ],
+        "memory": {
+          "free": 6235561984,
+          "total": 8200691712,
+          "used": 1311412224
+        },
+        "pveversion": "pve-manager/8.4.18-pxvirt2/4a46a28b26b7ab63",
+        "rootfs": {
+          "avail": 54977556480,
+          "free": 61376155648,
+          "total": 125578338304,
+          "used": 64202182656
+        },
+        "swap": {
+          "free": 258048,
+          "total": 209711104,
+          "used": 209453056
+        },
+        "uptime": 2662565,
+        "wait": 0
+      },
+      "storage": [
+        {
+          "active": 0,
+          "avail": 0,
+          "content": "backup,iso,import,snippets,rootdir,vztmpl,images",
+          "enabled": 1,
+          "shared": 1,
+          "storage": "NAS",
+          "total": 0,
+          "type": "nfs",
+          "used": 0
+        },
+        {
+          "active": 1,
+          "avail": 54977556480,
+          "content": "vztmpl,images,backup,iso,snippets,rootdir",
+          "enabled": 1,
+          "shared": 0,
+          "storage": "local",
+          "total": 125578338304,
+          "type": "dir",
+          "used": 64202182656,
+          "used_fraction": 0.511252048108643
+        }
+      ],
+      "version": {
+        "release": "8.4",
+        "repoid": "4a46a28b26b7ab63",
+        "version": "8.4.18-pxvirt2"
+      }
+    },
+    "tori": {
+      "lxc": [],
+      "lxc_details": [],
+      "qemu": [],
+      "qemu_details": [],
+      "services": [
+        {
+          "active-state": "inactive",
+          "desc": "chrony.service",
+          "name": "chrony",
+          "service": "chrony",
+          "state": "dead",
+          "unit-state": "not-found"
+        },
+        {
+          "active-state": "active",
+          "desc": "Corosync Cluster Engine",
+          "name": "corosync",
+          "service": "corosync",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Regular background program processing daemon",
+          "name": "cron",
+          "service": "cron",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "inactive",
+          "desc": "ksmtuned.service",
+          "name": "ksmtuned",
+          "service": "ksmtuned",
+          "state": "dead",
+          "unit-state": "not-found"
+        },
+        {
+          "active-state": "active",
+          "desc": "FUSE filesystem for LXC",
+          "name": "lxcfs",
+          "service": "lxcfs",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Postfix Mail Transport Agent (main/default instance)",
+          "name": "postfix",
+          "service": "postfix",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Proxmox nftables firewall",
+          "name": "proxmox-firewall",
+          "service": "proxmox-firewall",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "The Proxmox VE cluster filesystem",
+          "name": "pve-cluster",
+          "service": "pve-cluster",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Proxmox VE firewall",
+          "name": "pve-firewall",
+          "service": "pve-firewall",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE Cluster HA Resource Manager Daemon",
+          "name": "pve-ha-crm",
+          "service": "pve-ha-crm",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE Local HA Resource Manager Daemon",
+          "name": "pve-ha-lrm",
+          "service": "pve-ha-lrm",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Proxmox VE LXC Syscall Daemon",
+          "name": "pve-lxc-syscalld",
+          "service": "pve-lxc-syscalld",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE API Daemon",
+          "name": "pvedaemon",
+          "service": "pvedaemon",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Proxmox VE firewall logger",
+          "name": "pvefw-logger",
+          "service": "pvefw-logger",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE API Proxy Server",
+          "name": "pveproxy",
+          "service": "pveproxy",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Proxmox VE scheduler",
+          "name": "pvescheduler",
+          "service": "pvescheduler",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE Status Daemon",
+          "name": "pvestatd",
+          "service": "pvestatd",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE Qemu Event Daemon",
+          "name": "qmeventd",
+          "service": "qmeventd",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE SPICE Proxy Server",
+          "name": "spiceproxy",
+          "service": "spiceproxy",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "OpenBSD Secure Shell server",
+          "name": "sshd",
+          "service": "sshd",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "inactive",
+          "desc": "syslog.service",
+          "name": "syslog",
+          "service": "syslog",
+          "state": "dead",
+          "unit-state": "not-found"
+        },
+        {
+          "active-state": "active",
+          "desc": "Journal Service",
+          "name": "systemd-journald",
+          "service": "systemd-journald",
+          "state": "running",
+          "unit-state": "static"
+        },
+        {
+          "active-state": "active",
+          "desc": "Network Time Synchronization",
+          "name": "systemd-timesyncd",
+          "service": "systemd-timesyncd",
+          "state": "running",
+          "unit-state": "enabled"
+        }
+      ],
+      "status": {
+        "boot-info": {
+          "mode": "efi",
+          "secureboot": 1
+        },
+        "cpu": 0.0415922819647763,
+        "cpuinfo": {
+          "cores": 4,
+          "cpus": 4,
+          "family": "21",
+          "flags": "fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good nopl nonstop_tsc cpuid extd_apicid aperfmperf pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 popcnt aes xsave avx f16c lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs xop skinit wdt lwp fma4 tce nodeid_msr tbm topoext perfctr_core perfctr_nb cpb hw_pstate ssbd vmmcall bmi1 arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold",
+          "hvm": "1",
+          "mhz": "3493.597",
+          "model": "AMD A8-5500 APU with Radeon(tm) HD Graphics",
+          "sockets": 1,
+          "user_hz": 100,
+          "vendor": "AuthenticAMD"
+        },
+        "current-kernel": {
+          "machine": "x86_64",
+          "release": "7.0.0-3-pve",
+          "sysname": "Linux",
+          "version": "#1 SMP PREEMPT_DYNAMIC PMX 7.0.0-3 (2026-04-21T22:56Z)"
+        },
+        "idle": 0,
+        "ksm": {
+          "shared": 0
+        },
+        "kversion": "Linux 7.0.0-3-pve #1 SMP PREEMPT_DYNAMIC PMX 7.0.0-3 (2026-04-21T22:56Z)",
+        "loadavg": [
+          "1.12",
+          "1.14",
+          "1.12"
+        ],
+        "memory": {
+          "available": 4107452416,
+          "free": 302321664,
+          "total": 8216281088,
+          "used": 4108828672
+        },
+        "pveversion": "pve-manager/9.1.9/ee7bad0a3d1546c9",
+        "rootfs": {
+          "avail": 425772158976,
+          "free": 450788925440,
+          "total": 491001659392,
+          "used": 40212733952
+        },
+        "swap": {
+          "free": 31983484928,
+          "total": 32000438272,
+          "used": 16953344
+        },
+        "uptime": 378833,
+        "wait": 0.00357046569073938
+      },
+      "storage": [
+        {
+          "active": 1,
+          "avail": 425772158976,
+          "content": "iso,rootdir,snippets,images,vztmpl,backup",
+          "enabled": 1,
+          "shared": 0,
+          "storage": "local",
+          "total": 491001659392,
+          "type": "dir",
+          "used": 40212733952,
+          "used_fraction": 0.0818993850281378
+        },
+        {
+          "active": 0,
+          "avail": 0,
+          "content": "import,iso,snippets,rootdir,backup,vztmpl,images",
+          "enabled": 1,
+          "shared": 1,
+          "storage": "NAS",
+          "total": 0,
+          "type": "nfs",
+          "used": 0
+        }
+      ],
+      "version": {
+        "release": "9.1",
+        "repoid": "ee7bad0a3d1546c9",
+        "version": "9.1.9"
+      }
+    },
+    "toyota": {
+      "lxc": [
+        {
+          "cpu": 0.000159671737506449,
+          "cpus": 4,
+          "disk": 5620895744,
+          "diskread": 1258512384,
+          "diskwrite": 9455616000,
+          "maxdisk": 84224425984,
+          "maxmem": 17179869184,
+          "maxswap": 1073741824,
+          "mem": 358539264,
+          "name": "dev",
+          "netin": 923768693,
+          "netout": 61735955,
+          "pid": 5139,
+          "pressurecpufull": "0.00",
+          "pressurecpusome": "0.00",
+          "pressureiofull": "0.00",
+          "pressureiosome": "0.00",
+          "pressurememoryfull": "0.00",
+          "pressurememorysome": "0.00",
+          "status": "running",
+          "swap": 0,
+          "type": "lxc",
+          "uptime": 360881,
+          "vmid": 110
+        },
+        {
+          "cpu": 0,
+          "cpus": 4,
+          "disk": 1498677248,
+          "diskread": 540745728,
+          "diskwrite": 3313856512,
+          "maxdisk": 42091216896,
+          "maxmem": 8589934592,
+          "maxswap": 1073741824,
+          "mem": 88932352,
+          "name": "staging",
+          "netin": 90318569,
+          "netout": 1242986,
+          "pid": 5527,
+          "pressurecpufull": "0.00",
+          "pressurecpusome": "0.00",
+          "pressureiofull": "0.00",
+          "pressureiosome": "0.00",
+          "pressurememoryfull": "0.00",
+          "pressurememorysome": "0.00",
+          "status": "running",
+          "swap": 0,
+          "type": "lxc",
+          "uptime": 360879,
+          "vmid": 111
+        },
+        {
+          "cpu": 0.000120019765019191,
+          "cpus": 4,
+          "disk": 1498595328,
+          "diskread": 550170624,
+          "diskwrite": 2664071168,
+          "maxdisk": 42091216896,
+          "maxmem": 8589934592,
+          "maxswap": 1073741824,
+          "mem": 89014272,
+          "name": "prod",
+          "netin": 90316344,
+          "netout": 1242986,
+          "pid": 6307,
+          "pressurecpufull": "0.00",
+          "pressurecpusome": "0.00",
+          "pressureiofull": "0.00",
+          "pressureiosome": "0.00",
+          "pressurememoryfull": "0.00",
+          "pressurememorysome": "0.00",
+          "status": "running",
+          "swap": 0,
+          "type": "lxc",
+          "uptime": 360877,
+          "vmid": 112
+        }
+      ],
+      "lxc_details": [
+        {
+          "config": {
+            "arch": "amd64",
+            "cores": 4,
+            "digest": "38e906b0a47e33ab00aed6376aa90baaa99027e1",
+            "features": "nesting=1,keyctl=1",
+            "hostname": "dev",
+            "memory": 16384,
+            "nameserver": "1.1.1.1",
+            "net0": "name=eth0,bridge=vmbr0,gw=192.168.0.1,hwaddr=BC:24:11:1A:5B:FF,ip=192.168.0.51/24,type=veth",
+            "ostype": "ubuntu",
+            "rootfs": "local:110/vm-110-disk-0.raw,size=80G",
+            "swap": 1024,
+            "unprivileged": 1
+          },
+          "current": {
+            "cpu": 0.000147520735186996,
+            "cpus": 4,
+            "disk": 5620895744,
+            "diskread": 1258512384,
+            "diskwrite": 9455616000,
+            "ha": {
+              "managed": 0
+            },
+            "maxdisk": 84224425984,
+            "maxmem": 17179869184,
+            "maxswap": 1073741824,
+            "mem": 358277120,
+            "name": "dev",
+            "netin": 923768873,
+            "netout": 61735955,
+            "pid": 5139,
+            "pressurecpufull": "0.00",
+            "pressurecpusome": "0.00",
+            "pressureiofull": "0.00",
+            "pressureiosome": "0.00",
+            "pressurememoryfull": "0.00",
+            "pressurememorysome": "0.00",
+            "status": "running",
+            "swap": 0,
+            "type": "lxc",
+            "uptime": 360882,
+            "vmid": 110
+          },
+          "name": "dev",
+          "status": "running",
+          "vmid": 110
+        },
+        {
+          "config": {
+            "arch": "amd64",
+            "cores": 4,
+            "digest": "fb15b5c6466abdf10cfb954113b122da6f2bd1e8",
+            "features": "nesting=1,keyctl=1",
+            "hostname": "staging",
+            "memory": 8192,
+            "nameserver": "1.1.1.1",
+            "net0": "name=eth0,bridge=vmbr0,gw=192.168.0.1,hwaddr=BC:24:11:D2:D8:07,ip=192.168.0.52/24,type=veth",
+            "ostype": "ubuntu",
+            "rootfs": "local:111/vm-111-disk-0.raw,size=40G",
+            "swap": 1024,
+            "unprivileged": 1
+          },
+          "current": {
+            "cpu": 0.000308186527949184,
+            "cpus": 4,
+            "disk": 1498677248,
+            "diskread": 540745728,
+            "diskwrite": 3313856512,
+            "ha": {
+              "managed": 0
+            },
+            "maxdisk": 42091216896,
+            "maxmem": 8589934592,
+            "maxswap": 1073741824,
+            "mem": 88932352,
+            "name": "staging",
+            "netin": 90318749,
+            "netout": 1242986,
+            "pid": 5527,
+            "pressurecpufull": "0.00",
+            "pressurecpusome": "0.00",
+            "pressureiofull": "0.00",
+            "pressureiosome": "0.00",
+            "pressurememoryfull": "0.00",
+            "pressurememorysome": "0.00",
+            "status": "running",
+            "swap": 0,
+            "type": "lxc",
+            "uptime": 360880,
+            "vmid": 111
+          },
+          "name": "staging",
+          "status": "running",
+          "vmid": 111
+        },
+        {
+          "config": {
+            "arch": "amd64",
+            "cores": 4,
+            "digest": "416586a8e311f28f626055168a52fa57dc05669c",
+            "features": "nesting=1,keyctl=1",
+            "hostname": "prod",
+            "memory": 8192,
+            "nameserver": "1.1.1.1",
+            "net0": "name=eth0,bridge=vmbr0,gw=192.168.0.1,hwaddr=BC:24:11:B7:82:9E,ip=192.168.0.53/24,type=veth",
+            "ostype": "ubuntu",
+            "rootfs": "local:112/vm-112-disk-0.raw,size=40G",
+            "swap": 1024,
+            "unprivileged": 1
+          },
+          "current": {
+            "cpu": 0.000119674554135021,
+            "cpus": 4,
+            "disk": 1498595328,
+            "diskread": 550170624,
+            "diskwrite": 2664071168,
+            "ha": {
+              "managed": 0
+            },
+            "maxdisk": 42091216896,
+            "maxmem": 8589934592,
+            "maxswap": 1073741824,
+            "mem": 89014272,
+            "name": "prod",
+            "netin": 90316524,
+            "netout": 1242986,
+            "pid": 6307,
+            "pressurecpufull": "0.00",
+            "pressurecpusome": "0.00",
+            "pressureiofull": "0.00",
+            "pressureiosome": "0.00",
+            "pressurememoryfull": "0.00",
+            "pressurememorysome": "0.00",
+            "status": "running",
+            "swap": 0,
+            "type": "lxc",
+            "uptime": 360878,
+            "vmid": 112
+          },
+          "name": "prod",
+          "status": "running",
+          "vmid": 112
+        }
+      ],
+      "qemu": [],
+      "qemu_details": [],
+      "services": [
+        {
+          "active-state": "inactive",
+          "desc": "chrony.service",
+          "name": "chrony",
+          "service": "chrony",
+          "state": "dead",
+          "unit-state": "not-found"
+        },
+        {
+          "active-state": "active",
+          "desc": "Corosync Cluster Engine",
+          "name": "corosync",
+          "service": "corosync",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Regular background program processing daemon",
+          "name": "cron",
+          "service": "cron",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "inactive",
+          "desc": "ksmtuned.service",
+          "name": "ksmtuned",
+          "service": "ksmtuned",
+          "state": "dead",
+          "unit-state": "not-found"
+        },
+        {
+          "active-state": "active",
+          "desc": "FUSE filesystem for LXC",
+          "name": "lxcfs",
+          "service": "lxcfs",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Postfix Mail Transport Agent (main/default instance)",
+          "name": "postfix",
+          "service": "postfix",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Proxmox nftables firewall",
+          "name": "proxmox-firewall",
+          "service": "proxmox-firewall",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "The Proxmox VE cluster filesystem",
+          "name": "pve-cluster",
+          "service": "pve-cluster",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Proxmox VE firewall",
+          "name": "pve-firewall",
+          "service": "pve-firewall",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE Cluster HA Resource Manager Daemon",
+          "name": "pve-ha-crm",
+          "service": "pve-ha-crm",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE Local HA Resource Manager Daemon",
+          "name": "pve-ha-lrm",
+          "service": "pve-ha-lrm",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Proxmox VE LXC Syscall Daemon",
+          "name": "pve-lxc-syscalld",
+          "service": "pve-lxc-syscalld",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE API Daemon",
+          "name": "pvedaemon",
+          "service": "pvedaemon",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Proxmox VE firewall logger",
+          "name": "pvefw-logger",
+          "service": "pvefw-logger",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE API Proxy Server",
+          "name": "pveproxy",
+          "service": "pveproxy",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "Proxmox VE scheduler",
+          "name": "pvescheduler",
+          "service": "pvescheduler",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE Status Daemon",
+          "name": "pvestatd",
+          "service": "pvestatd",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE Qemu Event Daemon",
+          "name": "qmeventd",
+          "service": "qmeventd",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "PVE SPICE Proxy Server",
+          "name": "spiceproxy",
+          "service": "spiceproxy",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "active",
+          "desc": "OpenBSD Secure Shell server",
+          "name": "sshd",
+          "service": "sshd",
+          "state": "running",
+          "unit-state": "enabled"
+        },
+        {
+          "active-state": "inactive",
+          "desc": "syslog.service",
+          "name": "syslog",
+          "service": "syslog",
+          "state": "dead",
+          "unit-state": "not-found"
+        },
+        {
+          "active-state": "active",
+          "desc": "Journal Service",
+          "name": "systemd-journald",
+          "service": "systemd-journald",
+          "state": "running",
+          "unit-state": "static"
+        },
+        {
+          "active-state": "active",
+          "desc": "Network Time Synchronization",
+          "name": "systemd-timesyncd",
+          "service": "systemd-timesyncd",
+          "state": "running",
+          "unit-state": "enabled"
+        }
+      ],
+      "status": {
+        "boot-info": {
+          "mode": "efi",
+          "secureboot": 0
+        },
+        "cpu": 0,
+        "cpuinfo": {
+          "cores": 4,
+          "cpus": 4,
+          "family": "6",
+          "flags": "fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc art arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf pni pclmulqdq dtes64 monitor ds_cpl vmx smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault epb pti ssbd ibrs ibpb stibp tpr_shadow flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid mpx rdseed adx smap clflushopt intel_pt xsaveopt xsavec xgetbv1 xsaves dtherm ida arat pln pts hwp hwp_notify hwp_act_window hwp_epp vnmi md_clear flush_l1d arch_capabilities",
+          "hvm": "1",
+          "mhz": "3699.986",
+          "model": "Intel(R) Core(TM) i5-7500 CPU @ 3.40GHz",
+          "sockets": 1,
+          "user_hz": 100,
+          "vendor": "GenuineIntel"
+        },
+        "current-kernel": {
+          "machine": "x86_64",
+          "release": "7.0.0-3-pve",
+          "sysname": "Linux",
+          "version": "#1 SMP PREEMPT_DYNAMIC PMX 7.0.0-3 (2026-04-21T22:56Z)"
+        },
+        "idle": 0,
+        "ksm": {
+          "shared": 0
+        },
+        "kversion": "Linux 7.0.0-3-pve #1 SMP PREEMPT_DYNAMIC PMX 7.0.0-3 (2026-04-21T22:56Z)",
+        "loadavg": [
+          "1.00",
+          "1.00",
+          "1.00"
+        ],
+        "memory": {
+          "available": 64166895616,
+          "free": 55476842496,
+          "total": 67115241472,
+          "used": 2948345856
+        },
+        "pveversion": "pve-manager/9.1.9/ee7bad0a3d1546c9",
+        "rootfs": {
+          "avail": 422627901440,
+          "free": 446309466112,
+          "total": 464716759040,
+          "used": 18407292928
+        },
+        "swap": {
+          "free": 25786576896,
+          "total": 25786576896,
+          "used": 0
+        },
+        "uptime": 362237,
+        "wait": 0
+      },
+      "storage": [
+        {
+          "active": 1,
+          "avail": 422627901440,
+          "content": "rootdir,backup,iso,vztmpl,images,snippets",
+          "enabled": 1,
+          "shared": 0,
+          "storage": "local",
+          "total": 464716759040,
+          "type": "dir",
+          "used": 18407292928,
+          "used_fraction": 0.0396097032653294
+        },
+        {
+          "active": 0,
+          "avail": 0,
+          "content": "backup,import,rootdir,vztmpl,snippets,images,iso",
+          "enabled": 1,
+          "shared": 1,
+          "storage": "NAS",
+          "total": 0,
+          "type": "nfs",
+          "used": 0
+        }
+      ],
+      "version": {
+        "release": "9.1",
+        "repoid": "ee7bad0a3d1546c9",
+        "version": "9.1.9"
+      }
+    }
+  }
+}
