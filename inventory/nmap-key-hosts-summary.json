@@ -1,0 +1,439 @@
+{
+  "generated_at": "2026-05-21T10:46:54.568977+00:00",
+  "hosts": [
+    {
+      "hostname": null,
+      "ip": "192.168.0.1",
+      "mac": "24:2F:D0:44:EB:0C",
+      "open_ports": [
+        {
+          "port": 53,
+          "product": "Unbound",
+          "proto": "tcp",
+          "service": "domain",
+          "version": "1.16.2"
+        },
+        {
+          "port": 80,
+          "product": "BusyBox http",
+          "proto": "tcp",
+          "service": "http",
+          "version": "1.19.4"
+        },
+        {
+          "port": 443,
+          "product": null,
+          "proto": "tcp",
+          "service": "tcpwrapped",
+          "version": null
+        }
+      ],
+      "vendor": "TP-Link PTE."
+    },
+    {
+      "hostname": null,
+      "ip": "192.168.0.6",
+      "mac": "D8:3A:DD:7C:33:3F",
+      "open_ports": [
+        {
+          "port": 22,
+          "product": "OpenSSH",
+          "proto": "tcp",
+          "service": "ssh",
+          "version": "10.0p2 Debian 7+deb13u2"
+        },
+        {
+          "port": 111,
+          "product": null,
+          "proto": "tcp",
+          "service": "rpcbind",
+          "version": null
+        },
+        {
+          "port": 3128,
+          "product": "Proxmox Virtual Environment REST API",
+          "proto": "tcp",
+          "service": "http",
+          "version": "3.0"
+        }
+      ],
+      "vendor": "Raspberry Pi Trading"
+    },
+    {
+      "hostname": null,
+      "ip": "192.168.0.7",
+      "mac": "D8:3A:DD:7C:34:52",
+      "open_ports": [
+        {
+          "port": 22,
+          "product": "OpenSSH",
+          "proto": "tcp",
+          "service": "ssh",
+          "version": "9.2p1 Debian 2+deb12u9"
+        },
+        {
+          "port": 111,
+          "product": null,
+          "proto": "tcp",
+          "service": "rpcbind",
+          "version": null
+        },
+        {
+          "port": 3128,
+          "product": "Proxmox Virtual Environment REST API",
+          "proto": "tcp",
+          "service": "http",
+          "version": "3.0"
+        }
+      ],
+      "vendor": "Raspberry Pi Trading"
+    },
+    {
+      "hostname": null,
+      "ip": "192.168.0.8",
+      "mac": "2C:CF:67:18:AF:1C",
+      "open_ports": [
+        {
+          "port": 22,
+          "product": "OpenSSH",
+          "proto": "tcp",
+          "service": "ssh",
+          "version": "9.2p1 Debian 2+deb12u9"
+        },
+        {
+          "port": 111,
+          "product": null,
+          "proto": "tcp",
+          "service": "rpcbind",
+          "version": null
+        },
+        {
+          "port": 3128,
+          "product": "Proxmox Virtual Environment REST API",
+          "proto": "tcp",
+          "service": "http",
+          "version": "3.0"
+        }
+      ],
+      "vendor": "Raspberry Pi (Trading)"
+    },
+    {
+      "hostname": null,
+      "ip": "192.168.0.21",
+      "mac": "70:85:C2:30:8D:6F",
+      "open_ports": [
+        {
+          "port": 22,
+          "product": "OpenSSH",
+          "proto": "tcp",
+          "service": "ssh",
+          "version": "10.0p2 Debian 7+deb13u2"
+        },
+        {
+          "port": 80,
+          "product": "Apache httpd",
+          "proto": "tcp",
+          "service": "http",
+          "version": "2.4.67"
+        },
+        {
+          "port": 111,
+          "product": null,
+          "proto": "tcp",
+          "service": "rpcbind",
+          "version": null
+        },
+        {
+          "port": 3128,
+          "product": "Proxmox Virtual Environment REST API",
+          "proto": "tcp",
+          "service": "http",
+          "version": "3.0"
+        }
+      ],
+      "vendor": "ASRock Incorporation"
+    },
+    {
+      "hostname": "dev-personal-website.local",
+      "ip": "192.168.0.50",
+      "mac": "BC:24:11:7B:2A:33",
+      "open_ports": [
+        {
+          "port": 22,
+          "product": "OpenSSH",
+          "proto": "tcp",
+          "service": "ssh",
+          "version": "9.3"
+        },
+        {
+          "port": 80,
+          "product": "Golang net/http server",
+          "proto": "tcp",
+          "service": "http",
+          "version": null
+        },
+        {
+          "port": 443,
+          "product": "Golang net/http server",
+          "proto": "tcp",
+          "service": "http",
+          "version": null
+        },
+        {
+          "port": 5432,
+          "product": "PostgreSQL DB",
+          "proto": "tcp",
+          "service": "postgresql",
+          "version": "9.6.0 or later"
+        },
+        {
+          "port": 8084,
+          "product": null,
+          "proto": "tcp",
+          "service": "websnp",
+          "version": null
+        }
+      ],
+      "vendor": "Proxmox Server Solutions GmbH"
+    },
+    {
+      "hostname": null,
+      "ip": "192.168.0.51",
+      "mac": "BC:24:11:1A:5B:FF",
+      "open_ports": [
+        {
+          "port": 22,
+          "product": "OpenSSH",
+          "proto": "tcp",
+          "service": "ssh",
+          "version": "9.6p1 Ubuntu 3ubuntu13"
+        },
+        {
+          "port": 5432,
+          "product": "PostgreSQL DB",
+          "proto": "tcp",
+          "service": "postgresql",
+          "version": "9.6.0 or later"
+        }
+      ],
+      "vendor": "Proxmox Server Solutions GmbH"
+    },
+    {
+      "hostname": null,
+      "ip": "192.168.0.52",
+      "mac": "BC:24:11:D2:D8:07",
+      "open_ports": [
+        {
+          "port": 22,
+          "product": "OpenSSH",
+          "proto": "tcp",
+          "service": "ssh",
+          "version": "9.6p1 Ubuntu 3ubuntu13"
+        }
+      ],
+      "vendor": "Proxmox Server Solutions GmbH"
+    },
+    {
+      "hostname": null,
+      "ip": "192.168.0.53",
+      "mac": "BC:24:11:B7:82:9E",
+      "open_ports": [
+        {
+          "port": 22,
+          "product": "OpenSSH",
+          "proto": "tcp",
+          "service": "ssh",
+          "version": "9.6p1 Ubuntu 3ubuntu13"
+        }
+      ],
+      "vendor": "Proxmox Server Solutions GmbH"
+    },
+    {
+      "hostname": null,
+      "ip": "192.168.0.57",
+      "mac": "EC:75:0C:93:68:0B",
+      "open_ports": [
+        {
+          "port": 22,
+          "product": null,
+          "proto": "tcp",
+          "service": "tcpwrapped",
+          "version": null
+        },
+        {
+          "port": 23,
+          "product": "HP JetDirect telnetd",
+          "proto": "tcp",
+          "service": "telnet",
+          "version": null
+        },
+        {
+          "port": 80,
+          "product": "Liaison Exchange Commerce Suite",
+          "proto": "tcp",
+          "service": "http",
+          "version": null
+        },
+        {
+          "port": 443,
+          "product": "Liaison Exchange Commerce Suite",
+          "proto": "tcp",
+          "service": "http",
+          "version": null
+        }
+      ],
+      "vendor": null
+    },
+    {
+      "hostname": null,
+      "ip": "192.168.0.67",
+      "mac": "C0:79:82:0A:CE:1E",
+      "open_ports": [
+        {
+          "port": 8008,
+          "product": null,
+          "proto": "tcp",
+          "service": "http",
+          "version": null
+        },
+        {
+          "port": 8009,
+          "product": null,
+          "proto": "tcp",
+          "service": "ajp13",
+          "version": null
+        },
+        {
+          "port": 8443,
+          "product": null,
+          "proto": "tcp",
+          "service": "https-alt",
+          "version": null
+        },
+        {
+          "port": 9000,
+          "product": null,
+          "proto": "tcp",
+          "service": "cslistener",
+          "version": null
+        }
+      ],
+      "vendor": "TCL King Electrical Appliances(Huizhou)Co."
+    },
+    {
+      "hostname": null,
+      "ip": "192.168.0.100",
+      "mac": "74:56:3C:CB:86:BF",
+      "open_ports": [
+        {
+          "port": 135,
+          "product": "Microsoft Windows RPC",
+          "proto": "tcp",
+          "service": "msrpc",
+          "version": null
+        },
+        {
+          "port": 139,
+          "product": "Microsoft Windows netbios-ssn",
+          "proto": "tcp",
+          "service": "netbios-ssn",
+          "version": null
+        },
+        {
+          "port": 445,
+          "product": null,
+          "proto": "tcp",
+          "service": "microsoft-ds",
+          "version": null
+        },
+        {
+          "port": 2179,
+          "product": null,
+          "proto": "tcp",
+          "service": "vmrdp",
+          "version": null
+        },
+        {
+          "port": 5357,
+          "product": "Microsoft HTTPAPI httpd",
+          "proto": "tcp",
+          "service": "http",
+          "version": "2.0"
+        },
+        {
+          "port": 5985,
+          "product": "Microsoft HTTPAPI httpd",
+          "proto": "tcp",
+          "service": "http",
+          "version": "2.0"
+        }
+      ],
+      "vendor": "Giga-byte Technology"
+    },
+    {
+      "hostname": null,
+      "ip": "192.168.0.253",
+      "mac": "1C:61:B4:F2:E3:DB",
+      "open_ports": [
+        {
+          "port": 22,
+          "product": null,
+          "proto": "tcp",
+          "service": "tcpwrapped",
+          "version": null
+        },
+        {
+          "port": 23,
+          "product": "HP JetDirect telnetd",
+          "proto": "tcp",
+          "service": "telnet",
+          "version": null
+        },
+        {
+          "port": 80,
+          "product": "Liaison Exchange Commerce Suite",
+          "proto": "tcp",
+          "service": "http",
+          "version": null
+        },
+        {
+          "port": 443,
+          "product": "Liaison Exchange Commerce Suite",
+          "proto": "tcp",
+          "service": "http",
+          "version": null
+        }
+      ],
+      "vendor": "TP-Link Limited"
+    },
+    {
+      "hostname": "tori",
+      "ip": "192.168.0.20",
+      "mac": null,
+      "open_ports": [
+        {
+          "port": 22,
+          "product": "OpenSSH",
+          "proto": "tcp",
+          "service": "ssh",
+          "version": "10.0p2 Debian 7+deb13u2"
+        },
+        {
+          "port": 111,
+          "product": null,
+          "proto": "tcp",
+          "service": "rpcbind",
+          "version": null
+        },
+        {
+          "port": 3128,
+          "product": "Proxmox Virtual Environment REST API",
+          "proto": "tcp",
+          "service": "http",
+          "version": "3.0"
+        }
+      ],
+      "vendor": null
+    }
+  ]
+}

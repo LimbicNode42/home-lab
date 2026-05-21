@@ -92,3 +92,12 @@ Subnet: 192.168.0.0/24
 3. Build a backup coverage matrix for every guest/service.
 4. Add health checks and monitoring for Proxmox nodes, NAS, containers, and public endpoints.
 5. Investigate stopped `NAS-OMV` and `unknown` node/guest statuses before making reliability changes.
+
+## SSH/NAS discovery update
+
+- SSH succeeded for Proxmox nodes and Linux guests at 192.168.0.6, .7, .8, .20, .21, .50, .51, .52, .53.
+- 192.168.0.250 is the active NAS backing Proxmox storage `NAS`, not 192.168.0.100.
+- 192.168.0.100 appears to be a Windows host with SMB/WinRM-style ports; supplied NAS SMB credentials do not authenticate there.
+- 192.168.0.57 and 192.168.0.253 fingerprint as printer-like embedded devices with telnet/http/https and SSH reset/closed behavior.
+- Docker workloads discovered: Jellyfin on jester; Traefik/cloudflared/Vaultwarden/PostgreSQL on critical; personal dashboard and Postgres on dev.
+- See `docs/backup-coverage-matrix.md` for backup/NAS coverage details.
