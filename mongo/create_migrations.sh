@@ -1,1 +1,0 @@
-migrate create -ext .json -dir migrations migrations

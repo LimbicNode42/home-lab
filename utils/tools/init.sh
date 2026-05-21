@@ -1,0 +1,3 @@
+sudo docker run -d --name it-tools --restart unless-stopped \
+    -p 8080:80 \
+    ghcr.io/corentinth/it-tools:latest
