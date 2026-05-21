@@ -1,0 +1,104 @@
+[
+  {
+    "compress": "zstd",
+    "enabled": 1,
+    "exclude-path": [
+      "/mnt/nas"
+    ],
+    "id": "0a0b23aa-8390-4b21-b8f5-1220a990ac61",
+    "mode": "snapshot",
+    "next-run": 1779552000,
+    "node": "emperor",
+    "notes-template": "{{guestname}}_{{node}}_backup",
+    "prune-backups": {
+      "keep-last": "3"
+    },
+    "schedule": "sun 02:00",
+    "storage": "NAS",
+    "type": "vzdump",
+    "vmid": "100"
+  },
+  {
+    "compress": "zstd",
+    "enabled": 0,
+    "exclude-path": [
+      "/mnt/nas"
+    ],
+    "id": "dcee4477-dea2-4354-a67a-66c31c65a46d",
+    "mode": "snapshot",
+    "next-run": 1779553800,
+    "node": "jester",
+    "notes-template": "{{guestname}}_{{node}}_backup",
+    "prune-backups": {
+      "keep-last": "3"
+    },
+    "schedule": "sun 02:30",
+    "storage": "NAS",
+    "type": "vzdump",
+    "vmid": "101"
+  },
+  {
+    "compress": "zstd",
+    "enabled": 1,
+    "id": "e0a8bf3c-88d0-4316-9dad-4b61ac30943e",
+    "mode": "snapshot",
+    "next-run": 1779555600,
+    "node": "shogun",
+    "notes-template": "{{guestname}}_{{node}}_backup",
+    "prune-backups": {
+      "keep-last": "2"
+    },
+    "schedule": "sun 03:00",
+    "storage": "NAS",
+    "type": "vzdump",
+    "vmid": "103"
+  },
+  {
+    "compress": "zstd",
+    "enabled": 1,
+    "id": "e2a54e82-31de-42d0-90ba-e143d6c1153d",
+    "mode": "snapshot",
+    "next-run": 1779557400,
+    "node": "toyota",
+    "notes-template": "{{guestname}}_{{node}}_backup",
+    "prune-backups": {
+      "keep-last": "3"
+    },
+    "schedule": "sun 03:30",
+    "storage": "NAS",
+    "type": "vzdump",
+    "vmid": "110"
+  },
+  {
+    "compress": "zstd",
+    "enabled": 1,
+    "id": "56f23a19-e97b-4ade-ba85-1b6492339570",
+    "mode": "snapshot",
+    "next-run": 1779559200,
+    "node": "toyota",
+    "notes-template": "{{guestname}}_{{node}}_backup",
+    "prune-backups": {
+      "keep-last": "3"
+    },
+    "schedule": "sun 04:00",
+    "storage": "NAS",
+    "type": "vzdump",
+    "vmid": "111"
+  },
+  {
+    "compress": "zstd",
+    "enabled": 1,
+    "id": "d8067c84-8472-40c0-8c46-a58e7a8202f3",
+    "mode": "snapshot",
+    "next-run": 1779561000,
+    "node": "toyota",
+    "notes-template": "{{guestname}}_{{node}}_backup",
+    "prune-backups": {
+      "keep-last": "3"
+    },
+    "schedule": "sun 04:30",
+    "storage": "NAS",
+    "type": "vzdump",
+    "vmid": "112"
+  }
+]
