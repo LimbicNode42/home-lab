@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-21T10:57:39Z",
+  "generated_at": "2026-05-21T11:24:46Z",
   "nas": {},
   "proxmox": {
     "backup_jobs": [
@@ -24,7 +24,7 @@
       },
       {
         "compress": "zstd",
-        "enabled": 1,
+        "enabled": 0,
         "exclude-path": [
           "/mnt/nas"
         ],
@@ -56,11 +56,59 @@
         "storage": "NAS",
         "type": "vzdump",
         "vmid": "103"
+      },
+      {
+        "compress": "zstd",
+        "enabled": 1,
+        "id": "e2a54e82-31de-42d0-90ba-e143d6c1153d",
+        "mode": "snapshot",
+        "next-run": 1779557400,
+        "node": "toyota",
+        "notes-template": "{{guestname}}_{{node}}_backup",
+        "prune-backups": {
+          "keep-last": "3"
+        },
+        "schedule": "sun 03:30",
+        "storage": "NAS",
+        "type": "vzdump",
+        "vmid": "110"
+      },
+      {
+        "compress": "zstd",
+        "enabled": 1,
+        "id": "56f23a19-e97b-4ade-ba85-1b6492339570",
+        "mode": "snapshot",
+        "next-run": 1779559200,
+        "node": "toyota",
+        "notes-template": "{{guestname}}_{{node}}_backup",
+        "prune-backups": {
+          "keep-last": "3"
+        },
+        "schedule": "sun 04:00",
+        "storage": "NAS",
+        "type": "vzdump",
+        "vmid": "111"
+      },
+      {
+        "compress": "zstd",
+        "enabled": 1,
+        "id": "d8067c84-8472-40c0-8c46-a58e7a8202f3",
+        "mode": "snapshot",
+        "next-run": 1779561000,
+        "node": "toyota",
+        "notes-template": "{{guestname}}_{{node}}_backup",
+        "prune-backups": {
+          "keep-last": "3"
+        },
+        "schedule": "sun 04:30",
+        "storage": "NAS",
+        "type": "vzdump",
+        "vmid": "112"
       }
     ],
     "cluster_resources": [
       {
-        "cpu": 0.00183341842622446,
+        "cpu": 0.00668195604702392,
         "disk": 2689064960,
         "diskread": 3374477312,
         "diskwrite": 0,
@@ -71,172 +119,172 @@
         "mem": 0,
         "memhost": 0,
         "name": "critical",
-        "netin": 2677418684,
-        "netout": 1831173608,
+        "netin": 2678729889,
+        "netout": 1832029952,
         "node": "emperor",
         "status": "running",
         "template": 0,
         "type": "lxc",
-        "uptime": 2860063,
+        "uptime": 2861684,
         "vmid": 100
       },
       {
-        "cpu": 0.00783324295911883,
+        "cpu": 0.00729869392765455,
         "disk": 0,
-        "diskread": 1234375168,
-        "diskwrite": 358041600,
+        "diskread": 1236038144,
+        "diskwrite": 365746176,
         "id": "qemu/103",
         "maxcpu": 4,
         "maxdisk": 68719476736,
         "maxmem": 6442450944,
-        "mem": 2957152256,
+        "mem": 3599241216,
         "name": "NAS-OMV",
-        "netin": 18460441,
-        "netout": 17406429,
+        "netin": 20745928,
+        "netout": 18776058,
         "node": "shogun",
         "status": "running",
         "template": 0,
         "type": "qemu",
-        "uptime": 1476,
+        "uptime": 3096,
         "vmid": 103
       },
       {
-        "cpu": 0.000296516410918394,
-        "disk": 5620903936,
+        "cpu": 9.88073563223373e-05,
+        "disk": 5620908032,
         "diskread": 1262862336,
-        "diskwrite": 9519403008,
+        "diskwrite": 9549107200,
         "id": "lxc/110",
         "maxcpu": 4,
         "maxdisk": 84224425984,
         "maxmem": 17179869184,
-        "mem": 359669760,
+        "mem": 360095744,
         "memhost": 0,
         "name": "dev",
-        "netin": 924921769,
-        "netout": 62041844,
+        "netin": 925656754,
+        "netout": 62212838,
         "node": "toyota",
         "status": "running",
         "template": 0,
         "type": "lxc",
-        "uptime": 362775,
+        "uptime": 364405,
         "vmid": 110
       },
       {
-        "cpu": 9.88388036394645e-05,
-        "disk": 1498685440,
+        "cpu": 9.88073563223373e-05,
+        "disk": 1498689536,
         "diskread": 610709504,
-        "diskwrite": 3344384000,
+        "diskwrite": 3356721152,
         "id": "lxc/111",
         "maxcpu": 4,
         "maxdisk": 42091216896,
         "maxmem": 8589934592,
-        "mem": 90214400,
+        "mem": 90218496,
         "memhost": 0,
         "name": "staging",
-        "netin": 91285442,
-        "netout": 1345078,
+        "netin": 91862347,
+        "netout": 1350472,
         "node": "toyota",
         "status": "running",
         "template": 0,
         "type": "lxc",
-        "uptime": 362774,
+        "uptime": 364403,
         "vmid": 111
       },
       {
-        "cpu": 9.88388036394645e-05,
-        "disk": 1498603520,
+        "cpu": 0.000123509195402922,
+        "disk": 1498607616,
         "diskread": 620089344,
-        "diskwrite": 2698035200,
+        "diskwrite": 2718760960,
         "id": "lxc/112",
         "maxcpu": 4,
         "maxdisk": 42091216896,
         "maxmem": 8589934592,
-        "mem": 90279936,
+        "mem": 90288128,
         "memhost": 0,
         "name": "prod",
-        "netin": 91283211,
-        "netout": 1345014,
+        "netin": 91860116,
+        "netout": 1350408,
         "node": "toyota",
         "status": "running",
         "template": 0,
         "type": "lxc",
-        "uptime": 362771,
+        "uptime": 364401,
         "vmid": 112
       },
       {
         "cgroup-mode": 2,
-        "cpu": 0.00884955752212389,
-        "disk": 25055072256,
+        "cpu": 0.00969358713457933,
+        "disk": 25055121408,
         "id": "node/jester",
         "level": "",
         "maxcpu": 4,
         "maxdisk": 125578338304,
         "maxmem": 8439300096,
-        "mem": 2623963136,
+        "mem": 2621931520,
         "node": "jester",
         "status": "online",
         "type": "node",
-        "uptime": 3537793
+        "uptime": 3539423
       },
       {
         "cgroup-mode": 2,
-        "cpu": 0.0227703984819734,
-        "disk": 45396398080,
+        "cpu": 0.0267484662576687,
+        "disk": 45396934656,
         "id": "node/emperor",
         "level": "",
         "maxcpu": 4,
         "maxdisk": 125568774144,
         "maxmem": 8200556544,
-        "mem": 1749835776,
+        "mem": 1736429568,
         "node": "emperor",
         "status": "online",
         "type": "node",
-        "uptime": 2892713
+        "uptime": 2894334
       },
       {
         "cgroup-mode": 2,
-        "cpu": 0.00792079207920792,
-        "disk": 18407759872,
+        "cpu": 0.0076751671205744,
+        "disk": 18407776256,
         "id": "node/toyota",
         "level": "",
         "maxcpu": 4,
         "maxdisk": 464716759040,
         "maxmem": 67115241472,
-        "mem": 2990866432,
+        "mem": 2970525696,
         "node": "toyota",
         "status": "online",
         "type": "node",
-        "uptime": 364138
+        "uptime": 365767
       },
       {
         "cgroup-mode": 2,
-        "cpu": 0.05175,
-        "disk": 40252665856,
+        "cpu": 0.0615153788447112,
+        "disk": 40307093504,
         "id": "node/tori",
         "level": "",
         "maxcpu": 4,
         "maxdisk": 491001659392,
         "maxmem": 8216281088,
-        "mem": 4194811904,
+        "mem": 4417073152,
         "node": "tori",
         "status": "online",
         "type": "node",
-        "uptime": 380726
+        "uptime": 382356
       },
       {
         "cgroup-mode": 2,
-        "cpu": 0.0269021739130435,
-        "disk": 64099024896,
+        "cpu": 0.0271591526344378,
+        "disk": 64099475456,
         "id": "node/shogun",
         "level": "",
         "maxcpu": 4,
         "maxdisk": 125578338304,
         "maxmem": 8200691712,
-        "mem": 4831842304,
+        "mem": 5331755008,
         "node": "shogun",
         "status": "online",
         "type": "node",
-        "uptime": 2664455
+        "uptime": 2666076
       },
       {
         "content": "snippets,backup,iso,rootdir,import,images,vztmpl",
@@ -299,8 +347,8 @@
         "type": "storage"
       },
       {
-        "content": "snippets,backup,iso,rootdir,images,vztmpl",
-        "disk": 25055072256,
+        "content": "backup,snippets,rootdir,iso,vztmpl,images",
+        "disk": 25055121408,
         "id": "storage/jester/local",
         "maxdisk": 125578338304,
         "node": "jester",
@@ -311,8 +359,8 @@
         "type": "storage"
       },
       {
-        "content": "snippets,backup,iso,rootdir,images,vztmpl",
-        "disk": 45396398080,
+        "content": "backup,snippets,rootdir,iso,vztmpl,images",
+        "disk": 45396934656,
         "id": "storage/emperor/local",
         "maxdisk": 125568774144,
         "node": "emperor",
@@ -323,8 +371,8 @@
         "type": "storage"
       },
       {
-        "content": "snippets,backup,iso,rootdir,images,vztmpl",
-        "disk": 18407759872,
+        "content": "backup,snippets,rootdir,iso,vztmpl,images",
+        "disk": 18407776256,
         "id": "storage/toyota/local",
         "maxdisk": 464716759040,
         "node": "toyota",
@@ -335,8 +383,8 @@
         "type": "storage"
       },
       {
-        "content": "snippets,backup,iso,rootdir,images,vztmpl",
-        "disk": 40252665856,
+        "content": "backup,snippets,rootdir,iso,vztmpl,images",
+        "disk": 40307093504,
         "id": "storage/tori/local",
         "maxdisk": 491001659392,
         "node": "tori",
@@ -347,8 +395,8 @@
         "type": "storage"
       },
       {
-        "content": "snippets,backup,iso,rootdir,images,vztmpl",
-        "disk": 64099020800,
+        "content": "backup,snippets,rootdir,iso,vztmpl,images",
+        "disk": 64099475456,
         "id": "storage/shogun/local",
         "maxdisk": 125578338304,
         "node": "shogun",
@@ -474,15 +522,15 @@
       "emperor": [
         {
           "active": 1,
-          "avail": 74994626560,
-          "content": "rootdir,images,snippets,backup,vztmpl,iso",
+          "avail": 74994089984,
+          "content": "iso,images,snippets,backup,vztmpl,rootdir",
           "enabled": 1,
           "shared": 0,
           "storage": "local",
           "total": 125568774144,
           "type": "dir",
-          "used": 45396402176,
-          "used_fraction": 0.361526203353234
+          "used": 45396938752,
+          "used_fraction": 0.361530476517511
         },
         {
           "active": 1,
@@ -500,20 +548,20 @@
       "jester": [
         {
           "active": 1,
-          "avail": 94124662784,
-          "content": "snippets,iso,rootdir,images,vztmpl,backup",
+          "avail": 94124617728,
+          "content": "snippets,images,iso,rootdir,vztmpl,backup",
           "enabled": 1,
           "shared": 0,
           "storage": "local",
           "total": 125578338304,
           "type": "dir",
-          "used": 25055076352,
-          "used_fraction": 0.199517501906632
+          "used": 25055121408,
+          "used_fraction": 0.199517860694625
         },
         {
           "active": 1,
           "avail": 8113581195264,
-          "content": "snippets,import,images,iso,rootdir,vztmpl,backup",
+          "content": "vztmpl,backup,import,images,iso,rootdir,snippets",
           "enabled": 1,
           "shared": 1,
           "storage": "NAS",
@@ -526,20 +574,8 @@
       "shogun": [
         {
           "active": 1,
-          "avail": 55080714240,
-          "content": "backup,iso,snippets,rootdir,vztmpl,images",
-          "enabled": 1,
-          "shared": 0,
-          "storage": "local",
-          "total": 125578338304,
-          "type": "dir",
-          "used": 64099024896,
-          "used_fraction": 0.510430586689474
-        },
-        {
-          "active": 1,
           "avail": 8113581195264,
-          "content": "import,iso,backup,rootdir,snippets,vztmpl,images",
+          "content": "rootdir,snippets,backup,import,iso,images,vztmpl",
           "enabled": 1,
           "shared": 1,
           "storage": "NAS",
@@ -547,51 +583,63 @@
           "type": "nfs",
           "used": 7760991223808,
           "used_fraction": 0.488893471545796
+        },
+        {
+          "active": 1,
+          "avail": 55080259584,
+          "content": "images,vztmpl,rootdir,snippets,iso,backup",
+          "enabled": 1,
+          "shared": 0,
+          "storage": "local",
+          "total": 125578338304,
+          "type": "dir",
+          "used": 64099479552,
+          "used_fraction": 0.510434207186497
         }
       ],
       "tori": [
         {
           "active": 1,
-          "avail": 425732227072,
+          "avail": 8113581195264,
+          "content": "import,iso,snippets,rootdir,backup,vztmpl,images",
+          "enabled": 1,
+          "shared": 1,
+          "storage": "NAS",
+          "total": 15874605973504,
+          "type": "nfs",
+          "used": 7760991223808,
+          "used_fraction": 0.488893471545796
+        },
+        {
+          "active": 1,
+          "avail": 425677791232,
           "content": "snippets,rootdir,backup,images,vztmpl,iso",
           "enabled": 1,
           "shared": 0,
           "storage": "local",
           "total": 491001659392,
           "type": "dir",
-          "used": 40252665856,
-          "used_fraction": 0.0819807124600032
-        },
-        {
-          "active": 1,
-          "avail": 8113581195264,
-          "content": "snippets,rootdir,images,vztmpl,backup,import,iso",
-          "enabled": 1,
-          "shared": 1,
-          "storage": "NAS",
-          "total": 15874605973504,
-          "type": "nfs",
-          "used": 7760991223808,
-          "used_fraction": 0.488893471545796
+          "used": 40307101696,
+          "used_fraction": 0.0820915793765579
         }
       ],
       "toyota": [
         {
           "active": 1,
-          "avail": 422627434496,
-          "content": "backup,rootdir,snippets,images,vztmpl,iso",
+          "avail": 422627418112,
+          "content": "backup,rootdir,images,snippets,vztmpl,iso",
           "enabled": 1,
           "shared": 0,
           "storage": "local",
           "total": 464716759040,
           "type": "dir",
-          "used": 18407759872,
-          "used_fraction": 0.0396107080580143
+          "used": 18407776256,
+          "used_fraction": 0.0396107433138979
         },
         {
           "active": 1,
           "avail": 8113581195264,
-          "content": "backup,rootdir,import,vztmpl,images,snippets,iso",
+          "content": "backup,rootdir,import,snippets,images,vztmpl,iso",
           "enabled": 1,
           "shared": 1,
           "storage": "NAS",
@@ -604,79 +652,79 @@
     },
     "nodes": [
       {
-        "cpu": 0.00884955752212389,
-        "disk": 25055072256,
+        "cpu": 0.00969358713457933,
+        "disk": 25055121408,
         "id": "node/jester",
         "level": "",
         "maxcpu": 4,
         "maxdisk": 125578338304,
         "maxmem": 8439300096,
-        "mem": 2623963136,
+        "mem": 2621931520,
         "node": "jester",
         "ssl_fingerprint": "52:5B:B8:11:19:A9:FF:45:08:6B:26:C8:5D:90:A9:CC:A0:DA:D4:16:96:A8:B8:4B:C9:7C:37:DA:4E:DC:A7:19",
         "status": "online",
         "type": "node",
-        "uptime": 3537793
+        "uptime": 3539423
       },
       {
-        "cpu": 0.0227703984819734,
-        "disk": 45396398080,
+        "cpu": 0.0267484662576687,
+        "disk": 45396934656,
         "id": "node/emperor",
         "level": "",
         "maxcpu": 4,
         "maxdisk": 125568774144,
         "maxmem": 8200556544,
-        "mem": 1749835776,
+        "mem": 1736429568,
         "node": "emperor",
         "ssl_fingerprint": "DE:01:EB:A7:EB:AE:DA:47:9B:85:4C:31:E3:E0:08:A4:DD:05:BE:91:2D:B5:88:7D:AF:4B:39:8F:4C:79:18:F8",
         "status": "online",
         "type": "node",
-        "uptime": 2892713
+        "uptime": 2894334
       },
       {
-        "cpu": 0.00792079207920792,
-        "disk": 18407759872,
+        "cpu": 0.0076751671205744,
+        "disk": 18407776256,
         "id": "node/toyota",
         "level": "",
         "maxcpu": 4,
         "maxdisk": 464716759040,
         "maxmem": 67115241472,
-        "mem": 2990866432,
+        "mem": 2970525696,
         "node": "toyota",
         "ssl_fingerprint": "35:3C:C3:A3:CD:FD:8F:57:1A:EA:86:D1:D7:02:E8:51:63:E2:49:DB:54:4B:2E:8C:1D:42:30:9D:11:0C:56:41",
         "status": "online",
         "type": "node",
-        "uptime": 364138
+        "uptime": 365767
       },
       {
-        "cpu": 0.05175,
-        "disk": 40252665856,
+        "cpu": 0.0615153788447112,
+        "disk": 40307093504,
         "id": "node/tori",
         "level": "",
         "maxcpu": 4,
         "maxdisk": 491001659392,
         "maxmem": 8216281088,
-        "mem": 4194811904,
+        "mem": 4417073152,
         "node": "tori",
         "ssl_fingerprint": "52:41:FB:A3:28:CD:87:41:43:72:8F:45:2A:4B:96:D8:64:8F:AF:07:A4:0C:89:9B:EC:34:7A:E9:41:27:4F:0C",
         "status": "online",
         "type": "node",
-        "uptime": 380726
+        "uptime": 382356
       },
       {
-        "cpu": 0.0269021739130435,
-        "disk": 64099024896,
+        "cpu": 0.0271591526344378,
+        "disk": 64099475456,
         "id": "node/shogun",
         "level": "",
         "maxcpu": 4,
         "maxdisk": 125578338304,
         "maxmem": 8200691712,
-        "mem": 4831842304,
+        "mem": 5331755008,
         "node": "shogun",
         "ssl_fingerprint": "C8:98:8E:F5:7C:2A:4D:4E:1A:0F:5D:B2:05:CA:C0:89:9C:2F:07:51:AE:7C:DE:E1:1A:C9:3D:01:F5:16:91:5C",
         "status": "online",
         "type": "node",
-        "uptime": 2664455
+        "uptime": 2666076
       }
     ],
     "qemu_config": {
@@ -711,7 +759,15 @@
     },
     "storage": [
       {
-        "content": "images,vztmpl,iso,import,rootdir,snippets,backup",
+        "content": "rootdir,iso,backup,snippets,vztmpl,images",
+        "digest": "54f6cb41b9b7a3e805f501ac9513ba84b96a5731",
+        "path": "/var/lib/vz",
+        "prune-backups": "keep-all=1",
+        "storage": "local",
+        "type": "dir"
+      },
+      {
+        "content": "vztmpl,images,backup,snippets,rootdir,import,iso",
         "digest": "54f6cb41b9b7a3e805f501ac9513ba84b96a5731",
         "export": "/export/nas",
         "path": "/mnt/pve/NAS",
@@ -720,14 +776,6 @@
         "shared": 1,
         "storage": "NAS",
         "type": "nfs"
-      },
-      {
-        "content": "rootdir,iso,backup,snippets,vztmpl,images",
-        "digest": "54f6cb41b9b7a3e805f501ac9513ba84b96a5731",
-        "path": "/var/lib/vz",
-        "prune-backups": "keep-all=1",
-        "storage": "local",
-        "type": "dir"
       }
     ]
   },
@@ -736,13 +784,13 @@
       "ok": true,
       "rc": 0,
       "stderr": "Warning: Permanently added '192.168.0.250' (ED25519) to the list of known hosts.\nbash: line 1: exportfs: command not found\n",
-      "stdout": "18:29 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 11:18:29 nas quotaon[557]: quotaon: using . on /dev/sdc1 [/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864]: File exists\nApr 18 11:18:29 nas quotaon[557]: quotaon: using . on /dev/sdc1 [/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864]: File exists\nApr 18 11:18:29 nas quotaon[557]: quotaon: using . on /dev/sdb1 [/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1]: File exists\nApr 18 11:18:29 nas quotaon[557]: quotaon: using . on /dev/sdb1 [/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1]: File exists\nApr 18 11:18:29 nas systemd[1]: quotaon.service: Main process exited, code=exited, status=4/NOPERMISSION\nApr 18 11:18:29 nas systemd[1]: quotaon.service: Failed with result 'exit-code'.\nApr 18 11:18:29 nas systemd[1]: Failed to start quotaon.service - Enable File System Quotas.\n-- Boot 84556bc760ac4267832472ab379dda91 --\nApr 18 11:22:59 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 11:22:59 nas systemd[1]: Finished quotaon.service - Enable File System Quotas.\n-- Boot e6607ae4e08948d8b1f9a14cffaf2c3b --\nApr 18 11:33:56 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 11:33:57 nas systemd[1]: Finished quotaon.service - Enable File System Quotas.\n-- Boot 46917da9c33b419087256f2e871eb1a6 --\nApr 18 11:42:59 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 11:42:59 nas systemd[1]: Finished quotaon.service - Enable File System Quotas.\n-- Boot 667b54d7a14a4a0c9c5cd2e51a359eda --\nApr 18 11:45:55 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 11:45:55 nas systemd[1]: Finished quotaon.service - Enable File System Quotas.\n-- Boot 823be76ee5904d8ba5bbc19fc4cfd690 --\nApr 18 12:46:23 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 12:46:23 nas systemd[1]: Finished quotaon.service - Enable File System Quotas.\n-- Boot ce7e8b5bf25e4831b32789b85b2423e6 --\nApr 18 12:50:43 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 12:50:43 nas systemd[1]: Finished quotaon.service - Enable File System Quotas.\n-- Boot 724964f7f1c8462a9a99ec874973e8f0 --\nApr 18 12:54:15 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 12:54:15 nas systemd[1]: Finished quotaon.service - Enable File System Quotas.\n-- Boot 55c0b29af53942be80073b31b57194e3 --\nApr 18 13:03:19 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 13:03:19 nas systemd[1]: Finished quotaon.service - Enable File System Quotas.\n-- Boot 00f9de0e4b344a4690b0d0528fc66d05 --\nApr 18 13:12:54 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 13:12:54 nas systemd[1]: Finished quotaon.service - Enable File System Quotas.\n-- Boot 0c0362778b3a4dbe94d8d92a439e717f --\nApr 18 13:35:13 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 13:35:14 nas systemd[1]: Finished quotaon.service - Enable File System Quotas.\n-- Boot 1d11defb771d448dad87118b5ad491e5 --\nApr 18 13:39:01 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 13:39:01 nas systemd[1]: Finished quotaon.service - Enable File System Quotas.\n-- Boot bdb6947ff7dd407aa4175714a48d5735 --\nApr 18 13:50:54 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 13:50:54 nas systemd[1]: Finished quotaon.service - Enable File System Quotas.\n-- Boot 743fe12859d54ca48e7aff381a038d32 --\nApr 18 14:00:39 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 14:00:39 nas quotaon[490]: quotaon: using . on /dev/sdc1 [/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864]: File exists\nApr 18 14:00:39 nas quotaon[490]: quotaon: using . on /dev/sdc1 [/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864]: File exists\nApr 18 14:00:39 nas quotaon[490]: quotaon: using . on /dev/sdb1 [/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1]: File exists\nApr 18 14:00:39 nas quotaon[490]: quotaon: using . on /dev/sdb1 [/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1]: File exists\nApr 18 14:00:39 nas systemd[1]: quotaon.service: Main process exited, code=exited, status=4/NOPERMISSION\nApr 18 14:00:39 nas systemd[1]: quotaon.service: Failed with result 'exit-code'.\nApr 18 14:00:39 nas systemd[1]: Failed to start quotaon.service - Enable File System Quotas.\n-- Boot 9cf518a1d2214083bc7959e260f1f170 --\nApr 18 15:24:09 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 15:24:09 nas quotaon[489]: quotaon: using . on /dev/sdc1 [/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864]: File exists\nApr 18 15:24:09 nas quotaon[489]: quotaon: using . on /dev/sdc1 [/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864]: File exists\nApr 18 15:24:09 nas quotaon[489]: quotaon: using . on /dev/sdb1 [/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1]: File exists\nApr 18 15:24:09 nas quotaon[489]: quotaon: using . on /dev/sdb1 [/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1]: File exists\nApr 18 15:24:09 nas systemd[1]: quotaon.service: Main process exited, code=exited, status=4/NOPERMISSION\nApr 18 15:24:09 nas systemd[1]: quotaon.service: Failed with result 'exit-code'.\nApr 18 15:24:09 nas systemd[1]: Failed to start quotaon.service - Enable File System Quotas.\n-- Boot d123d7e93931461c89d7c1902998edaa --\nApr 19 23:39:33 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 19 23:39:33 nas quotaon[514]: quotaon: using . on /dev/sdb1 [/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1]: File exists\nApr 19 23:39:33 nas quotaon[514]: quotaon: using . on /dev/sdb1 [/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1]: File exists\nApr 19 23:39:33 nas quotaon[514]: quotaon: using . on /dev/sdc1 [/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864]: File exists\nApr 19 23:39:33 nas quotaon[514]: quotaon: using . on /dev/sdc1 [/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864]: File exists\nApr 19 23:39:33 nas systemd[1]: quotaon.service: Main process exited, code=exited, status=4/NOPERMISSION\nApr 19 23:39:33 nas systemd[1]: quotaon.service: Failed with result 'exit-code'.\nApr 19 23:39:33 nas systemd[1]: Failed to start quotaon.service - Enable File System Quotas.\n-- Boot 9b5d64879afe45629124a94a96e53aa0 --\nApr 21 11:55:54 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 21 11:55:54 nas quotaon[524]: quotaon: using . on /dev/sdc1 [/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864]: File exists\nApr 21 11:55:54 nas quotaon[524]: quotaon: using . on /dev/sdc1 [/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864]: File exists\nApr 21 11:55:54 nas quotaon[524]: quotaon: using . on /dev/sdb1 [/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1]: File exists\nApr 21 11:55:54 nas quotaon[524]: quotaon: using . on /dev/sdb1 [/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1]: File exists\nApr 21 11:55:54 nas systemd[1]: quotaon.service: Main process exited, code=exited, status=4/NOPERMISSION\nApr 21 11:55:54 nas systemd[1]: quotaon.service: Failed with result 'exit-code'.\nApr 21 11:55:54 nas systemd[1]: Failed to start quotaon.service - Enable File System Quotas.\n-- Boot 02e6aa728e1a42f98c145e5aa45b7dc7 --\nMay 21 20:34:47 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nMay 21 20:34:47 nas quotaon[530]: quotaon: using . on /dev/sdc1 [/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864]: File exists\nMay 21 20:34:47 nas quotaon[530]: quotaon: using . on /dev/sdc1 [/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864]: File exists\nMay 21 20:34:47 nas quotaon[530]: quotaon: using . on /dev/sdb1 [/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1]: File exists\nMay 21 20:34:47 nas quotaon[530]: quotaon: using . on /dev/sdb1 [/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1]: File exists\nMay 21 20:34:47 nas systemd[1]: quotaon.service: Main process exited, code=exited, status=4/NOPERMISSION\nMay 21 20:34:47 nas systemd[1]: quotaon.service: Failed with result 'exit-code'.\nMay 21 20:34:47 nas systemd[1]: Failed to start quotaon.service - Enable File System Quotas.\nFilesystem                               Type           Size  Used Avail Use% Mounted on\nudev                                     devtmpfs       2.9G     0  2.9G   0% /dev\ntmpfs                                    tmpfs          592M  2.7M  590M   1% /run\n/dev/mapper/nas--vg-root                 ext4            61G  2.6G   56G   5% /\ntmpfs                                    tmpfs          2.9G     0  2.9G   0% /dev/shm\ntmpfs                                    tmpfs          5.0M     0  5.0M   0% /run/lock\nefivarfs                                 efivarfs       256K   37K  220K  15% /sys/firmware/efi/efivars\ntmpfs                                    tmpfs          2.9G     0  2.9G   0% /tmp\n/dev/sda2                                ext2           456M  227M  205M  53% /boot\n/dev/sda1                                vfat           512M   13M  500M   3% /boot/efi\n/dev/sdc1                                ext4           7.3T  5.1G  7.3T   1% /srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864\n/dev/sdb1                                ext4           7.3T  7.1T  170G  98% /srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1\nnas:4f5e3364-1ff6-4f8e-bd0d-c07d533720c7 fuse.mergerfs   15T  7.1T  7.4T  49% /srv/mergerfs/nas\nfolder2ram                               tmpfs          2.9G  473M  2.5G  16% /var/log\nfolder2ram                               tmpfs          2.9G     0  2.9G   0% /var/tmp\nfolder2ram                               tmpfs          2.9G  676K  2.9G   1% /var/lib/openmediavault/rrd\nfolder2ram                               tmpfs          2.9G  1.4M  2.9G   1% /var/spool\nfolder2ram                               tmpfs          2.9G   16M  2.9G   1% /var/lib/rrdcached\nfolder2ram                               tmpfs          2.9G  4.0K  2.9G   1% /var/lib/monit\nfolder2ram                               tmpfs          2.9G   16K  2.9G   1% /var/cache/samba\ntmpfs                                    tmpfs          592M     0  592M   0% /run/user/1000\n---mounts---\n---exports---\n---mergerfs---\n/etc/fstab:# /etc/fstab: static file system information.\n/etc/fstab:#\n/etc/fstab:# Use 'blkid' to print the universally unique identifier for a\n/etc/fstab:# device; this may be used with UUID= as a more robust way to name devices\n/etc/fstab:# that works even if disks are added and removed. See fstab(5).\n/etc/fstab:#\n/etc/fstab:# systemd generates mount units based on this file, see systemd.mount(5).\n/etc/fstab:# Please run 'systemctl daemon-reload' after making changes here.\n/etc/fstab:#\n/etc/fstab:# <file system> <mount point>   <type>  <options>       <dump>  <pass>\n/etc/fstab:/dev/mapper/nas--vg-root /               ext4    errors=remount-ro 0       1\n/etc/fstab:# /boot was on /dev/sda2 during installation\n/etc/fstab:UUID=7a87d486-afc4-4601-9805-83e54c4dbb5b /boot           ext2    defaults        0       2\n/etc/fstab:# /boot/efi was on /dev/sda1 during installation\n/etc/fstab:UUID=C4E0-F941  /boot/efi       vfat    umask=0077      0       1\n/etc/fstab:/dev/mapper/nas--vg-swap_1 none            swap    sw              0       0\n/etc/fstab:/dev/sr0        /media/cdrom0   udf,iso9660 user,noauto     0       0\n/etc/fstab:# >>> [openmediavault]\n/etc/fstab:/dev/disk/by-uuid/4ea79d6b-79b5-4793-82c1-a67cbe450864\t\t/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864\text4\tdefaults,nofail,user_xattr,usrquota,grpquota,acl\t0 2\n/etc/fstab:/dev/disk/by-uuid/825a89ab-d64d-44c3-ac10-da178a8893a1\t\t/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1\text4\tdefaults,nofail,user_xattr,usrquota,grpquota,acl\t0 2\n/etc/fstab:/srv/mergerfs/nas/nas/\t\t/export/nas\tnone\tbind,nofail\t0 0\n/etc/fstab:# <<< [openmediavault]\n"
+      "stdout": "18:29 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 11:18:29 nas quotaon[557]: quotaon: using . on /dev/sdc1 [/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864]: File exists\nApr 18 11:18:29 nas quotaon[557]: quotaon: using . on /dev/sdc1 [/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864]: File exists\nApr 18 11:18:29 nas quotaon[557]: quotaon: using . on /dev/sdb1 [/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1]: File exists\nApr 18 11:18:29 nas quotaon[557]: quotaon: using . on /dev/sdb1 [/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1]: File exists\nApr 18 11:18:29 nas systemd[1]: quotaon.service: Main process exited, code=exited, status=4/NOPERMISSION\nApr 18 11:18:29 nas systemd[1]: quotaon.service: Failed with result 'exit-code'.\nApr 18 11:18:29 nas systemd[1]: Failed to start quotaon.service - Enable File System Quotas.\n-- Boot 84556bc760ac4267832472ab379dda91 --\nApr 18 11:22:59 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 11:22:59 nas systemd[1]: Finished quotaon.service - Enable File System Quotas.\n-- Boot e6607ae4e08948d8b1f9a14cffaf2c3b --\nApr 18 11:33:56 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 11:33:57 nas systemd[1]: Finished quotaon.service - Enable File System Quotas.\n-- Boot 46917da9c33b419087256f2e871eb1a6 --\nApr 18 11:42:59 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 11:42:59 nas systemd[1]: Finished quotaon.service - Enable File System Quotas.\n-- Boot 667b54d7a14a4a0c9c5cd2e51a359eda --\nApr 18 11:45:55 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 11:45:55 nas systemd[1]: Finished quotaon.service - Enable File System Quotas.\n-- Boot 823be76ee5904d8ba5bbc19fc4cfd690 --\nApr 18 12:46:23 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 12:46:23 nas systemd[1]: Finished quotaon.service - Enable File System Quotas.\n-- Boot ce7e8b5bf25e4831b32789b85b2423e6 --\nApr 18 12:50:43 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 12:50:43 nas systemd[1]: Finished quotaon.service - Enable File System Quotas.\n-- Boot 724964f7f1c8462a9a99ec874973e8f0 --\nApr 18 12:54:15 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 12:54:15 nas systemd[1]: Finished quotaon.service - Enable File System Quotas.\n-- Boot 55c0b29af53942be80073b31b57194e3 --\nApr 18 13:03:19 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 13:03:19 nas systemd[1]: Finished quotaon.service - Enable File System Quotas.\n-- Boot 00f9de0e4b344a4690b0d0528fc66d05 --\nApr 18 13:12:54 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 13:12:54 nas systemd[1]: Finished quotaon.service - Enable File System Quotas.\n-- Boot 0c0362778b3a4dbe94d8d92a439e717f --\nApr 18 13:35:13 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 13:35:14 nas systemd[1]: Finished quotaon.service - Enable File System Quotas.\n-- Boot 1d11defb771d448dad87118b5ad491e5 --\nApr 18 13:39:01 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 13:39:01 nas systemd[1]: Finished quotaon.service - Enable File System Quotas.\n-- Boot bdb6947ff7dd407aa4175714a48d5735 --\nApr 18 13:50:54 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 13:50:54 nas systemd[1]: Finished quotaon.service - Enable File System Quotas.\n-- Boot 743fe12859d54ca48e7aff381a038d32 --\nApr 18 14:00:39 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 14:00:39 nas quotaon[490]: quotaon: using . on /dev/sdc1 [/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864]: File exists\nApr 18 14:00:39 nas quotaon[490]: quotaon: using . on /dev/sdc1 [/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864]: File exists\nApr 18 14:00:39 nas quotaon[490]: quotaon: using . on /dev/sdb1 [/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1]: File exists\nApr 18 14:00:39 nas quotaon[490]: quotaon: using . on /dev/sdb1 [/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1]: File exists\nApr 18 14:00:39 nas systemd[1]: quotaon.service: Main process exited, code=exited, status=4/NOPERMISSION\nApr 18 14:00:39 nas systemd[1]: quotaon.service: Failed with result 'exit-code'.\nApr 18 14:00:39 nas systemd[1]: Failed to start quotaon.service - Enable File System Quotas.\n-- Boot 9cf518a1d2214083bc7959e260f1f170 --\nApr 18 15:24:09 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 18 15:24:09 nas quotaon[489]: quotaon: using . on /dev/sdc1 [/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864]: File exists\nApr 18 15:24:09 nas quotaon[489]: quotaon: using . on /dev/sdc1 [/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864]: File exists\nApr 18 15:24:09 nas quotaon[489]: quotaon: using . on /dev/sdb1 [/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1]: File exists\nApr 18 15:24:09 nas quotaon[489]: quotaon: using . on /dev/sdb1 [/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1]: File exists\nApr 18 15:24:09 nas systemd[1]: quotaon.service: Main process exited, code=exited, status=4/NOPERMISSION\nApr 18 15:24:09 nas systemd[1]: quotaon.service: Failed with result 'exit-code'.\nApr 18 15:24:09 nas systemd[1]: Failed to start quotaon.service - Enable File System Quotas.\n-- Boot d123d7e93931461c89d7c1902998edaa --\nApr 19 23:39:33 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 19 23:39:33 nas quotaon[514]: quotaon: using . on /dev/sdb1 [/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1]: File exists\nApr 19 23:39:33 nas quotaon[514]: quotaon: using . on /dev/sdb1 [/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1]: File exists\nApr 19 23:39:33 nas quotaon[514]: quotaon: using . on /dev/sdc1 [/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864]: File exists\nApr 19 23:39:33 nas quotaon[514]: quotaon: using . on /dev/sdc1 [/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864]: File exists\nApr 19 23:39:33 nas systemd[1]: quotaon.service: Main process exited, code=exited, status=4/NOPERMISSION\nApr 19 23:39:33 nas systemd[1]: quotaon.service: Failed with result 'exit-code'.\nApr 19 23:39:33 nas systemd[1]: Failed to start quotaon.service - Enable File System Quotas.\n-- Boot 9b5d64879afe45629124a94a96e53aa0 --\nApr 21 11:55:54 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nApr 21 11:55:54 nas quotaon[524]: quotaon: using . on /dev/sdc1 [/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864]: File exists\nApr 21 11:55:54 nas quotaon[524]: quotaon: using . on /dev/sdc1 [/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864]: File exists\nApr 21 11:55:54 nas quotaon[524]: quotaon: using . on /dev/sdb1 [/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1]: File exists\nApr 21 11:55:54 nas quotaon[524]: quotaon: using . on /dev/sdb1 [/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1]: File exists\nApr 21 11:55:54 nas systemd[1]: quotaon.service: Main process exited, code=exited, status=4/NOPERMISSION\nApr 21 11:55:54 nas systemd[1]: quotaon.service: Failed with result 'exit-code'.\nApr 21 11:55:54 nas systemd[1]: Failed to start quotaon.service - Enable File System Quotas.\n-- Boot 02e6aa728e1a42f98c145e5aa45b7dc7 --\nMay 21 20:34:47 nas systemd[1]: Starting quotaon.service - Enable File System Quotas...\nMay 21 20:34:47 nas quotaon[530]: quotaon: using . on /dev/sdc1 [/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864]: File exists\nMay 21 20:34:47 nas quotaon[530]: quotaon: using . on /dev/sdc1 [/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864]: File exists\nMay 21 20:34:47 nas quotaon[530]: quotaon: using . on /dev/sdb1 [/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1]: File exists\nMay 21 20:34:47 nas quotaon[530]: quotaon: using . on /dev/sdb1 [/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1]: File exists\nMay 21 20:34:47 nas systemd[1]: quotaon.service: Main process exited, code=exited, status=4/NOPERMISSION\nMay 21 20:34:47 nas systemd[1]: quotaon.service: Failed with result 'exit-code'.\nMay 21 20:34:47 nas systemd[1]: Failed to start quotaon.service - Enable File System Quotas.\nFilesystem                               Type           Size  Used Avail Use% Mounted on\nudev                                     devtmpfs       2.9G     0  2.9G   0% /dev\ntmpfs                                    tmpfs          592M  2.7M  590M   1% /run\n/dev/mapper/nas--vg-root                 ext4            61G  2.6G   56G   5% /\ntmpfs                                    tmpfs          2.9G     0  2.9G   0% /dev/shm\ntmpfs                                    tmpfs          5.0M     0  5.0M   0% /run/lock\nefivarfs                                 efivarfs       256K   37K  220K  15% /sys/firmware/efi/efivars\ntmpfs                                    tmpfs          2.9G     0  2.9G   0% /tmp\n/dev/sda2                                ext2           456M  227M  205M  53% /boot\n/dev/sda1                                vfat           512M   13M  500M   3% /boot/efi\n/dev/sdc1                                ext4           7.3T  5.1G  7.3T   1% /srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864\n/dev/sdb1                                ext4           7.3T  7.1T  170G  98% /srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1\nnas:4f5e3364-1ff6-4f8e-bd0d-c07d533720c7 fuse.mergerfs   15T  7.1T  7.4T  49% /srv/mergerfs/nas\nfolder2ram                               tmpfs          2.9G  473M  2.5G  16% /var/log\nfolder2ram                               tmpfs          2.9G     0  2.9G   0% /var/tmp\nfolder2ram                               tmpfs          2.9G  700K  2.9G   1% /var/lib/openmediavault/rrd\nfolder2ram                               tmpfs          2.9G  1.4M  2.9G   1% /var/spool\nfolder2ram                               tmpfs          2.9G   16M  2.9G   1% /var/lib/rrdcached\nfolder2ram                               tmpfs          2.9G  4.0K  2.9G   1% /var/lib/monit\nfolder2ram                               tmpfs          2.9G   16K  2.9G   1% /var/cache/samba\ntmpfs                                    tmpfs          592M     0  592M   0% /run/user/1000\n---mounts---\n---exports---\n---mergerfs---\n/etc/fstab:# /etc/fstab: static file system information.\n/etc/fstab:#\n/etc/fstab:# Use 'blkid' to print the universally unique identifier for a\n/etc/fstab:# device; this may be used with UUID= as a more robust way to name devices\n/etc/fstab:# that works even if disks are added and removed. See fstab(5).\n/etc/fstab:#\n/etc/fstab:# systemd generates mount units based on this file, see systemd.mount(5).\n/etc/fstab:# Please run 'systemctl daemon-reload' after making changes here.\n/etc/fstab:#\n/etc/fstab:# <file system> <mount point>   <type>  <options>       <dump>  <pass>\n/etc/fstab:/dev/mapper/nas--vg-root /               ext4    errors=remount-ro 0       1\n/etc/fstab:# /boot was on /dev/sda2 during installation\n/etc/fstab:UUID=7a87d486-afc4-4601-9805-83e54c4dbb5b /boot           ext2    defaults        0       2\n/etc/fstab:# /boot/efi was on /dev/sda1 during installation\n/etc/fstab:UUID=C4E0-F941  /boot/efi       vfat    umask=0077      0       1\n/etc/fstab:/dev/mapper/nas--vg-swap_1 none            swap    sw              0       0\n/etc/fstab:/dev/sr0        /media/cdrom0   udf,iso9660 user,noauto     0       0\n/etc/fstab:# >>> [openmediavault]\n/etc/fstab:/dev/disk/by-uuid/4ea79d6b-79b5-4793-82c1-a67cbe450864\t\t/srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864\text4\tdefaults,nofail,user_xattr,usrquota,grpquota,acl\t0 2\n/etc/fstab:/dev/disk/by-uuid/825a89ab-d64d-44c3-ac10-da178a8893a1\t\t/srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1\text4\tdefaults,nofail,user_xattr,usrquota,grpquota,acl\t0 2\n/etc/fstab:/srv/mergerfs/nas/nas/\t\t/export/nas\tnone\tbind,nofail\t0 0\n/etc/fstab:# <<< [openmediavault]\n"
     },
     "192.168.0.6": {
       "ok": true,
       "rc": 0,
       "stderr": "Warning: Permanently added '192.168.0.6' (ED25519) to the list of known hosts.\n",
-      "stdout": "emperor\n\u00d7 watchdog-mux.service - Proxmox VE watchdog multiplexer\n     Loaded: loaded (/usr/lib/systemd/system/watchdog-mux.service; static)\n     Active: failed (Result: exit-code) since Mon 2026-04-20 10:27:52 AEST; 1 month 0 days ago\n   Duration: 33ms\n Invocation: df341ddffcec44f292afa84491c1fd8c\n   Main PID: 712000 (code=exited, status=1/FAILURE)\n        CPU: 20ms\n\nNotice: journal has been rotated since unit was started, output may be incomplete.\n-- No entries --\n"
+      "stdout": "emperor\n\u00d7 watchdog-mux.service - Proxmox VE watchdog multiplexer\n     Loaded: loaded (/usr/lib/systemd/system/watchdog-mux.service; static)\n     Active: failed (Result: exit-code) since Mon 2026-04-20 10:27:52 AEST; 1 month 1 day ago\n   Duration: 33ms\n Invocation: df341ddffcec44f292afa84491c1fd8c\n   Main PID: 712000 (code=exited, status=1/FAILURE)\n        CPU: 20ms\n\nNotice: journal has been rotated since unit was started, output may be incomplete.\n-- No entries --\n"
     },
     "192.168.0.6_backup_artifacts": {
       "ok": true,
@@ -754,7 +802,7 @@
       "ok": true,
       "rc": 0,
       "stderr": "Warning: Permanently added '192.168.0.8' (ED25519) to the list of known hosts.\n",
-      "stdout": "jester\n\u00d7 pve-container-debug@101.service - PVE LXC Container: 101\n     Loaded: loaded (/lib/systemd/system/pve-container-debug@.service; static)\n     Active: failed (Result: exit-code) since Wed 2026-05-20 20:27:20 AEST; 24h ago\n   Duration: 2.716s\n       Docs: man:lxc-start\n             man:lxc\n             man:pct\n   Main PID: 1580433 (code=exited, status=1/FAILURE)\n        CPU: 628ms\n\nMay 20 20:27:17 jester systemd[1]: Started pve-container-debug@101.service - PVE LXC Container: 101.\nMay 20 20:27:20 jester systemd[1]: pve-container-debug@101.service: Main process exited, code=exited, status=1/FAILURE\nMay 20 20:27:20 jester systemd[1]: pve-container-debug@101.service: Failed with result 'exit-code'.\nMay 20 20:27:17 jester systemd[1]: Started pve-container-debug@101.service - PVE LXC Container: 101.\nMay 20 20:27:20 jester systemd[1]: pve-container-debug@101.service: Main process exited, code=exited, status=1/FAILURE\nMay 20 20:27:20 jester systemd[1]: pve-container-debug@101.service: Failed with result 'exit-code'.\n"
+      "stdout": "jester\n\u25cb pve-container-debug@101.service - PVE LXC Container: 101\n     Loaded: loaded (/lib/systemd/system/pve-container-debug@.service; static)\n     Active: inactive (dead)\n       Docs: man:lxc-start\n             man:lxc\n             man:pct\n\nMay 20 20:27:17 jester systemd[1]: Started pve-container-debug@101.service - PVE LXC Container: 101.\nMay 20 20:27:20 jester systemd[1]: pve-container-debug@101.service: Main process exited, code=exited, status=1/FAILURE\nMay 20 20:27:20 jester systemd[1]: pve-container-debug@101.service: Failed with result 'exit-code'.\nMay 20 20:27:17 jester systemd[1]: Started pve-container-debug@101.service - PVE LXC Container: 101.\nMay 20 20:27:20 jester systemd[1]: pve-container-debug@101.service: Main process exited, code=exited, status=1/FAILURE\nMay 20 20:27:20 jester systemd[1]: pve-container-debug@101.service: Failed with result 'exit-code'.\n"
     }
   }
 }

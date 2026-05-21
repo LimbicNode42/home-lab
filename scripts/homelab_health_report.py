@@ -123,7 +123,8 @@ def main():
         if r.get("type") in ("qemu", "lxc") and r.get("vmid") is not None
     }
     scheduled = set()
-    for job in jobs:
+    enabled_jobs = [job for job in jobs if str(job.get("enabled", 1)) not in ("0", "false", "False")]
+    for job in enabled_jobs:
         for vmid in str(job.get("vmid", "")).split(","):
             vmid = vmid.strip()
             if vmid:

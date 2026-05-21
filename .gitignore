@@ -38,3 +38,7 @@ terraform.rc
 *.crt
 *.key
 *.csr
+
+# Python cache
+__pycache__/
+*.py[cod]
