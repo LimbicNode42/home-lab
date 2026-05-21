@@ -19,6 +19,6 @@ sudo docker run -d --name=proxy --restart unless-stopped \
     -v /mnt/nas/services/traefik/dynamic-config.yaml:/dynamic-config.yaml \
     -v /mnt/nas/services/traefik/acme.json:/acme.json \
     -e CF_API_EMAIL="b.j.wheeler484@gmail.com" \
-    -e CF_DNS_API_TOKEN="zWjaRf1R9SAgdoYM6V6BfQ3QzknegzSQmTzcZ27e" \
+    -e CF_DNS_API_TOKEN="${CF_DNS_API_TOKEN:?set in environment}" \
     traefik:v2.5
 
