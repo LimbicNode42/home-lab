@@ -26,7 +26,7 @@ provider "infisical" {
 provider "keycloak" {
   # client_id                = nonsensitive(data.infisical_secrets.keycloak.secrets["KC_TF_CLIENT_ID"].value)
   client_id = "terraform-oidc"
-  # client_secret            = sensitive(data.infisical_secrets.keycloak.secrets["KC_TF_CLIENT_SECRET"].value)
+  # client_secret            = sensitive(data.infisical_secrets.keycloak.secrets["<redacted legacy field>"].value)
   client_secret            = "<placeholder>"
   url                      = "https://keycloak.wheeler-network.com"
   tls_insecure_skip_verify = true

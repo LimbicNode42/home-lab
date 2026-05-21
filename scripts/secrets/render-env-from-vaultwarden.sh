@@ -3,17 +3,18 @@ set -euo pipefail
 
 # Render dotenv output from a simple Vaultwarden mapping file.
 #
-# Mapping file format:
+# Mapping file formats:
 #   ENV_NAME|item name|field name
+#   ENV_NAME|folder name|item name|field name
 #
-# Example:
-#   PG_HOST|homelab/postgres/admin|host
-#   PG_USER|homelab/postgres/admin|username
-#   PG_PASSWORD|homelab/postgres/admin|password
+# Example using the selected homelab folder convention:
+#   PG_HOST|homelab|postgres/admin|host
+#   PG_USER|homelab|postgres/admin|username
+#   PG_PASSWORD|homelab|postgres/admin|password
 #
 # Usage:
 #   eval "$(scripts/secrets/bw-login-vaultwarden.sh)"
-#   scripts/secrets/render-env-from-vaultwarden.sh docs/secrets/examples/postgres.env.map > .env
+#   scripts/secrets/render-env-from-vaultwarden.sh docs/secrets/postgres.env.map.example > .env
 #   chmod 0600 .env
 #
 # Security:
@@ -43,17 +44,31 @@ fi
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 get_field="$script_dir/bw-get-field.sh"
 
-while IFS='|' read -r env_name item_name field_name; do
+while IFS='|' read -r env_name second third fourth extra; do
   # Skip blank lines and comments.
   [[ -z "${env_name// }" ]] && continue
   [[ "${env_name:0:1}" == "#" ]] && continue
 
-  if [[ -z "${item_name:-}" || -z "${field_name:-}" ]]; then
-    echo "ERROR: invalid mapping line for env var '$env_name'" >&2
+  if [[ -n "${extra:-}" ]]; then
+    echo "ERROR: too many fields in mapping line for env var '$env_name'" >&2
     exit 1
   fi
 
-  value="$($get_field "$item_name" "$field_name")"
+  if [[ -n "${fourth:-}" ]]; then
+    folder_name="$second"
+    item_name="$third"
+    field_name="$fourth"
+    value="$($get_field "$folder_name" "$item_name" "$field_name")"
+  else
+    item_name="$second"
+    field_name="$third"
+    if [[ -z "${item_name:-}" || -z "${field_name:-}" ]]; then
+      echo "ERROR: invalid mapping line for env var '$env_name'" >&2
+      exit 1
+    fi
+    value="$($get_field "$item_name" "$field_name")"
+  fi
+
   if [[ -z "$value" ]]; then
     echo "ERROR: empty value for $env_name from item '$item_name' field '$field_name'" >&2
     exit 1

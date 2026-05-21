@@ -34,9 +34,11 @@ The repo should not contain:
 - Terraform state
 - generated credentials
 
-## Recommended model
+## Selected model
 
-Use Vaultwarden for live secret values and Git for secret references.
+Use Ben's personal Vaultwarden vault for live homelab secret values and Git for non-secret references.
+
+Homelab-related items should be grouped in a Vaultwarden folder named `homelab`. Bitwarden/Vaultwarden folders are flat, so use hierarchical item names inside that folder, such as `postgres/admin`, `proxmox/hermes-api-token`, and `cloudflare/tunnel-critical`.
 
 Example committed config:
 
@@ -50,9 +52,9 @@ postgres:
 Example local runtime:
 
 ```sh
-export PG_HOST="$(scripts/secrets/bw-get-field.sh homelab/postgres/app host)"
-export PG_APP_USER="$(scripts/secrets/bw-get-field.sh homelab/postgres/app username)"
-export PG_APP_PASSWORD="$(scripts/secrets/bw-get-field.sh homelab/postgres/app password)"
+export PG_HOST="$(scripts/secrets/bw-get-field.sh homelab postgres/app host)"
+export PG_APP_USER="$(scripts/secrets/bw-get-field.sh homelab postgres/app username)"
+export PG_APP_PASSWORD="$(scripts/secrets/bw-get-field.sh homelab postgres/app password)"
 ```
 
 ## Authentication options
@@ -70,7 +72,7 @@ bw sync
 
 ### Automation / Hermes use
 
-Prefer a dedicated low-privilege Vaultwarden/Bitwarden account or organization member for automation.
+Current decision: use Ben's personal Vaultwarden vault, with homelab items grouped in the `homelab` folder. If future automation needs unattended write access or broader permissions, reconsider a dedicated low-privilege Vaultwarden account before expanding scope.
 
 Environment variables should be stored only in local secret storage, not committed:
 
@@ -97,47 +99,33 @@ Notes:
 - Do not pass master passwords as command-line arguments; use `--passwordenv`.
 - Treat `BW_SESSION` as a secret. Do not write it into repo files or logs.
 
-## Vault structure recommendation
+## Vault structure
 
-Use folders or organization collections with stable names.
+Use Ben's personal Vaultwarden vault with one folder named `homelab` for homelab entries.
 
-Suggested folders/collections:
+Because Bitwarden folders are flat, keep hierarchy in item names rather than trying to create nested folders.
+
+Folder:
 
 ```text
-homelab/
-  infrastructure/
-  proxmox/
-  nas/
-  network/
-  postgres/
-  redis/
-  keycloak/
-  vaultwarden/
-  traefik/
-  cloudflare/
-  apps/
-    jellyfin/
-    immich/
-    personal-dashboard/
-  hermes/
+homelab
 ```
 
-Suggested item naming convention:
+Suggested item names inside that folder:
 
 ```text
-homelab/<service>/<purpose>
-```
-
-Examples:
-
-```text
-homelab/postgres/admin
-homelab/postgres/keycloak
-homelab/postgres/infisical
-homelab/proxmox/hermes-api-token
-homelab/cloudflare/tunnel-critical
-homelab/jellyfin/admin
-homelab/hermes/github
+infrastructure/proxmox
+infrastructure/nas
+network/adguard
+postgres/admin
+postgres/keycloak
+redis/admin
+keycloak/admin
+vaultwarden/admin
+traefik/cloudflare
+apps/jellyfin/admin
+apps/immich/admin
+hermes/github
 ```
 
 ## Item field convention
@@ -163,7 +151,7 @@ Use custom fields for structured values:
 - `owner`
 - `rotation_interval_days`
 
-Example item: `homelab/proxmox/hermes-api-token`
+Example item: folder `homelab`, item `proxmox/hermes-api-token`
 
 ```text
 username: root@pam!hermes
@@ -182,9 +170,11 @@ Use names, not values.
 Examples:
 
 ```env
-POSTGRES_HOST_BW_ITEM=homelab/postgres/admin
+POSTGRES_HOST_BW_FOLDER=homelab
+POSTGRES_HOST_BW_ITEM=postgres/admin
 POSTGRES_HOST_BW_FIELD=host
-POSTGRES_PASSWORD_BW_ITEM=homelab/postgres/admin
+POSTGRES_PASSWORD_BW_FOLDER=homelab
+POSTGRES_PASSWORD_BW_ITEM=postgres/admin
 POSTGRES_PASSWORD_BW_FIELD=password
 ```
 
@@ -192,8 +182,8 @@ or in service docs:
 
 ```md
 Secrets:
-- `PG_HOST`: Vaultwarden item `homelab/postgres/admin`, field `host`
-- `PG_KEYCLOAK_PASS`: Vaultwarden item `homelab/postgres/keycloak`, field `password`
+- `PG_HOST`: Vaultwarden folder `homelab`, item `postgres/admin`, field `host`
+- `PG_KEYCLOAK_PASS`: Vaultwarden folder `homelab`, item `postgres/keycloak`, field `password`
 ```
 
 ## IaC/CaC integration patterns
@@ -210,7 +200,8 @@ Example pattern:
 
 ```yaml
 vars:
-  postgres_admin_item: homelab/postgres/admin
+  vaultwarden_folder: homelab
+  postgres_admin_item: postgres/admin
 
 tasks:
   - name: Render app env file
@@ -275,10 +266,14 @@ For Ben's local `home-lab` repo copy on `192.168.0.100`:
 - Treat `BW_SESSION` as a secret.
 - When in doubt, output item names and field names, not values.
 
-## Open questions for Ben
+## Resolved decisions
 
-- Should Hermes use a dedicated Vaultwarden account, an organization collection, or Ben's own account?
-- What is the canonical Vaultwarden URL: local IP, internal DNS name, or HTTPS reverse-proxy hostname?
-- Should service secrets be grouped by folder or organization collection?
+- Vault: Ben's personal Vaultwarden vault.
+- Homelab grouping: Vaultwarden folder `homelab`.
+- Canonical Vaultwarden URL for now: `http://192.168.0.50:8084`.
+
+## Deferred questions
+
 - Do you want Vaultwarden to replace Infisical entirely, or coexist during migration?
 - Do you want generated credentials rotated as they are moved into Vaultwarden?
+- Should Hermes eventually use a separate automation account if unattended secret writes are needed?

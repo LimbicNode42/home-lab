@@ -26,7 +26,7 @@ sudo docker run -d --name db-mcp-server --restart unless-stopped \
   -e INFLUXDB_TOKEN=$INFLUXDB_TOKEN \
   -e INFLUXDB_ORG=proxmox \
   -e INFLUXDB_BUCKET=proxmox \
-  -e API_KEY=temp-db-mcp-server-api-key \
+  -e API_KEY='<redacted: legacy placeholder>' \
   limbicnode42/db-mcp-server:latest
 
 sudo docker stop auth-mcp-server && sudo docker rm auth-mcp-server && \
@@ -45,7 +45,7 @@ sudo docker run -d --name auth-mcp-server --restart unless-stopped \
   -e INFISICAL_PROJECT_ID=$INFISICAL_PROJECT_ID \
   -e INFISICAL_ENVIRONMENT_SLUG=$INFISICAL_ENVIRONMENT_SLUG \
   -e KEYCLOAK_INFISICAL_INTEGRATION_ENABLED=true \
-  -e API_KEY=temp-auth-mcp-server-api-key \
+  -e API_KEY='<redacted: legacy placeholder>' \
   limbicnode42/auth-mcp-server:latest
 
 sudo docker run -d --name github-mcp-server --restart unless-stopped \
