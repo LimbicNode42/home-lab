@@ -1,0 +1,33 @@
+{
+  "generated_at": "2026-05-21T10:48:21.868523+00:00",
+  "results": [
+    {
+      "auth": "nas",
+      "ip": "192.168.0.250",
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "Disk|nas|\nDisk|cdn|\nIPC|IPC$|IPC Service (nas server)\nSMB1 disabled -- no workgroup available\n"
+    },
+    {
+      "auth": "ssh-root",
+      "ip": "192.168.0.250",
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "Disk|nas|\nDisk|cdn|\nIPC|IPC$|IPC Service (nas server)\nSMB1 disabled -- no workgroup available\n"
+    },
+    {
+      "auth": "nas",
+      "ip": "192.168.0.100",
+      "returncode": 1,
+      "stderr": "",
+      "stdout": "session setup failed: NT_STATUS_LOGON_FAILURE\n"
+    },
+    {
+      "auth": "ssh-root",
+      "ip": "192.168.0.100",
+      "returncode": 1,
+      "stderr": "",
+      "stdout": "session setup failed: NT_STATUS_LOGON_FAILURE\n"
+    }
+  ]
+}

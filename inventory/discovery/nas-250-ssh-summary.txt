@@ -1,0 +1,30 @@
+nas
+PRETTY_NAME="Debian GNU/Linux 12 (bookworm)"
+Filesystem                               Type           Size  Used Avail Use% Mounted on
+udev                                     devtmpfs       2.9G     0  2.9G   0% /dev
+tmpfs                                    tmpfs          592M  2.7M  590M   1% /run
+/dev/mapper/nas--vg-root                 ext4            61G  2.6G   56G   5% /
+tmpfs                                    tmpfs          2.9G     0  2.9G   0% /dev/shm
+tmpfs                                    tmpfs          5.0M     0  5.0M   0% /run/lock
+efivarfs                                 efivarfs       256K   37K  220K  15% /sys/firmware/efi/efivars
+tmpfs                                    tmpfs          2.9G     0  2.9G   0% /tmp
+/dev/sda2                                ext2           456M  227M  205M  53% /boot
+/dev/sda1                                vfat           512M   13M  500M   3% /boot/efi
+/dev/sdc1                                ext4           7.3T  5.1G  7.3T   1% /srv/dev-disk-by-uuid-4ea79d6b-79b5-4793-82c1-a67cbe450864
+/dev/sdb1                                ext4           7.3T  7.1T  170G  98% /srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1
+nas:4f5e3364-1ff6-4f8e-bd0d-c07d533720c7 fuse.mergerfs   15T  7.1T  7.4T  49% /srv/mergerfs/nas
+folder2ram                               tmpfs          2.9G  473M  2.5G  16% /var/log
+folder2ram                               tmpfs          2.9G     0  2.9G   0% /var/tmp
+folder2ram                               tmpfs          2.9G  676K  2.9G   1% /var/lib/openmediavault/rrd
+folder2ram                               tmpfs          2.9G  1.4M  2.9G   1% /var/spool
+folder2ram                               tmpfs          2.9G   16M  2.9G   1% /var/lib/rrdcached
+folder2ram                               tmpfs          2.9G  4.0K  2.9G   1% /var/lib/monit
+folder2ram                               tmpfs          2.9G   16K  2.9G   1% /var/cache/samba
+tmpfs                                    tmpfs          592M     0  592M   0% /run/user/1000
+UNIT            LOAD   ACTIVE SUB    DESCRIPTION
+quotaon.service loaded failed failed Enable File System Quotas
+
+LOAD   = Reflects whether the unit definition was properly loaded.
+ACTIVE = The high-level unit activation state, i.e. generalization of SUB.
+SUB    = The low-level unit activation state, values depend on unit type.
+1 loaded units listed.

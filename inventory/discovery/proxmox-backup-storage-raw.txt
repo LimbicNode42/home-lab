@@ -1,0 +1,29 @@
+__STORAGE_CFG__
+nfs: NAS
+	export /export/nas
+	path /mnt/pve/NAS
+	server 192.168.0.250
+	content iso,images,rootdir,backup,snippets,vztmpl,import
+	prune-backups keep-all=1
+
+dir: local
+	path /var/lib/vz
+	content images,iso,rootdir,vztmpl,snippets,backup
+	prune-backups keep-all=1
+
+__VZDUMP_CRON__
+# cluster wide vzdump cron schedule
+# Automatically generated file - do not edit
+
+PATH="/usr/sbin:/usr/bin:/sbin:/bin"
+
+__PVE_JOBS__
+[{"compress":"zstd","enabled":1,"exclude-path":["/mnt/nas"],"id":"0a0b23aa-8390-4b21-b8f5-1220a990ac61","mode":"snapshot","next-run":1779552000,"node":"emperor","notes-template":"{{guestname}}_{{node}}_backup","prune-backups":{"keep-last":"3"},"schedule":"sun 02:00","storage":"NAS","type":"vzdump","vmid":"100"},{"compress":"zstd","enabled":1,"exclude-path":["/mnt/nas"],"id":"dcee4477-dea2-4354-a67a-66c31c65a46d","mode":"snapshot","next-run":1779553800,"node":"jester","notes-template":"{{guestname}}_{{node}}_backup","prune-backups":{"keep-last":"3"},"schedule":"sun 02:30","storage":"NAS","type":"vzdump","vmid":"101"},{"compress":"zstd","enabled":1,"id":"e0a8bf3c-88d0-4316-9dad-4b61ac30943e","mode":"snapshot","next-run":1779555600,"node":"shogun","notes-template":"{{guestname}}_{{node}}_backup","prune-backups":{"keep-last":"2"},"schedule":"sun 03:00","storage":"NAS","type":"vzdump","vmid":"103"}]
+__PVE_REPLICATION__
+[]
+__PVE_HA__
+quorum OK
+fencing standby (CRM watchdog standby)
+__NAS_STATUS__
+Name       Type     Status     Total (KiB)      Used (KiB) Available (KiB)        %
+NAS         nfs     active     15502544896      7579092992      7923419136   48.89%
