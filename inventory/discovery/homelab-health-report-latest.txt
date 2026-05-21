@@ -1,0 +1,32 @@
+Homelab health report - 2026-05-21T11:01:41Z
+
+Summary:
+- Proxmox guests observed: 5
+- Proxmox backup jobs observed: 3
+- Critical tracked guests: 100, 103, 110, 111, 112
+- Alerts: 11
+
+Backup coverage:
+- 100: name=critical status=running scheduled=yes latest=2026-05-16 16:05Z vzdump-lxc-100-2026_05_17-02_00_01.tar.zst
+- 101: name=absent status=absent scheduled=yes latest=2026-05-02 16:34Z vzdump-lxc-101-2026_05_03-02_30_07.tar.zst
+- 103: name=NAS-OMV status=running scheduled=yes latest=2026-05-16 18:08Z vzdump-qemu-103-2026_05_17-03_00_05.vma.zst
+- 110: name=dev status=running scheduled=no latest=none
+- 111: name=staging status=running scheduled=no latest=none
+- 112: name=prod status=running scheduled=no latest=none
+
+Failed units:
+- emperor: watchdog-mux.service
+- jester: pve-container-debug@101.service
+
+Alerts:
+- guest 110 (dev) has no scheduled Proxmox backup job
+- guest 110 (dev) has no backup artifact on NAS dump path
+- guest 111 (staging) has no scheduled Proxmox backup job
+- guest 111 (staging) has no backup artifact on NAS dump path
+- guest 112 (prod) has no scheduled Proxmox backup job
+- guest 112 (prod) has no backup artifact on NAS dump path
+- backup job references absent guest 101
+- emperor failed systemd units: watchdog-mux.service
+- jester failed systemd units: pve-container-debug@101.service
+- NAS high backing-disk usage: /dev/sdb1                                ext4           7751272176 7573759028  177496764      98% /srv/dev-disk-by-uuid-825a89ab-d64d-44c3-ac10-da178a8893a1
+- NAS NFS export includes no_root_squash
