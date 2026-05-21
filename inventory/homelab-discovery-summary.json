@@ -1,0 +1,207 @@
+{
+  "cluster_name": "Nippon",
+  "generated_at": "2026-05-21T10:27:40.565580+00:00",
+  "guests": [
+    {
+      "maxdisk_bytes": 67049664512,
+      "maxmem_bytes": 4294967296,
+      "name": "critical",
+      "node": "emperor",
+      "status": "running",
+      "type": "lxc",
+      "vmid": 100
+    },
+    {
+      "maxdisk_bytes": 68719476736,
+      "maxmem_bytes": 6442450944,
+      "name": "NAS-OMV",
+      "node": "shogun",
+      "status": "stopped",
+      "type": "qemu",
+      "vmid": 103
+    },
+    {
+      "maxdisk_bytes": null,
+      "maxmem_bytes": null,
+      "name": null,
+      "node": "toyota",
+      "status": "unknown",
+      "type": "lxc",
+      "vmid": 110
+    },
+    {
+      "maxdisk_bytes": null,
+      "maxmem_bytes": null,
+      "name": null,
+      "node": "toyota",
+      "status": "unknown",
+      "type": "lxc",
+      "vmid": 111
+    },
+    {
+      "maxdisk_bytes": null,
+      "maxmem_bytes": null,
+      "name": null,
+      "node": "toyota",
+      "status": "unknown",
+      "type": "lxc",
+      "vmid": 112
+    }
+  ],
+  "network_hosts": [
+    {
+      "ip": "192.168.0.1",
+      "ports": [
+        53,
+        80,
+        443
+      ]
+    },
+    {
+      "ip": "192.168.0.6",
+      "ports": [
+        22,
+        111,
+        8006
+      ]
+    },
+    {
+      "ip": "192.168.0.7",
+      "ports": [
+        22,
+        111,
+        8006
+      ]
+    },
+    {
+      "ip": "192.168.0.8",
+      "ports": [
+        22,
+        111,
+        8006
+      ]
+    },
+    {
+      "ip": "192.168.0.20",
+      "ports": [
+        22,
+        111,
+        8006
+      ]
+    },
+    {
+      "ip": "192.168.0.21",
+      "ports": [
+        22,
+        80,
+        111,
+        8006
+      ]
+    },
+    {
+      "ip": "192.168.0.50",
+      "ports": [
+        22,
+        80,
+        443,
+        5432
+      ]
+    },
+    {
+      "ip": "192.168.0.51",
+      "ports": [
+        22,
+        5432
+      ]
+    },
+    {
+      "ip": "192.168.0.52",
+      "ports": [
+        22
+      ]
+    },
+    {
+      "ip": "192.168.0.53",
+      "ports": [
+        22
+      ]
+    },
+    {
+      "ip": "192.168.0.57",
+      "ports": [
+        22,
+        80,
+        443
+      ]
+    },
+    {
+      "ip": "192.168.0.67",
+      "ports": [
+        9000
+      ]
+    },
+    {
+      "ip": "192.168.0.100",
+      "ports": [
+        139,
+        445
+      ]
+    },
+    {
+      "ip": "192.168.0.253",
+      "ports": [
+        22,
+        80,
+        443
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "ip": "192.168.0.6",
+      "local": 0,
+      "name": "emperor",
+      "online": 1
+    },
+    {
+      "ip": "192.168.0.8",
+      "local": 0,
+      "name": "jester",
+      "online": 1
+    },
+    {
+      "ip": "192.168.0.7",
+      "local": 0,
+      "name": "shogun",
+      "online": 1
+    },
+    {
+      "ip": "192.168.0.20",
+      "local": 1,
+      "name": "tori",
+      "online": 1
+    },
+    {
+      "ip": "192.168.0.21",
+      "local": 0,
+      "name": "toyota",
+      "online": 1
+    }
+  ],
+  "storages": [
+    {
+      "content": "snippets,backup,iso,rootdir,images,vztmpl",
+      "enabled": null,
+      "shared": null,
+      "storage": "local",
+      "type": "dir"
+    },
+    {
+      "content": "vztmpl,images,rootdir,import,iso,backup,snippets",
+      "enabled": null,
+      "shared": 1,
+      "storage": "NAS",
+      "type": "nfs"
+    }
+  ]
+}
