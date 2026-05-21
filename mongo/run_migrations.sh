@@ -1,1 +1,0 @@
-migrate -database mongodb://192.168.0.110:27017/db -path ./migrations up
