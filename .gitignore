@@ -42,3 +42,19 @@ terraform.rc
 # Python cache
 __pycache__/
 *.py[cod]
+
+# Local secret-bearing files
+.env
+.env.*
+!.env.example
+*.env
+*.env.local
+*.envrc
+.secrets/
+.bw_session
+bw-session
+vaultwarden-session
+*.agekey
+*.pem
+id_rsa
+id_ed25519
