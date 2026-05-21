@@ -1,0 +1,184 @@
+{
+  "generated_at": "2026-05-21T10:29:03.224925+00:00",
+  "results": [
+    {
+      "http": [
+        {
+          "final_url": "http://192.168.0.1/webpages/onboarding.html",
+          "server": null,
+          "status": 200,
+          "title": "",
+          "url": "http://192.168.0.1:80/"
+        },
+        {
+          "final_url": "https://192.168.0.1:443/",
+          "server": null,
+          "status": 200,
+          "title": "",
+          "url": "https://192.168.0.1:443/"
+        }
+      ],
+      "ip": "192.168.0.1",
+      "reverse_dns": null
+    },
+    {
+      "http": [
+        {
+          "final_url": "https://192.168.0.6:8006/",
+          "server": "pve-api-daemon/3.0",
+          "status": 200,
+          "title": "emperor - Pxvirt",
+          "url": "https://192.168.0.6:8006/"
+        }
+      ],
+      "ip": "192.168.0.6",
+      "reverse_dns": null
+    },
+    {
+      "http": [
+        {
+          "final_url": "https://192.168.0.7:8006/",
+          "server": "pve-api-daemon/3.0",
+          "status": 200,
+          "title": "shogun - Pxvirt",
+          "url": "https://192.168.0.7:8006/"
+        }
+      ],
+      "ip": "192.168.0.7",
+      "reverse_dns": null
+    },
+    {
+      "http": [
+        {
+          "final_url": "https://192.168.0.8:8006/",
+          "server": "pve-api-daemon/3.0",
+          "status": 200,
+          "title": "jester - Pxvirt",
+          "url": "https://192.168.0.8:8006/"
+        }
+      ],
+      "ip": "192.168.0.8",
+      "reverse_dns": null
+    },
+    {
+      "http": [
+        {
+          "final_url": "https://192.168.0.20:8006/",
+          "server": "pve-api-daemon/3.0",
+          "status": 200,
+          "title": "tori - Proxmox Virtual Environment",
+          "url": "https://192.168.0.20:8006/"
+        }
+      ],
+      "ip": "192.168.0.20",
+      "reverse_dns": "tori"
+    },
+    {
+      "http": [
+        {
+          "final_url": "http://192.168.0.21:80/",
+          "server": "Apache/2.4.67 (Debian)",
+          "status": 200,
+          "title": "Apache2 Debian Default Page: It works",
+          "url": "http://192.168.0.21:80/"
+        },
+        {
+          "final_url": "https://192.168.0.21:8006/",
+          "server": "pve-api-daemon/3.0",
+          "status": 200,
+          "title": "toyota - Proxmox Virtual Environment",
+          "url": "https://192.168.0.21:8006/"
+        }
+      ],
+      "ip": "192.168.0.21",
+      "reverse_dns": null
+    },
+    {
+      "http": [
+        {
+          "error": "HTTPError",
+          "message": "HTTP Error 404: Not Found",
+          "url": "http://192.168.0.50:80/"
+        },
+        {
+          "error": "HTTPError",
+          "message": "HTTP Error 404: Not Found",
+          "url": "https://192.168.0.50:443/"
+        }
+      ],
+      "ip": "192.168.0.50",
+      "reverse_dns": "dev-personal-website.local"
+    },
+    {
+      "http": [],
+      "ip": "192.168.0.51",
+      "reverse_dns": null
+    },
+    {
+      "http": [],
+      "ip": "192.168.0.52",
+      "reverse_dns": null
+    },
+    {
+      "http": [],
+      "ip": "192.168.0.53",
+      "reverse_dns": null
+    },
+    {
+      "http": [
+        {
+          "final_url": "http://192.168.0.57:80/",
+          "server": "Web Switch",
+          "status": 200,
+          "title": "Loading...",
+          "url": "http://192.168.0.57:80/"
+        },
+        {
+          "final_url": "https://192.168.0.57:443/",
+          "server": "Web Switch",
+          "status": 200,
+          "title": "Loading...",
+          "url": "https://192.168.0.57:443/"
+        }
+      ],
+      "ip": "192.168.0.57",
+      "reverse_dns": null
+    },
+    {
+      "http": [
+        {
+          "error": "RemoteDisconnected",
+          "message": "Remote end closed connection without response",
+          "url": "http://192.168.0.67:9000/"
+        }
+      ],
+      "ip": "192.168.0.67",
+      "reverse_dns": null
+    },
+    {
+      "http": [],
+      "ip": "192.168.0.100",
+      "reverse_dns": null
+    },
+    {
+      "http": [
+        {
+          "final_url": "http://192.168.0.253:80/",
+          "server": "Web Switch",
+          "status": 200,
+          "title": "Loading...",
+          "url": "http://192.168.0.253:80/"
+        },
+        {
+          "final_url": "https://192.168.0.253:443/",
+          "server": "Web Switch",
+          "status": 200,
+          "title": "Loading...",
+          "url": "https://192.168.0.253:443/"
+        }
+      ],
+      "ip": "192.168.0.253",
+      "reverse_dns": null
+    }
+  ]
+}

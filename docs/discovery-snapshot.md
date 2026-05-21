@@ -55,6 +55,26 @@ Subnet: 192.168.0.0/24
 | 192.168.0.100 | 139, 445 | SMB/NAS candidate |
 | 192.168.0.253 | 22, 80, 443 | web UI |
 
+## Service fingerprints
+
+| IP | Reverse DNS | URL | Status | Title / Server / Error |
+|---|---|---|---|---|
+| 192.168.0.1 |  | http://192.168.0.1:80/ | 200 |  |
+| 192.168.0.1 |  | https://192.168.0.1:443/ | 200 |  |
+| 192.168.0.6 |  | https://192.168.0.6:8006/ | 200 | emperor - Pxvirt |
+| 192.168.0.7 |  | https://192.168.0.7:8006/ | 200 | shogun - Pxvirt |
+| 192.168.0.8 |  | https://192.168.0.8:8006/ | 200 | jester - Pxvirt |
+| 192.168.0.20 | tori | https://192.168.0.20:8006/ | 200 | tori - Proxmox Virtual Environment |
+| 192.168.0.21 |  | http://192.168.0.21:80/ | 200 | Apache2 Debian Default Page: It works |
+| 192.168.0.21 |  | https://192.168.0.21:8006/ | 200 | toyota - Proxmox Virtual Environment |
+| 192.168.0.50 | dev-personal-website.local | http://192.168.0.50:80/ | HTTPError | HTTP Error 404: Not Found |
+| 192.168.0.50 | dev-personal-website.local | https://192.168.0.50:443/ | HTTPError | HTTP Error 404: Not Found |
+| 192.168.0.57 |  | http://192.168.0.57:80/ | 200 | Loading... |
+| 192.168.0.57 |  | https://192.168.0.57:443/ | 200 | Loading... |
+| 192.168.0.67 |  | http://192.168.0.67:9000/ | RemoteDisconnected | Remote end closed connection without response |
+| 192.168.0.253 |  | http://192.168.0.253:80/ | 200 | Loading... |
+| 192.168.0.253 |  | https://192.168.0.253:443/ | 200 | Loading... |
+
 ## Immediate findings
 
 - Proxmox cluster name appears to be `Nippon` with five nodes: emperor, jester, shogun, tori, toyota.
@@ -63,6 +83,7 @@ Subnet: 192.168.0.0/24
 - Several guests/nodes are reported as `unknown` from cluster resources; this needs follow-up because it may indicate version skew, cluster comms issues, or stale metadata.
 - Public/router candidate is 192.168.0.1 with DNS/HTTP/HTTPS.
 - SMB/NAS candidate discovered at 192.168.0.100 with ports 139/445.
+- SMB service at 192.168.0.100 denies anonymous share enumeration; NAS credentials are needed for deeper validation.
 
 ## Next actions
 
