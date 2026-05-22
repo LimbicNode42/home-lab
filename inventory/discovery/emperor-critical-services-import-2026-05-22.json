@@ -1,0 +1,107 @@
+{
+  "generated_at": "2026-05-22T13:50:00Z",
+  "scope": "read-only import seed for remaining live Docker services on emperor-hosted critical LXC",
+  "proxmox_node": {
+    "name": "emperor",
+    "ip": "192.168.0.6"
+  },
+  "service_host": {
+    "name": "critical",
+    "ip": "192.168.0.50",
+    "vmid": 100,
+    "os": "Alpine Linux v3.18"
+  },
+  "already_imported": [
+    "traefik/proxy",
+    "vaultwarden"
+  ],
+  "remaining_imported_this_run": [
+    {
+      "service": "cloudflare-tunnel",
+      "container_name": "cloudflare",
+      "image_ref": "cloudflare/cloudflared:latest",
+      "pinned_image": "cloudflare/cloudflared@sha256:6b599ca3e974349ead3286d178da61d291961182ec3fe9c505e1dd02c8ac31b0",
+      "image_id": "sha256:4f190dd4452d18c78f5c18f37fea477f5e9e319b62a98a576123eac3b15ff375",
+      "restart_policy": "unless-stopped",
+      "network": "bridge",
+      "published_ports": [],
+      "mounts": [],
+      "command_shape": [
+        "tunnel",
+        "--no-autoupdate",
+        "run",
+        "--token",
+        "<redacted>"
+      ],
+      "secret_refs": [
+        {
+          "folder": "homelab",
+          "item": "cloudflare/tunnel-critical",
+          "field": "tunnel_token"
+        }
+      ],
+      "notes": [
+        "Current live container passes the tunnel token on the command line. Candidate compose replaces the literal token with ${CLOUDFLARE_TUNNEL_TOKEN}."
+      ]
+    },
+    {
+      "service": "postgres",
+      "container_name": "postgres",
+      "image_ref": "bitnamilegacy/postgresql:17",
+      "pinned_image": "bitnamilegacy/postgresql@sha256:42a8200d35971f931b869ef5252d996e137c6beb4b8f1b6d2181dc7d1b6f62e0",
+      "image_id": "sha256:36c830a13824e512bc2c0c982c2f25b42b022cf5598ebc680db02a021abe252b",
+      "restart_policy": "unless-stopped",
+      "network": "bridge",
+      "published_ports": [
+        "5432:5432"
+      ],
+      "mounts": [
+        "/mnt/nas/services/postgres:/bitnami/postgresql",
+        "/mnt/nas/services/postgres/certs:/opt/bitnami/postgresql/certs"
+      ],
+      "env_names": [
+        "POSTGRESQL_PASSWORD",
+        "POSTGRESQL_POSTGRES_PASSWORD",
+        "POSTGRESQL_TLS_ENABLED",
+        "POSTGRESQL_TLS_CERT_FILE",
+        "POSTGRESQL_TLS_KEY_FILE"
+      ],
+      "secret_refs": [
+        {
+          "folder": "homelab",
+          "item": "postgres/service",
+          "fields": [
+            "password",
+            "postgres_password"
+          ]
+        }
+      ],
+      "safety_notes": [
+        "Preserve /mnt/nas/services/postgres data directory on any migration. Do not delete core dump files or cert material without explicit approval."
+      ]
+    }
+  ],
+  "observed_persistent_service_dirs": [
+    "/mnt/nas/services/postgres",
+    "/mnt/nas/services/traefik",
+    "/mnt/nas/services/vaultwarden"
+  ],
+  "additional_service_dirs_seen_on_nas": [
+    "adguard",
+    "qbittorrent",
+    "radarr",
+    "docmost",
+    "repo",
+    "grafana",
+    "omada",
+    "filescope",
+    "jellyseerr",
+    "prowlarr",
+    "portainer",
+    "shared",
+    "homarr",
+    "jellyfin",
+    "sonarr"
+  ],
+  "redaction": "No secret values are stored in this file. Docker command token, database passwords, and private key material are represented only by Vaultwarden references."
+}

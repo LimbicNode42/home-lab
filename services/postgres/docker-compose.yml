@@ -1,0 +1,15 @@
+# Candidate desired state for the existing Postgres deployment.
+# Do not apply blindly. Preserve the existing data directory.
+
+services:
+  postgres:
+    image: bitnamilegacy/postgresql@sha256:42a8200d35971f931b869ef5252d996e137c6beb4b8f1b6d2181dc7d1b6f62e0
+    container_name: postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    env_file:
+      - .env
+    volumes:
+      - /mnt/nas/services/postgres:/bitnami/postgresql
+      - /mnt/nas/services/postgres/certs:/opt/bitnami/postgresql/certs

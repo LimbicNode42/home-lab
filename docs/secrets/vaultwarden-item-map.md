@@ -10,6 +10,8 @@ Status: initial non-secret import map. Values live in Ben's personal Vaultwarden
 | Vaultwarden database connection | `homelab` | `vaultwarden/database` | `database_url`, `host`, `port`, `database`, `username`, `password`, `sslmode` | `database_url` is secret-bearing because it includes credentials. |
 | Vaultwarden admin UI token | `homelab` | `vaultwarden/admin` | `admin_token`, `service_url`, `scope`, `rotation_interval_days` | Only create/use if the admin UI is intentionally enabled. |
 | Postgres CA certificate path | `homelab` | `postgres/ca` | `ca_cert_path` | Reference path only; do not commit cert private keys. |
+| Shared Postgres service credentials | `homelab` | `postgres/service` | `password`, `postgres_password`, `host`, `port`, `tls_enabled`, `tls_cert_path`, `tls_key_path` | Values render to `services/postgres/.env`; `tls_key_path` is a path only, not private-key content. |
+| Cloudflare Tunnel token for critical | `homelab` | `cloudflare/tunnel-critical` | `tunnel_token`, `hostname_scope`, `local_origin` | Token used by the `cloudflare` container on critical; never commit the literal token or Docker command containing it. |
 
 ## Render mapping
 
