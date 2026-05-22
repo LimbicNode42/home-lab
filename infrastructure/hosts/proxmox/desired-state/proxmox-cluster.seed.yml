@@ -1,0 +1,37 @@
+# Proxmox cluster desired-state seed
+# Candidate only: compare to fresh pvecm/pvesh output before applying anything.
+metadata:
+  generated_at: "2026-05-23"
+  source_artifact: "inventory/homelab-discovery-summary.json"
+cluster:
+  name: "Nippon"
+  nodes:
+    - name: "emperor"
+      management_ip: "192.168.0.6"
+      online_at_snapshot: true
+    - name: "jester"
+      management_ip: "192.168.0.8"
+      online_at_snapshot: true
+    - name: "shogun"
+      management_ip: "192.168.0.7"
+      online_at_snapshot: true
+    - name: "tori"
+      management_ip: "192.168.0.20"
+      online_at_snapshot: true
+    - name: "toyota"
+      management_ip: "192.168.0.21"
+      online_at_snapshot: true
+  storage:
+    - name: "local"
+      type: "dir"
+      shared: null
+      content: "snippets,backup,iso,rootdir,images,vztmpl"
+    - name: "NAS"
+      type: "nfs"
+      shared: true
+      content: "vztmpl,images,rootdir,import,iso,backup,snippets"
+  known_risks:
+    - id: "qdevice-on-nas-vm-deadlock"
+      summary: "qdevice/qnetd dependency has been observed at NAS VM IP 192.168.0.250; hosting qdevice on cluster-dependent NAS VM can deadlock quorum."
+      desired_resolution: "Move qdevice/qnetd to infrastructure that does not require this Proxmox cluster quorum to boot."
+      apply_requires_explicit_approval: true

@@ -1,0 +1,100 @@
+# Host inventory seed
+# Generated from existing sanitized discovery artifacts. Evidence snapshot, not fresh live state.
+metadata:
+  generated_at: "2026-05-23"
+  source_artifacts:
+    - inventory/ssh-host-summary.json
+    - inventory/homelab-discovery-summary.json
+  status: "candidate host desired-state seed; refresh before applying"
+hosts:
+  - name: "emperor"
+    ansible_host: "192.168.0.6"
+    observed_os: "Debian GNU/Linux 13 (trixie)"
+    has_pve: true
+    has_docker: false
+    roles:
+      - "proxmox_node"
+    proxmox:
+      cluster: "Nippon"
+      online_at_snapshot: true
+    evidence: "inventory/ssh-host-summary.json generated 2026-05-21"
+  - name: "shogun"
+    ansible_host: "192.168.0.7"
+    observed_os: "Debian GNU/Linux 12 (bookworm)"
+    has_pve: true
+    has_docker: false
+    roles:
+      - "proxmox_node"
+    proxmox:
+      cluster: "Nippon"
+      online_at_snapshot: true
+    evidence: "inventory/ssh-host-summary.json generated 2026-05-21"
+  - name: "jester"
+    ansible_host: "192.168.0.8"
+    observed_os: "Debian GNU/Linux 12 (bookworm)"
+    has_pve: true
+    has_docker: true
+    roles:
+      - "proxmox_node"
+      - "docker_host"
+    proxmox:
+      cluster: "Nippon"
+      online_at_snapshot: true
+    evidence: "inventory/ssh-host-summary.json generated 2026-05-21"
+  - name: "tori"
+    ansible_host: "192.168.0.20"
+    observed_os: "Debian GNU/Linux 13 (trixie)"
+    has_pve: true
+    has_docker: false
+    roles:
+      - "proxmox_node"
+    proxmox:
+      cluster: "Nippon"
+      online_at_snapshot: true
+    evidence: "inventory/ssh-host-summary.json generated 2026-05-21"
+  - name: "toyota"
+    ansible_host: "192.168.0.21"
+    observed_os: "Debian GNU/Linux 13 (trixie)"
+    has_pve: true
+    has_docker: false
+    roles:
+      - "proxmox_node"
+    proxmox:
+      cluster: "Nippon"
+      online_at_snapshot: true
+    evidence: "inventory/ssh-host-summary.json generated 2026-05-21"
+  - name: "critical"
+    ansible_host: "192.168.0.50"
+    observed_os: "Alpine Linux v3.18"
+    has_pve: true
+    has_docker: true
+    roles:
+      - "lxc_guest"
+      - "critical_services_host"
+      - "docker_host"
+    evidence: "inventory/ssh-host-summary.json generated 2026-05-21"
+  - name: "dev"
+    ansible_host: "192.168.0.51"
+    observed_os: "Ubuntu 24.04 LTS"
+    has_pve: true
+    has_docker: true
+    roles:
+      - "docker_host"
+      - "app_lxc_guest"
+    evidence: "inventory/ssh-host-summary.json generated 2026-05-21"
+  - name: "staging"
+    ansible_host: "192.168.0.52"
+    observed_os: "Ubuntu 24.04 LTS"
+    has_pve: true
+    has_docker: false
+    roles:
+      - "app_lxc_guest"
+    evidence: "inventory/ssh-host-summary.json generated 2026-05-21"
+  - name: "prod"
+    ansible_host: "192.168.0.53"
+    observed_os: "Ubuntu 24.04 LTS"
+    has_pve: true
+    has_docker: false
+    roles:
+      - "app_lxc_guest"
+    evidence: "inventory/ssh-host-summary.json generated 2026-05-21"

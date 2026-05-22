@@ -1,0 +1,35 @@
+all:
+  vars:
+    ansible_user: root
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=accept-new"
+  children:
+    proxmox_nodes:
+      hosts:
+        emperor:
+          ansible_host: 192.168.0.6
+        jester:
+          ansible_host: 192.168.0.8
+        shogun:
+          ansible_host: 192.168.0.7
+        tori:
+          ansible_host: 192.168.0.20
+        toyota:
+          ansible_host: 192.168.0.21
+    lxc_guests:
+      hosts:
+        critical:
+          ansible_host: 192.168.0.50
+        dev:
+          ansible_host: 192.168.0.51
+        prod:
+          ansible_host: 192.168.0.53
+        staging:
+          ansible_host: 192.168.0.52
+    docker_hosts:
+      hosts:
+        critical:
+          ansible_host: 192.168.0.50
+        dev:
+          ansible_host: 192.168.0.51
+        jester:
+          ansible_host: 192.168.0.8
