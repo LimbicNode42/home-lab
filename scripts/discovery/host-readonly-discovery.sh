@@ -39,7 +39,7 @@ while read -r name ip; do
   [ -n "${name:-}" ] || continue
   if [ "$first" -eq 0 ]; then printf ',\n' >> "$OUT"; fi
   first=0
-  ssh -o BatchMode=yes -o ConnectTimeout=5 "$ip" 'hostname; . /etc/os-release 2>/dev/null && echo "$PRETTY_NAME" || true; uname -a; uptime; systemctl --failed --no-pager --plain 2>/dev/null || true; df -hT; mount | head -n 80; ss -tulpn 2>/dev/null || true; command -v docker >/dev/null 2>&1 && docker ps --format "{{.Names}} {{.Image}} {{.Status}} {{.Ports}}" || true' > "$PAYLOAD_TMP" 2>&1 || true
+  ssh -n -o BatchMode=yes -o ConnectTimeout=5 "$ip" 'hostname; . /etc/os-release 2>/dev/null && echo "$PRETTY_NAME" || true; uname -a; uptime; systemctl --failed --no-pager --plain 2>/dev/null || true; df -hT; mount | head -n 80; ss -tulpn 2>/dev/null || true; command -v docker >/dev/null 2>&1 && docker ps --format "{{.Names}} {{.Image}} {{.Status}} {{.Ports}}" || true' > "$PAYLOAD_TMP" 2>&1 || true
   python3 - "$name" "$ip" "$PAYLOAD_TMP" <<'PY' >> "$OUT"
 import json
 import sys
