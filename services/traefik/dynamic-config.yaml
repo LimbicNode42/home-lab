@@ -1,0 +1,55 @@
+http:
+  routers:
+    jellyfin:
+      entryPoints: web
+      rule: "Host(`jellyfin.wheeler-network.com`)"
+      service: jellyfin
+    traefik:
+      entryPoints: web
+      rule: "Host(`traefik.wheeler-network.com`)"
+      service: traefik
+    nas:
+      entryPoints: web
+      rule: "Host(`nas.wheeler-network.com`)"
+      service: nas
+    cluster:
+      entryPoints: websecure
+      rule: "Host(`cluster.wheeler-network.com`)"
+      service: cluster
+    vault:
+      entryPoints: websecure
+      rule: "Host(`vault.wheeler-network.com`)"
+      service: vault
+
+  services:
+    jellyfin:
+      loadBalancer:
+        servers:
+          - url: http://192.168.0.249:8096
+    traefik:
+      loadBalancer:
+        servers:
+          - url: http://192.168.0.50:8080
+    nas:
+      loadBalancer:
+        servers:
+          - url: http://192.168.0.250
+    cluster:
+      loadBalancer:
+        passHostHeader: true
+        serversTransport: "proxmox"
+        sticky:
+          cookie: {}
+        servers:
+          - url: https://192.168.0.6:8006
+          - url: https://192.168.0.7:8006
+          - url: https://192.168.0.8:8006
+          - url: https://192.168.0.9:8006
+    vault:
+      loadBalancer:
+        servers:
+          - url: http://192.168.0.50:8084
+
+  serversTransports:
+    proxmox:
+      insecureSkipVerify: true
