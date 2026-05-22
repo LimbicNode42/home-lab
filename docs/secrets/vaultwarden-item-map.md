@@ -31,9 +31,10 @@ Read-only evidence captured on 2026-05-22:
 - Public domain exposed by `/api/config`: `https://vault.wheeler-network.com`
 - API config version: `2025.12.0`
 - API config git hash: `e7e4b9a8`
-- API config reports `disableUserRegistration=false`, so the candidate `.env.example` preserves `SIGNUPS_ALLOWED=true` until hardening is explicitly approved.
+- API config originally reported `disableUserRegistration=false`; approved migration target sets `SIGNUPS_ALLOWED=false` to disable new registration.
 - Previous discovery and credentialed read-only inspect observed container `vaultwarden` on host `critical` / `192.168.0.50`, published as `0.0.0.0:8084->80/tcp`, healthy at the time of inspection.
-- Live inspect artifact: `inventory/discovery/vaultwarden-live-inspect-2026-05-22.json`.
+- Approved migration target: compose-managed container with `SIGNUPS_ALLOWED=false` and image pinned to the running container digest `vaultwarden/server@sha256:9a8eec71f4a52411cc43edc7a50f33e9b6f62b5baca0dd95f0c6e7fd60f1a341`.
+- Live application is pending a controlled apply window.
 
 Machine-readable import seed: `inventory/discovery/vaultwarden-import-2026-05-22.json`.
 

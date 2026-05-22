@@ -9,7 +9,8 @@ Status: initial IaC/CaC import seed is committed as candidate desired state only
 - Local URL: `http://192.168.0.50:8084`
 - Public domain from `/api/config`: `https://vault.wheeler-network.com`
 - Host: `critical` / `192.168.0.50`
-- Previous discovery and credentialed read-only inspect: Docker container `vaultwarden`, image `vaultwarden/server:latest`, user `1001:1003`, restart policy `unless-stopped`, published as `0.0.0.0:8084->80/tcp`, default bridge network, `/mnt/nas/services/vaultwarden/data` mounted at `/data`, healthy at inspection time.
+- Previous discovery and credentialed read-only inspect: Docker container `vaultwarden`, image `vaultwarden/server:latest` / running digest `sha256:9a8eec71f4a52411cc43edc7a50f33e9b6f62b5baca0dd95f0c6e7fd60f1a341`, user `1001:1003`, restart policy `unless-stopped`, published as `0.0.0.0:8084->80/tcp`, default bridge network, `/mnt/nas/services/vaultwarden/data` mounted at `/data`, healthy at inspection time.
+- Approved desired-state target: compose-managed container, pinned running image digest, new user registration disabled.
 - Vault selection: Ben's personal Vaultwarden vault
 - Folder for homelab material: `homelab`
 
@@ -68,12 +69,11 @@ Read-only validation first:
 docker compose -f services/vaultwarden/docker-compose.yml --env-file services/vaultwarden/.env.example config
 ```
 
-The candidate compose file has been aligned to sanitized `docker inspect` evidence for image, user, restart policy, port binding, data mount, network mode, and healthcheck. Applying it would still recreate/restart the critical secrets service and requires a separate explicit approval plus rollback plan.
+The approved migration target preserves the same `DATABASE_URL` and `/data` mount, so existing users and master passwords will be unchanged. Applying it requires a controlled restart/recreate of the critical secrets service. The target state is prepared in Git and ready for a controlled apply window.
 
 ## Remaining decisions
 
-- Whether user registration should be disabled as a separate hardening task.
-- Whether to pin `vaultwarden/server` by version or digest instead of tracking `latest`.
-- Whether to migrate the running raw container into compose-managed lifecycle.
+- Whether to introduce a Vaultwarden admin token for controlled admin UI access.
+- Whether to rotate any credentials that were historically committed before this repo was sanitized.
 
 See also: `../../docs/secrets/vaultwarden-secrets-backend.md`.

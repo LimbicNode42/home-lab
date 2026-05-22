@@ -6,7 +6,8 @@
 
 services:
   vaultwarden:
-    image: vaultwarden/server:latest
+    # Pinned to the currently running container image inspected on 2026-05-22.
+    image: vaultwarden/server@sha256:9a8eec71f4a52411cc43edc7a50f33e9b6f62b5baca0dd95f0c6e7fd60f1a341
     container_name: vaultwarden
     restart: unless-stopped
     user: "1001:1003"
