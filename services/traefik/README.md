@@ -29,9 +29,15 @@ Secrets are not stored in Git. Required secret refs:
 - Item: `cloudflare/dns-api-token`
 - Field: `CF_DNS_API_TOKEN`
 
+Cloudflare Tunnel routing note:
+
+The Cloudflare Zero Trust tunnel publishes `vault.wheeler-network.com` to the local origin `http://192.168.0.50:80`, so the Vaultwarden router must be bound to Traefik's `web` entrypoint. Binding Vaultwarden only to `websecure` makes direct HTTPS-to-Traefik tests work, but tunnel traffic returns Traefik's default 404.
+
 Recovery note, 2026-05-22:
 
 OpenClaw had left the live Traefik container running from CLI flags instead of `/traefik.toml`, and `/mnt/nas/services/traefik/dynamic-config.yaml` was missing. Hermes restored `dynamic-config.yaml`, corrected the dashboard upstream from HTTPS to HTTP, and recreated `proxy` with `--configFile=/traefik.toml`.
+
+Operational note: the live config is on the NAS bind mount. Traefik v2.5 did not always auto-reload a changed `dynamic-config.yaml` from that mount via the file provider watcher; if the API/dashboard still shows stale routers after copying a config change, restart only the `proxy` container and re-check `/api/http/routers`.
 
 Known follow-up:
 
