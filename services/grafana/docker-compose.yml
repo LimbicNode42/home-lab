@@ -1,0 +1,13 @@
+# Candidate desired-state seed for grafana.
+# Generated from sanitized archived run scripts and NAS directory metadata.
+# Do not apply blindly; verify live intent, secrets, image digests, and port conflicts first.
+services:
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: grafana
+    user: "1001:1003"
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    volumes:
+      - /mnt/nas/services/grafana/data:/var/lib/grafana

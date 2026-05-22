@@ -1,0 +1,20 @@
+# Candidate desired-state seed for jellyfin.
+# Generated from sanitized archived run scripts and NAS directory metadata.
+# Do not apply blindly; verify live intent, secrets, image digests, and port conflicts first.
+services:
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    platform: linux/arm64
+    privileged: true
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      PUID: "1001"
+      PGID: "1003"
+      TZ: Australia/Hobart
+    volumes:
+      - /mnt/nas/services/jellyfin/config:/config
+      - /mnt/nas/services/jellyfin/cache:/cache
+      - /mnt/nas/media/movies:/movies
+      - /mnt/nas/media/tv:/tv

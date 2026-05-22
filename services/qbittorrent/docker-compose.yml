@@ -1,0 +1,22 @@
+# Candidate desired-state seed for qbittorrent.
+# Generated from sanitized archived run scripts and NAS directory metadata.
+# Do not apply blindly; verify live intent, secrets, image digests, and port conflicts first.
+services:
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: torrent
+    user: "1001:1003"
+    restart: unless-stopped
+    environment:
+      PUID: "1001"
+      PGID: "1003"
+      TZ: Australia/Sydney
+      WEBUI_PORT: "8081"
+      TORRENTING_PORT: "6881"
+    ports:
+      - "8081:8081"
+      - "6881:6881"
+      - "6881:6881/udp"
+    volumes:
+      - /mnt/nas/services/qbittorrent/appdata:/config
+      - /mnt/nas/media/downloads:/downloads

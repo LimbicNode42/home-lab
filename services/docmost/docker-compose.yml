@@ -1,0 +1,18 @@
+# Candidate desired-state seed for docmost.
+# Generated from sanitized archived run scripts and NAS directory metadata.
+# Do not apply blindly; verify live intent, secrets, image digests, and port conflicts first.
+services:
+  docmost:
+    image: docmost/docmost:latest
+    container_name: docs
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      APP_URL: https://docs.wheeler-network.com
+      REDIS_URL: redis://192.168.0.50:6379
+    ports:
+      - "3003:3000"
+    volumes:
+      - /mnt/nas/services/postgres/certs/postgres.crt:/opt/postgres/certs/postgres.crt:ro
+      - /mnt/nas/services/docmost/appdata:/app/data/storage
