@@ -10,7 +10,11 @@ Use this directory for shared platform and host-level desired state, including:
 - Base OS and host configuration
 - Shared monitoring and alerting
 
-Current status: placeholder. Existing legacy scripts have been preserved under `archive/legacy-tools/2026-05-21-import/` and should be reviewed before promotion.
+Current status: host-level IaC/CaC scaffolding has started under `hosts/`. Existing legacy scripts have been preserved under `archive/legacy-tools/2026-05-21-import/` and should be reviewed before promotion.
+
+## Active areas
+
+- `hosts/` - host/platform inventory seeds, Proxmox cluster desired-state seeds, NAS notes, Ansible workspace, and host import runbooks.
 
 ## Rules
 

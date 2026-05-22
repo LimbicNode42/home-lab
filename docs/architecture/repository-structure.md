@@ -41,9 +41,9 @@ Human-readable architecture notes, runbooks, migration plans, service catalogues
 
 ### `infrastructure/`
 
-Future home for host, network, Proxmox, NAS, Terraform/OpenTofu, Ansible, and other infrastructure-as-code / configuration-as-code assets.
+Host, network, Proxmox, NAS, Terraform/OpenTofu, Ansible, and other infrastructure-as-code / configuration-as-code assets.
 
-Current status: placeholder. Prefer documenting/importing existing live state before applying changes.
+Current status: host-level IaC/CaC scaffolding has started under `infrastructure/hosts/`. Prefer documenting/importing existing live state before applying changes.
 
 ### `inventory/`
 
