@@ -34,7 +34,7 @@ Read-only evidence captured on 2026-05-22:
 - API config originally reported `disableUserRegistration=false`; approved migration target sets `SIGNUPS_ALLOWED=false` to disable new registration.
 - Previous discovery and credentialed read-only inspect observed container `vaultwarden` on host `critical` / `192.168.0.50`, published as `0.0.0.0:8084->80/tcp`, healthy at the time of inspection.
 - Approved migration target: compose-managed container with `SIGNUPS_ALLOWED=false` and image pinned to the running container digest `vaultwarden/server@sha256:9a8eec71f4a52411cc43edc7a50f33e9b6f62b5baca0dd95f0c6e7fd60f1a341`.
-- Live application is pending a controlled apply window.
+- Live application is pending a controlled apply window. Apply script: `scripts/services/apply-vaultwarden-compose.sh`.
 
 Machine-readable import seed: `inventory/discovery/vaultwarden-import-2026-05-22.json`.
 

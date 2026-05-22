@@ -69,7 +69,11 @@ Read-only validation first:
 docker compose -f services/vaultwarden/docker-compose.yml --env-file services/vaultwarden/.env.example config
 ```
 
-The approved migration target preserves the same `DATABASE_URL` and `/data` mount, so existing users and master passwords will be unchanged. Applying it requires a controlled restart/recreate of the critical secrets service. The target state is prepared in Git and ready for a controlled apply window.
+The approved migration target preserves the same `DATABASE_URL` and `/data` mount, so existing users and master passwords will be unchanged. Applying it requires a controlled restart/recreate of the critical secrets service. The target state is prepared in Git and can be applied from the repo root on `critical` with:
+
+```sh
+scripts/services/apply-vaultwarden-compose.sh
+```
 
 ## Remaining decisions
 
