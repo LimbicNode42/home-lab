@@ -1,0 +1,165 @@
+{
+  "generated_at_utc": "2026-05-22T13:25:00Z",
+  "source": "credentialed read-only docker inspect vaultwarden on critical / 192.168.0.50",
+  "container": {
+    "id_prefix": "bc850c9c8863",
+    "name": "vaultwarden",
+    "created": "2026-04-18T08:15:36.990612336Z",
+    "state": {
+      "Status": "running",
+      "Running": true,
+      "Paused": false,
+      "Restarting": false,
+      "OOMKilled": false,
+      "Dead": false,
+      "ExitCode": 0,
+      "Error": "",
+      "StartedAt": "2026-05-22T11:40:23.218534417Z",
+      "FinishedAt": "2026-05-22T11:40:22.38294629Z",
+      "Health": {
+        "Status": "healthy",
+        "FailingStreak": 0
+      }
+    }
+  },
+  "config": {
+    "image": "vaultwarden/server:latest",
+    "image_labels": {
+      "org.opencontainers.image.created": "2026-04-13T21:11:07+00:00",
+      "org.opencontainers.image.description": "Unofficial Bitwarden compatible server written in Rust - 1.35.7",
+      "org.opencontainers.image.documentation": "https://github.com/dani-garcia/vaultwarden/wiki",
+      "org.opencontainers.image.licenses": "AGPL-3.0-only",
+      "org.opencontainers.image.revision": "e7e4b9a86d4effaadd67e3465d36100d47d0f073",
+      "org.opencontainers.image.source": "https://github.com/dani-garcia/vaultwarden",
+      "org.opencontainers.image.url": "https://github.com/dani-garcia/vaultwarden",
+      "org.opencontainers.image.version": "1.35.7"
+    },
+    "user": "1001:1003",
+    "env": [
+      {
+        "name": "DATABASE_URL",
+        "value": "<redacted>",
+        "secret_like": true
+      },
+      {
+        "name": "DEBIAN_FRONTEND",
+        "value": "noninteractive",
+        "secret_like": false
+      },
+      {
+        "name": "DOMAIN",
+        "value": "https://vault.wheeler-network.com",
+        "secret_like": false
+      },
+      {
+        "name": "PATH",
+        "value": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "secret_like": false
+      },
+      {
+        "name": "ROCKET_ADDRESS",
+        "value": "0.0.0.0",
+        "secret_like": false
+      },
+      {
+        "name": "ROCKET_PORT",
+        "value": "80",
+        "secret_like": false
+      },
+      {
+        "name": "ROCKET_PROFILE",
+        "value": "release",
+        "secret_like": false
+      }
+    ],
+    "entrypoint": null,
+    "cmd": [
+      "/start.sh"
+    ],
+    "healthcheck": {
+      "Test": [
+        "CMD",
+        "/healthcheck.sh"
+      ],
+      "Interval": 60000000000,
+      "Timeout": 10000000000
+    },
+    "exposed_ports": [
+      "80/tcp"
+    ]
+  },
+  "database_url_shape": {
+    "scheme": "postgresql",
+    "username_present": true,
+    "password_present": true,
+    "host": "192.168.0.50",
+    "port": 5432,
+    "database": "vaultwarden",
+    "sslmode": "disable",
+    "query_keys": [
+      "sslmode"
+    ]
+  },
+  "host_config": {
+    "restart_policy": {
+      "Name": "unless-stopped",
+      "MaximumRetryCount": 0
+    },
+    "binds": [
+      "/mnt/nas/services/vaultwarden/data/:/data/"
+    ],
+    "port_bindings": {
+      "80/tcp": [
+        {
+          "HostIp": "",
+          "HostPort": "8084"
+        }
+      ]
+    },
+    "network_mode": "default",
+    "privileged": false,
+    "readonly_rootfs": false
+  },
+  "mounts": [
+    {
+      "Type": "bind",
+      "Source": "/mnt/nas/services/vaultwarden/data",
+      "Destination": "/data",
+      "Mode": "",
+      "RW": true,
+      "Propagation": "rprivate"
+    }
+  ],
+  "networks": {
+    "bridge": {
+      "gateway": "172.17.0.1",
+      "ip_address": "172.17.0.4",
+      "aliases": null
+    }
+  },
+  "ports": {
+    "80/tcp": [
+      {
+        "HostIp": "0.0.0.0",
+        "HostPort": "8084"
+      },
+      {
+        "HostIp": "::",
+        "HostPort": "8084"
+      }
+    ]
+  },
+  "closed_unknowns": [
+    "image tag is vaultwarden/server:latest",
+    "user is 1001:1003",
+    "restart policy is unless-stopped",
+    "database sslmode is disable",
+    "only /mnt/nas/services/vaultwarden/data is mounted",
+    "admin token env var is not present in docker inspect env",
+    "network mode is default bridge"
+  ],
+  "safety_notes": [
+    "Secret values were redacted; raw docker inspect output was not committed.",
+    "No live mutation was performed."
+  ]
+}

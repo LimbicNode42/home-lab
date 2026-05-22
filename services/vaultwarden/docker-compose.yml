@@ -18,9 +18,8 @@ services:
       - /mnt/nas/services/vaultwarden/data:/data
       # Enable only if the production DATABASE_URL uses sslmode=verify-full.
       # - /mnt/nas/services/postgres/certs/postgres.crt:/opt/postgres/certs/postgres.crt:ro
+    # Live docker inspect on 2026-05-22 shows the image-provided healthcheck.
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:80/alive"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      test: ["CMD", "/healthcheck.sh"]
+      interval: 60s
+      timeout: 10s
