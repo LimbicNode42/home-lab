@@ -1,0 +1,26 @@
+# Candidate desired state for the existing Vaultwarden deployment.
+#
+# Status: imported/read-only from the live service and archived bootstrap script.
+# Do not apply blindly. Compare against `docker inspect vaultwarden` on critical
+# before replacing the running container.
+
+services:
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    restart: unless-stopped
+    user: "1001:1003"
+    ports:
+      - "8084:80"
+    env_file:
+      - .env
+    volumes:
+      - /mnt/nas/services/vaultwarden/data:/data
+      # Enable only if the production DATABASE_URL uses sslmode=verify-full.
+      # - /mnt/nas/services/postgres/certs/postgres.crt:/opt/postgres/certs/postgres.crt:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:80/alive"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s

@@ -266,6 +266,18 @@ For Ben's local `home-lab` repo copy on `192.168.0.100`:
 - Treat `BW_SESSION` as a secret.
 - When in doubt, output item names and field names, not values.
 
+## Import artifacts
+
+Initial Vaultwarden IaC/CaC import seed:
+
+- Service candidate desired state: `services/vaultwarden/docker-compose.yml`
+- Local env template: `services/vaultwarden/.env.example`
+- Env render map: `services/vaultwarden/vaultwarden.env.map.example`
+- Canonical item/field map: `docs/secrets/vaultwarden-item-map.md`
+- Machine-readable evidence: `inventory/discovery/vaultwarden-import-2026-05-22.json`
+
+These files are non-secret and should be treated as candidate desired state until a credentialed read-only `docker inspect vaultwarden` on `critical` confirms the exact live container shape.
+
 ## Resolved decisions
 
 - Vault: Ben's personal Vaultwarden vault.

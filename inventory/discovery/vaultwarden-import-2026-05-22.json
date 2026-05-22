@@ -1,0 +1,66 @@
+{
+  "generated_at_utc": "2026-05-22T13:17:03Z",
+  "scope": "read-only Vaultwarden import seed",
+  "source_evidence": {
+    "http_probe": {
+      "url": "http://192.168.0.50:8084/",
+      "status": 200,
+      "server": "Rocket",
+      "security_headers_observed": [
+        "x-frame-options",
+        "x-content-type-options",
+        "permissions-policy",
+        "referrer-policy",
+        "x-robots-tag",
+        "content-security-policy"
+      ]
+    },
+    "public_api_config": {
+      "url": "http://192.168.0.50:8084/api/config",
+      "server_name": "Vaultwarden",
+      "server_url": "https://github.com/dani-garcia/vaultwarden",
+      "version": "2025.12.0",
+      "git_hash": "e7e4b9a8",
+      "environment_vault": "https://vault.wheeler-network.com",
+      "disable_user_registration": false
+    },
+    "previous_ssh_inventory": {
+      "host": "critical",
+      "ip": "192.168.0.50",
+      "os": "Alpine Linux v3.18",
+      "container_name": "vaultwarden",
+      "container_image_observed": "e0d16b588440",
+      "container_status_observed": "Up 7 minutes (healthy)",
+      "published_port": "0.0.0.0:8084->80/tcp",
+      "nas_data_path_from_archive": "/mnt/nas/services/vaultwarden/data"
+    },
+    "archived_bootstrap_script": {
+      "path": "archive/legacy-tools/2026-05-21-import/critical/vaultwarden/init.sh",
+      "image": "vaultwarden/server:latest",
+      "user": "1001:1003",
+      "restart_policy": "unless-stopped",
+      "domain": "https://vault.wheeler-network.com",
+      "data_volume": "/mnt/nas/services/vaultwarden/data:/data",
+      "postgres_cert_mount_candidate": "/mnt/nas/services/postgres/certs/postgres.crt:/opt/postgres/certs/postgres.crt"
+    }
+  },
+  "iac_cac_artifacts_created": [
+    "services/vaultwarden/docker-compose.yml",
+    "services/vaultwarden/.env.example",
+    "services/vaultwarden/vaultwarden.env.map.example",
+    "docs/secrets/vaultwarden-item-map.md"
+  ],
+  "unknowns_requiring_credentialed_read_only_check": [
+    "Exact running image tag or digest",
+    "Exact container environment values, redacted to names only",
+    "Whether DATABASE_URL uses sslmode=disable or sslmode=verify-full",
+    "Whether ADMIN_TOKEN/admin UI is enabled",
+    "Exact Docker network attachments and labels",
+    "Whether the container was launched by compose, raw docker run, or another supervisor"
+  ],
+  "safety_notes": [
+    "No live Vaultwarden mutation was performed during this import seed.",
+    "Do not apply compose until docker inspect output has been compared and secrets have been moved to Vaultwarden references.",
+    "Current public API reports user registration enabled; hardening by disabling signups should be a separate approved live change."
+  ]
+}
