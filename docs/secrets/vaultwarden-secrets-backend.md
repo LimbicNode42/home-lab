@@ -275,8 +275,9 @@ Initial Vaultwarden IaC/CaC import seed:
 - Env render map: `services/vaultwarden/vaultwarden.env.map.example`
 - Canonical item/field map: `docs/secrets/vaultwarden-item-map.md`
 - Machine-readable evidence: `inventory/discovery/vaultwarden-import-2026-05-22.json`
+- Sanitized credentialed live inspect: `inventory/discovery/vaultwarden-live-inspect-2026-05-22.json`
 
-These files are non-secret and should be treated as candidate desired state until a credentialed read-only `docker inspect vaultwarden` on `critical` confirms the exact live container shape.
+These files are non-secret. The candidate compose has now been aligned with sanitized credentialed `docker inspect` evidence; applying it would still recreate/restart a critical secrets service and needs a separate explicit approval plus rollback plan.
 
 ## Resolved decisions
 

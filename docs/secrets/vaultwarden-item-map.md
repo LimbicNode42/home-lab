@@ -32,7 +32,8 @@ Read-only evidence captured on 2026-05-22:
 - API config version: `2025.12.0`
 - API config git hash: `e7e4b9a8`
 - API config reports `disableUserRegistration=false`, so the candidate `.env.example` preserves `SIGNUPS_ALLOWED=true` until hardening is explicitly approved.
-- Previous SSH inventory observed container `vaultwarden` on host `critical` / `192.168.0.50`, published as `0.0.0.0:8084->80/tcp`, healthy at the time of that snapshot.
+- Previous discovery and credentialed read-only inspect observed container `vaultwarden` on host `critical` / `192.168.0.50`, published as `0.0.0.0:8084->80/tcp`, healthy at the time of inspection.
+- Live inspect artifact: `inventory/discovery/vaultwarden-live-inspect-2026-05-22.json`.
 
 Machine-readable import seed: `inventory/discovery/vaultwarden-import-2026-05-22.json`.
 
@@ -46,11 +47,9 @@ ssh critical 'docker inspect vaultwarden' > /tmp/vaultwarden.inspect.json
 
 Redact secret values before copying any derived data into Git. In particular, do not commit `DATABASE_URL`, `ADMIN_TOKEN`, SMTP passwords, YubiKey secrets, Duo secrets, or generated keys.
 
-Open unknowns:
+Open unknowns after credentialed read-only inspect:
 
-- Exact running image tag or digest.
-- Exact secret-related env var names currently set.
-- Whether `DATABASE_URL` uses `sslmode=disable` or `sslmode=verify-full`.
-- Whether the Postgres CA cert mount is currently active.
-- Whether admin UI is enabled.
-- Whether user registration should be disabled as a separate security hardening change.
+- Whether the container was originally launched by raw `docker run`, compose, or another supervisor; `docker inspect` shows no compose labels.
+- Whether user registration should be disabled as a separate approved hardening change.
+- Whether to move from `vaultwarden/server:latest` to a pinned tag or digest.
+- Whether to migrate the service to compose management; this would recreate/restart the critical secrets service and needs an explicit rollback plan.

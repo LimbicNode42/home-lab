@@ -50,17 +50,26 @@
     "services/vaultwarden/vaultwarden.env.map.example",
     "docs/secrets/vaultwarden-item-map.md"
   ],
-  "unknowns_requiring_credentialed_read_only_check": [
-    "Exact running image tag or digest",
-    "Exact container environment values, redacted to names only",
-    "Whether DATABASE_URL uses sslmode=disable or sslmode=verify-full",
-    "Whether ADMIN_TOKEN/admin UI is enabled",
-    "Exact Docker network attachments and labels",
-    "Whether the container was launched by compose, raw docker run, or another supervisor"
-  ],
+  "credentialed_read_only_followup": {
+    "status": "completed",
+    "artifact": "inventory/discovery/vaultwarden-live-inspect-2026-05-22.json",
+    "confirmed": [
+      "Running image tag is vaultwarden/server:latest",
+      "Container user is 1001:1003",
+      "Restart policy is unless-stopped",
+      "DATABASE_URL uses sslmode=disable",
+      "Only /mnt/nas/services/vaultwarden/data is bind-mounted into /data",
+      "ADMIN_TOKEN is not present in docker inspect environment",
+      "Network mode is default bridge",
+      "Healthcheck is CMD /healthcheck.sh with 60s interval and 10s timeout"
+    ],
+    "remaining_unknowns": [
+      "Whether the container was originally launched by raw docker run, compose, or another supervisor; docker inspect shows no compose labels."
+    ]
+  },
   "safety_notes": [
-    "No live Vaultwarden mutation was performed during this import seed.",
-    "Do not apply compose until docker inspect output has been compared and secrets have been moved to Vaultwarden references.",
+    "No live Vaultwarden mutation was performed during this import seed or credentialed follow-up.",
+    "The candidate compose now matches the observed non-secret runtime shape; applying it would still recreate/restart a critical secrets service and needs a separate explicit approval plus rollback plan.",
     "Current public API reports user registration enabled; hardening by disabling signups should be a separate approved live change."
   ]
 }

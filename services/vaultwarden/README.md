@@ -9,7 +9,7 @@ Status: initial IaC/CaC import seed is committed as candidate desired state only
 - Local URL: `http://192.168.0.50:8084`
 - Public domain from `/api/config`: `https://vault.wheeler-network.com`
 - Host: `critical` / `192.168.0.50`
-- Previous discovery: Docker container `vaultwarden`, published as `0.0.0.0:8084->80/tcp`, healthy at snapshot time
+- Previous discovery and credentialed read-only inspect: Docker container `vaultwarden`, image `vaultwarden/server:latest`, user `1001:1003`, restart policy `unless-stopped`, published as `0.0.0.0:8084->80/tcp`, default bridge network, `/mnt/nas/services/vaultwarden/data` mounted at `/data`, healthy at inspection time.
 - Vault selection: Ben's personal Vaultwarden vault
 - Folder for homelab material: `homelab`
 
@@ -21,7 +21,8 @@ Status: initial IaC/CaC import seed is committed as candidate desired state only
 | `.env.example` | Non-secret env template. Copy/render to `.env` locally; real `.env` is ignored. |
 | `vaultwarden.env.map.example` | Vaultwarden folder/item/field references for rendering `.env`. |
 | `../../docs/secrets/vaultwarden-item-map.md` | Canonical item and field map for this service. |
-| `../../inventory/discovery/vaultwarden-import-2026-05-22.json` | Machine-readable import evidence and open unknowns. |
+| `../../inventory/discovery/vaultwarden-import-2026-05-22.json` | Machine-readable import seed and follow-up summary. |
+| `../../inventory/discovery/vaultwarden-live-inspect-2026-05-22.json` | Sanitized credentialed read-only `docker inspect` evidence. |
 
 ## Repository role
 
@@ -64,23 +65,15 @@ Do not commit `BW_SESSION`, `BW_CLIENTID`, `BW_CLIENTSECRET`, `BW_PASSWORD`, ren
 Read-only validation first:
 
 ```sh
-docker compose -f services/vaultwarden/docker-compose.yml config
+docker compose -f services/vaultwarden/docker-compose.yml --env-file services/vaultwarden/.env.example config
 ```
 
-Before any live apply, compare against the current container on `critical`:
+The candidate compose file has been aligned to sanitized `docker inspect` evidence for image, user, restart policy, port binding, data mount, network mode, and healthcheck. Applying it would still recreate/restart the critical secrets service and requires a separate explicit approval plus rollback plan.
 
-```sh
-ssh critical 'docker inspect vaultwarden' > /tmp/vaultwarden.inspect.json
-```
+## Remaining decisions
 
-Redact secrets before copying any derived information into Git. Applying this compose file would be a live mutation and needs explicit approval.
-
-## Known open questions
-
-- Exact running image tag/digest.
-- Whether live `DATABASE_URL` uses `sslmode=disable` or `sslmode=verify-full`.
-- Whether the Postgres CA cert mount is active.
-- Whether the admin UI token is enabled.
-- Whether signups should be disabled as a separate approved hardening task.
+- Whether user registration should be disabled as a separate hardening task.
+- Whether to pin `vaultwarden/server` by version or digest instead of tracking `latest`.
+- Whether to migrate the running raw container into compose-managed lifecycle.
 
 See also: `../../docs/secrets/vaultwarden-secrets-backend.md`.
