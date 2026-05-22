@@ -1,0 +1,17 @@
+# Candidate desired-state seed for prowlarr.
+# Generated from sanitized archived run scripts and NAS directory metadata.
+# Do not apply blindly; verify live intent, secrets, image digests, and port conflicts first.
+services:
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    user: "1001:1003"
+    restart: unless-stopped
+    environment:
+      PUID: "1001"
+      PGID: "1003"
+      TZ: Australia/Sydney
+    ports:
+      - "9696:9696"
+    volumes:
+      - /mnt/nas/services/prowlarr/config:/config

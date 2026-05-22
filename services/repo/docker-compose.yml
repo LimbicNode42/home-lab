@@ -1,0 +1,24 @@
+# Candidate desired-state seed for repo.
+# Generated from sanitized archived run scripts and NAS directory metadata.
+# Do not apply blindly; verify live intent, secrets, image digests, and port conflicts first.
+services:
+  repo:
+    image: registry:2
+    container_name: repo
+    user: "1001:1003"
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      REGISTRY_LOG_LEVEL: debug
+      REGISTRY_LOG_FORMATTER: json
+      REGISTRY_HTTP_HOST: https://repo.wheeler-network.com
+      REGISTRY_AUTH: htpasswd
+      REGISTRY_AUTH_HTPASSWD_REALM: Registry Realm
+      REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+    ports:
+      - "5000:5000"
+    volumes:
+      - /mnt/nas/services/repo/data:/var/lib/registry
+      - /mnt/nas/services/repo/config:/auth:ro

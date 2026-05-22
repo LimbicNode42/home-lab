@@ -1,0 +1,15 @@
+# Candidate desired-state seed for portainer.
+# Generated from sanitized archived run scripts and NAS directory metadata.
+# Do not apply blindly; verify live intent, secrets, image digests, and port conflicts first.
+services:
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    user: "1001:1003"
+    restart: always
+    ports:
+      - "9000:9000"
+      - "9443:9443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /mnt/nas/services/portainer/data:/data

@@ -1,0 +1,719 @@
+{
+  "containers": [
+    {
+      "cmd": [
+        "--configFile=/traefik.toml"
+      ],
+      "entrypoint": [
+        "/entrypoint.sh"
+      ],
+      "env": [
+        {
+          "name": "CF_API_EMAIL",
+          "value": "b.j.wheeler484@gmail.com"
+        },
+        {
+          "name": "PATH",
+          "value": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        }
+      ],
+      "exposed_ports": [
+        "443/tcp",
+        "80/tcp",
+        "8080/tcp"
+      ],
+      "id": "359eb4cf55fb",
+      "image": "traefik:v2.5",
+      "image_id": "sha256:09bdb197fc5db12b3367fba943964ffdb0262a1e31194a595048bd06b204f129",
+      "labels": {
+        "org.opencontainers.image.description": "A modern reverse-proxy",
+        "org.opencontainers.image.documentation": "https://docs.traefik.io",
+        "org.opencontainers.image.title": "Traefik",
+        "org.opencontainers.image.url": "https://traefik.io",
+        "org.opencontainers.image.vendor": "Traefik Labs",
+        "org.opencontainers.image.version": "v2.5.7"
+      },
+      "mounts": [
+        {
+          "destination": "/dynamic-config.yaml",
+          "mode": "",
+          "rw": true,
+          "source": "/mnt/nas/services/traefik/dynamic-config.yaml",
+          "type": "bind"
+        },
+        {
+          "destination": "/acme.json",
+          "mode": "",
+          "rw": true,
+          "source": "/mnt/nas/services/traefik/acme.json",
+          "type": "bind"
+        },
+        {
+          "destination": "/var/run/docker.sock",
+          "mode": "",
+          "rw": true,
+          "source": "/var/run/docker.sock",
+          "type": "bind"
+        },
+        {
+          "destination": "/traefik.toml",
+          "mode": "",
+          "rw": true,
+          "source": "/mnt/nas/services/traefik/traefik.toml",
+          "type": "bind"
+        }
+      ],
+      "name": "proxy",
+      "networks": [
+        "bridge"
+      ],
+      "ports": {
+        "443/tcp": [
+          {
+            "HostIp": "",
+            "HostPort": "443"
+          }
+        ],
+        "80/tcp": [
+          {
+            "HostIp": "",
+            "HostPort": "80"
+          }
+        ],
+        "8080/tcp": [
+          {
+            "HostIp": "",
+            "HostPort": "8080"
+          }
+        ]
+      },
+      "repo_digests": [
+        "traefik@sha256:7d5a6ae66572b27afe1059ce893b59acb28de70f4ce298385e153d0a398ce7f8"
+      ],
+      "restart_policy": "unless-stopped",
+      "state": {
+        "running": true,
+        "started_at": "2026-05-22T12:29:41.227038171Z",
+        "status": "running"
+      },
+      "user": null
+    },
+    {
+      "cmd": [
+        "tunnel",
+        "--no-autoupdate",
+        "run",
+        "--token",
+        "<redacted-secret-shaped-arg>"
+      ],
+      "entrypoint": [
+        "cloudflared",
+        "--no-autoupdate"
+      ],
+      "env": [
+        {
+          "name": "PATH",
+          "value": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        },
+        {
+          "name": "SSL_CERT_FILE",
+          "value": "/etc/ssl/certs/ca-certificates.crt"
+        }
+      ],
+      "exposed_ports": [],
+      "id": "8817deb4f020",
+      "image": "cloudflare/cloudflared:latest",
+      "image_id": "sha256:4f190dd4452d18c78f5c18f37fea477f5e9e319b62a98a576123eac3b15ff375",
+      "labels": {
+        "CI_BUILD_DATE": "2026-03-09 14:24:30.312423",
+        "CI_DOCKER_FROM": "gcr.io/distroless/base-debian13:nonroot-arm64",
+        "CI_DOCKER_VERSION": "{\"Platform\": {\"Name\": \"Docker Engine - Community\"}, \"Components\": [{\"Name\": \"Engine\", \"Version\": \"28.5.2\", \"Details\": {\"ApiVersion\": \"1.51\", \"Arch\": \"amd64\", \"BuildTime\": \"2025-11-05T14:43:25.000000000+00:00\", \"Experimental\": \"false\", \"GitCommit\": \"89c5e8f\", \"GoVersion\": \"go1.25.3\", \"KernelVersion\": \"6.12.58-cloudflare-2025.11.5\", \"MinAPIVersion\": \"1.24\", \"Os\": \"linux\"}}, {\"Name\": \"containerd\", \"Version\": \"v2.1.5\", \"Details\": {\"GitCommit\": \"fcd43222d6b07379a4be9786bda52438f0dd16a1\"}}, {\"Name\": \"runc\", \"Version\": \"1.3.3\", \"Details\": {\"GitCommit\": \"v1.3.3-0-gd842d771\"}}, {\"Name\": \"docker-init\", \"Version\": \"0.19.0\", \"Details\": {\"GitCommit\": \"de40ad0\"}}], \"Version\": \"28.5.2\", \"ApiVersion\": \"1.51\", \"MinAPIVersion\": \"1.24\", \"GitCommit\": \"89c5e8f\", \"GoVersion\": \"go1.25.3\", \"Os\": \"linux\", \"Arch\": \"amd64\", \"KernelVersion\": \"6.12.58-cloudflare-2025.11.5\", \"BuildTime\": \"2025-11-05T14:43:25.000000000+00:00\"}",
+        "CI_GIT_COMMIT": "d2a87e9b93456ad7f82417400f4209d513668487",
+        "CI_GIT_REMOTE": "https://gitlab.cfdata.org/cloudflare/tun/cloudflared.git",
+        "CI_TEAMCITY_BUILDCONF": "",
+        "CI_TEAMCITY_BUILD_NUMBER": "",
+        "IMAGE_TYPE": "distroless",
+        "org.opencontainers.image.source": "https://github.com/cloudflare/cloudflared"
+      },
+      "mounts": [],
+      "name": "cloudflare",
+      "networks": [
+        "bridge"
+      ],
+      "ports": {},
+      "repo_digests": [
+        "cloudflare/cloudflared@sha256:6b599ca3e974349ead3286d178da61d291961182ec3fe9c505e1dd02c8ac31b0"
+      ],
+      "restart_policy": "unless-stopped",
+      "state": {
+        "running": true,
+        "started_at": "2026-05-22T00:17:49.134586086Z",
+        "status": "running"
+      },
+      "user": "65532:65532"
+    },
+    {
+      "cmd": [
+        "/start.sh"
+      ],
+      "entrypoint": [],
+      "env": [
+        {
+          "name": "DATABASE_URL",
+          "value": "<redacted>"
+        },
+        {
+          "name": "DEBIAN_FRONTEND",
+          "value": "noninteractive"
+        },
+        {
+          "name": "DOMAIN",
+          "value": "https://vault.wheeler-network.com"
+        },
+        {
+          "name": "PATH",
+          "value": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        },
+        {
+          "name": "ROCKET_ADDRESS",
+          "value": "0.0.0.0"
+        },
+        {
+          "name": "ROCKET_PORT",
+          "value": "80"
+        },
+        {
+          "name": "ROCKET_PROFILE",
+          "value": "release"
+        }
+      ],
+      "exposed_ports": [
+        "80/tcp"
+      ],
+      "id": "bc850c9c8863",
+      "image": "vaultwarden/server:latest",
+      "image_id": "sha256:e0d16b5884403dfb27a322768e1bb5b362745f77889dd519852af8305e27bdae",
+      "labels": {
+        "org.opencontainers.image.created": "2026-04-13T21:11:07+00:00",
+        "org.opencontainers.image.description": "Unofficial Bitwarden compatible server written in Rust - 1.35.7",
+        "org.opencontainers.image.documentation": "https://github.com/dani-garcia/vaultwarden/wiki",
+        "org.opencontainers.image.licenses": "AGPL-3.0-only",
+        "org.opencontainers.image.revision": "e7e4b9a86d4effaadd67e3465d36100d47d0f073",
+        "org.opencontainers.image.source": "https://github.com/dani-garcia/vaultwarden",
+        "org.opencontainers.image.url": "https://github.com/dani-garcia/vaultwarden",
+        "org.opencontainers.image.version": "1.35.7"
+      },
+      "mounts": [
+        {
+          "destination": "/data",
+          "mode": "",
+          "rw": true,
+          "source": "/mnt/nas/services/vaultwarden/data",
+          "type": "bind"
+        }
+      ],
+      "name": "vaultwarden",
+      "networks": [
+        "bridge"
+      ],
+      "ports": {
+        "80/tcp": [
+          {
+            "HostIp": "",
+            "HostPort": "8084"
+          }
+        ]
+      },
+      "repo_digests": [
+        "vaultwarden/server@sha256:9a8eec71f4a52411cc43edc7a50f33e9b6f62b5baca0dd95f0c6e7fd60f1a341"
+      ],
+      "restart_policy": "unless-stopped",
+      "state": {
+        "running": true,
+        "started_at": "2026-05-22T11:40:23.218534417Z",
+        "status": "running"
+      },
+      "user": "1001:1003"
+    },
+    {
+      "cmd": [
+        "/opt/bitnami/scripts/postgresql/run.sh"
+      ],
+      "entrypoint": [
+        "/opt/bitnami/scripts/postgresql/entrypoint.sh"
+      ],
+      "env": [
+        {
+          "name": "APP_VERSION",
+          "value": "17.5.0"
+        },
+        {
+          "name": "BITNAMI_APP_NAME",
+          "value": "postgresql"
+        },
+        {
+          "name": "HOME",
+          "value": "/"
+        },
+        {
+          "name": "LANG",
+          "value": "en_US.UTF-8"
+        },
+        {
+          "name": "LANGUAGE",
+          "value": "en_US:en"
+        },
+        {
+          "name": "NSS_WRAPPER_LIB",
+          "value": "/opt/bitnami/common/lib/libnss_wrapper.so"
+        },
+        {
+          "name": "OS_ARCH",
+          "value": "arm64"
+        },
+        {
+          "name": "OS_FLAVOUR",
+          "value": "debian-12"
+        },
+        {
+          "name": "OS_NAME",
+          "value": "linux"
+        },
+        {
+          "name": "PATH",
+          "value": "/opt/bitnami/postgresql/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        },
+        {
+          "name": "POSTGRESQL_PASSWORD",
+          "value": "<redacted>"
+        },
+        {
+          "name": "POSTGRESQL_POSTGRES_PASSWORD",
+          "value": "<redacted>"
+        },
+        {
+          "name": "POSTGRESQL_TLS_CERT_FILE",
+          "value": "/opt/bitnami/postgresql/certs/postgres.crt"
+        },
+        {
+          "name": "POSTGRESQL_TLS_ENABLED",
+          "value": "yes"
+        },
+        {
+          "name": "POSTGRESQL_TLS_KEY_FILE",
+          "value": "/opt/bitnami/postgresql/certs/postgres.key"
+        }
+      ],
+      "exposed_ports": [
+        "5432/tcp"
+      ],
+      "id": "245b5e8523fc",
+      "image": "bitnamilegacy/postgresql:17",
+      "image_id": "sha256:36c830a13824e512bc2c0c982c2f25b42b022cf5598ebc680db02a021abe252b",
+      "labels": {
+        "com.vmware.cp.artifact.flavor": "sha256:c50c90cfd9d12b445b011e6ad529f1ad3daea45c26d20b00732fae3cd71f6a83",
+        "org.opencontainers.image.base.name": "docker.io/bitnami/minideb:bookworm",
+        "org.opencontainers.image.created": "2025-07-21T19:16:57Z",
+        "org.opencontainers.image.description": "Application packaged by Broadcom, Inc.",
+        "org.opencontainers.image.documentation": "https://github.com/bitnami/containers/tree/main/bitnami/postgresql/README.md",
+        "org.opencontainers.image.source": "https://github.com/bitnami/containers/tree/main/bitnami/postgresql",
+        "org.opencontainers.image.title": "postgresql",
+        "org.opencontainers.image.vendor": "Broadcom, Inc.",
+        "org.opencontainers.image.version": "17.5.0"
+      },
+      "mounts": [
+        {
+          "destination": "/opt/bitnami/postgresql/certs",
+          "mode": "",
+          "rw": true,
+          "source": "/mnt/nas/services/postgres/certs",
+          "type": "bind"
+        },
+        {
+          "destination": "/bitnami/postgresql",
+          "mode": "",
+          "rw": true,
+          "source": "/mnt/nas/services/postgres",
+          "type": "bind"
+        },
+        {
+          "destination": "/docker-entrypoint-initdb.d",
+          "mode": "",
+          "rw": true,
+          "source": "/var/lib/docker/volumes/8fd6e1c3a1de0571f3dbfecd70b9e2d5f3948e551806e19edac83d022f67156a/_data",
+          "type": "volume"
+        },
+        {
+          "destination": "/docker-entrypoint-preinitdb.d",
+          "mode": "",
+          "rw": true,
+          "source": "/var/lib/docker/volumes/3ccc2b0926cfd65f11ec2f2da087df99807e887e7a0b5e3763de15a37b1e2b0c/_data",
+          "type": "volume"
+        }
+      ],
+      "name": "postgres",
+      "networks": [
+        "bridge"
+      ],
+      "ports": {
+        "5432/tcp": [
+          {
+            "HostIp": "",
+            "HostPort": "5432"
+          }
+        ]
+      },
+      "repo_digests": [
+        "bitnamilegacy/postgresql@sha256:42a8200d35971f931b869ef5252d996e137c6beb4b8f1b6d2181dc7d1b6f62e0"
+      ],
+      "restart_policy": "unless-stopped",
+      "state": {
+        "running": true,
+        "started_at": "2026-05-22T11:40:14.090868092Z",
+        "status": "running"
+      },
+      "user": "1001"
+    }
+  ],
+  "endpoint_probes": [
+    {
+      "http": {
+        "error": "HTTPError: HTTP Error 404: Not Found"
+      },
+      "https": {
+        "error": "HTTPError: HTTP Error 404: Not Found"
+      },
+      "port": 80,
+      "tcp": "open"
+    },
+    {
+      "http": {
+        "error": "HTTPError: HTTP Error 404: Not Found"
+      },
+      "https": {
+        "error": "HTTPError: HTTP Error 404: Not Found"
+      },
+      "port": 443,
+      "tcp": "open"
+    },
+    {
+      "port": 5432,
+      "tcp": "open"
+    },
+    {
+      "http": {
+        "content_type": "text/html; charset=utf-8",
+        "server": null,
+        "status": 200,
+        "title": "Traefik"
+      },
+      "port": 8080,
+      "tcp": "open"
+    },
+    {
+      "http": {
+        "content_type": "text/html; charset=utf-8",
+        "server": "Rocket",
+        "status": 200,
+        "title": null
+      },
+      "port": 8084,
+      "tcp": "open"
+    }
+  ],
+  "generated_at": "2026-05-22T16:25:07Z",
+  "host": "critical",
+  "ip": "192.168.0.50",
+  "listening_ports_text": [],
+  "sanitization": "Docker env values, labels, and command args with secret-shaped names/values were redacted; NAS service files were not read, only top-level metadata.",
+  "scope": "Read-only sanitized discovery of emperor critical LXC after Traefik/Vaultwarden/Cloudflare/Postgres imports; no live services changed.",
+  "service_dirs": [
+    {
+      "child_dir_count": 2,
+      "child_dirs": [
+        "config",
+        "work"
+      ],
+      "gid": 101003,
+      "mode": "0o755",
+      "name": "adguard",
+      "path": "/mnt/nas/services/adguard",
+      "top_level_file_count": 0,
+      "top_level_files": [],
+      "uid": 100000
+    },
+    {
+      "child_dir_count": 1,
+      "child_dirs": [
+        "data"
+      ],
+      "gid": 101003,
+      "mode": "0o755",
+      "name": "docker",
+      "path": "/mnt/nas/services/docker",
+      "top_level_file_count": 0,
+      "top_level_files": [],
+      "uid": 100000
+    },
+    {
+      "child_dir_count": 1,
+      "child_dirs": [
+        "appdata"
+      ],
+      "gid": 101003,
+      "mode": "0o755",
+      "name": "docmost",
+      "path": "/mnt/nas/services/docmost",
+      "top_level_file_count": 0,
+      "top_level_files": [],
+      "uid": 100000
+    },
+    {
+      "child_dir_count": 4,
+      "child_dirs": [
+        "config",
+        "data",
+        "project",
+        "workspace"
+      ],
+      "gid": 101003,
+      "mode": "0o755",
+      "name": "filescope",
+      "path": "/mnt/nas/services/filescope",
+      "top_level_file_count": 0,
+      "top_level_files": [],
+      "uid": 101001
+    },
+    {
+      "child_dir_count": 1,
+      "child_dirs": [
+        "data"
+      ],
+      "gid": 101003,
+      "mode": "0o755",
+      "name": "grafana",
+      "path": "/mnt/nas/services/grafana",
+      "top_level_file_count": 0,
+      "top_level_files": [],
+      "uid": 101001
+    },
+    {
+      "child_dir_count": 3,
+      "child_dirs": [
+        "config",
+        "data",
+        "icons"
+      ],
+      "gid": 101003,
+      "mode": "0o777",
+      "name": "homarr",
+      "path": "/mnt/nas/services/homarr",
+      "top_level_file_count": 0,
+      "top_level_files": [],
+      "uid": 101001
+    },
+    {
+      "child_dir_count": 2,
+      "child_dirs": [
+        "cache",
+        "config"
+      ],
+      "gid": 101003,
+      "mode": "0o755",
+      "name": "jellyfin",
+      "path": "/mnt/nas/services/jellyfin",
+      "top_level_file_count": 0,
+      "top_level_files": [],
+      "uid": 100000
+    },
+    {
+      "child_dir_count": 1,
+      "child_dirs": [
+        "appdata"
+      ],
+      "gid": 101003,
+      "mode": "0o755",
+      "name": "jellyseerr",
+      "path": "/mnt/nas/services/jellyseerr",
+      "top_level_file_count": 0,
+      "top_level_files": [],
+      "uid": 101001
+    },
+    {
+      "child_dir_count": 2,
+      "child_dirs": [
+        "data",
+        "logs"
+      ],
+      "gid": 100508,
+      "mode": "0o755",
+      "name": "omada",
+      "path": "/mnt/nas/services/omada",
+      "top_level_file_count": 0,
+      "top_level_files": [],
+      "uid": 100508
+    },
+    {
+      "child_dir_count": 1,
+      "child_dirs": [
+        "data"
+      ],
+      "gid": 101003,
+      "mode": "0o777",
+      "name": "portainer",
+      "path": "/mnt/nas/services/portainer",
+      "top_level_file_count": 0,
+      "top_level_files": [],
+      "uid": 101001
+    },
+    {
+      "child_dir_count": 3,
+      "child_dirs": [
+        "certs",
+        "certs_backup",
+        "data"
+      ],
+      "gid": 1003,
+      "mode": "0o775",
+      "name": "postgres",
+      "path": "/mnt/nas/services/postgres",
+      "top_level_file_count": 0,
+      "top_level_files": [],
+      "uid": 1001
+    },
+    {
+      "child_dir_count": 1,
+      "child_dirs": [
+        "config"
+      ],
+      "gid": 101003,
+      "mode": "0o755",
+      "name": "prowlarr",
+      "path": "/mnt/nas/services/prowlarr",
+      "top_level_file_count": 0,
+      "top_level_files": [],
+      "uid": 101001
+    },
+    {
+      "child_dir_count": 1,
+      "child_dirs": [
+        "appdata"
+      ],
+      "gid": 101003,
+      "mode": "0o755",
+      "name": "qbittorrent",
+      "path": "/mnt/nas/services/qbittorrent",
+      "top_level_file_count": 0,
+      "top_level_files": [],
+      "uid": 101001
+    },
+    {
+      "child_dir_count": 1,
+      "child_dirs": [
+        "config"
+      ],
+      "gid": 101003,
+      "mode": "0o755",
+      "name": "radarr",
+      "path": "/mnt/nas/services/radarr",
+      "top_level_file_count": 0,
+      "top_level_files": [],
+      "uid": 101001
+    },
+    {
+      "child_dir_count": 2,
+      "child_dirs": [
+        "config",
+        "data"
+      ],
+      "gid": 101003,
+      "mode": "0o777",
+      "name": "repo",
+      "path": "/mnt/nas/services/repo",
+      "top_level_file_count": 0,
+      "top_level_files": [],
+      "uid": 101001
+    },
+    {
+      "child_dir_count": 1,
+      "child_dirs": [
+        "certs"
+      ],
+      "gid": 101003,
+      "mode": "0o777",
+      "name": "shared",
+      "path": "/mnt/nas/services/shared",
+      "top_level_file_count": 0,
+      "top_level_files": [],
+      "uid": 101001
+    },
+    {
+      "child_dir_count": 1,
+      "child_dirs": [
+        "config"
+      ],
+      "gid": 101003,
+      "mode": "0o755",
+      "name": "sonarr",
+      "path": "/mnt/nas/services/sonarr",
+      "top_level_file_count": 0,
+      "top_level_files": [],
+      "uid": 101001
+    },
+    {
+      "child_dir_count": 1,
+      "child_dirs": [
+        "restore-backup-20260522-113841"
+      ],
+      "gid": 101003,
+      "mode": "0o755",
+      "name": "traefik",
+      "path": "/mnt/nas/services/traefik",
+      "top_level_file_count": 7,
+      "top_level_files": [
+        {
+          "name": "acme.json",
+          "size": 3462
+        },
+        {
+          "name": "dynamic-config.toml",
+          "size": 425
+        },
+        {
+          "name": "dynamic-config.yaml",
+          "size": 1312
+        },
+        {
+          "name": "dynamic-config.yaml.bak",
+          "size": 2252
+        },
+        {
+          "name": "dynamic-config.yaml.bak-20260522T122835Z",
+          "size": 1318
+        },
+        {
+          "name": "dynamic-config.yaml.pre-serversTransports-fix-20260522-114126",
+          "size": 1311
+        },
+        {
+          "name": "traefik.toml",
+          "size": 1456
+        }
+      ],
+      "uid": 0
+    },
+    {
+      "child_dir_count": 1,
+      "child_dirs": [
+        "data"
+      ],
+      "gid": 101003,
+      "mode": "0o755",
+      "name": "vaultwarden",
+      "path": "/mnt/nas/services/vaultwarden",
+      "top_level_file_count": 0,
+      "top_level_files": [],
+      "uid": 101001
+    }
+  ]
+}

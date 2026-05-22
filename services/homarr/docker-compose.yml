@@ -1,0 +1,22 @@
+# Candidate desired-state seed for homarr.
+# Generated from sanitized archived run scripts and NAS directory metadata.
+# Do not apply blindly; verify live intent, secrets, image digests, and port conflicts first.
+services:
+  homarr:
+    image: ghcr.io/homarr-labs/homarr:latest
+    container_name: homarr
+    user: "1001:1003"
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DOCKER_HOSTNAMES: 127.0.0.1,192.168.0.51,wheeler-network.com
+      DOCKER_PORTS: 7575,6379,3001,3000
+    ports:
+      - "7575:7575"
+      - "3001:3001"
+      - "2999:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /mnt/nas/services/homarr/data:/appdata
+      - /mnt/nas/services/homarr/icons:/icons

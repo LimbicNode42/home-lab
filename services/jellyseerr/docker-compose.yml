@@ -1,0 +1,16 @@
+# Candidate desired-state seed for jellyseerr.
+# Generated from sanitized archived run scripts and NAS directory metadata.
+# Do not apply blindly; verify live intent, secrets, image digests, and port conflicts first.
+services:
+  jellyseerr:
+    image: ghcr.io/fallenbagel/jellyseerr:latest
+    container_name: jellyseerr
+    user: "1001:1003"
+    restart: unless-stopped
+    environment:
+      LOG_LEVEL: debug
+      TZ: Australia/Sydney
+    ports:
+      - "5055:5055"
+    volumes:
+      - /mnt/nas/services/jellyseerr/appdata/config:/app/config

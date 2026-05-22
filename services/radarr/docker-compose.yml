@@ -1,0 +1,19 @@
+# Candidate desired-state seed for radarr.
+# Generated from sanitized archived run scripts and NAS directory metadata.
+# Do not apply blindly; verify live intent, secrets, image digests, and port conflicts first.
+services:
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    user: "1001:1003"
+    restart: unless-stopped
+    environment:
+      PUID: "1001"
+      PGID: "1003"
+      TZ: Australia/Sydney
+    ports:
+      - "8990:8989"
+    volumes:
+      - /mnt/nas/services/radarr/config:/config
+      - /mnt/nas/media/movies:/movies
+      - /mnt/nas/media/downloads:/downloads
