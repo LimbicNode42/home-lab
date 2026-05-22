@@ -17,7 +17,7 @@ http:
       rule: "Host(`cluster.wheeler-network.com`)"
       service: cluster
     vault:
-      entryPoints: websecure
+      entryPoints: web
       rule: "Host(`vault.wheeler-network.com`)"
       service: vault
 
