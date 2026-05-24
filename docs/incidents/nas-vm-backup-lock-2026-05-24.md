@@ -1,6 +1,6 @@
 # NAS VM backup lock incident - 2026-05-24
 
-Status: read-only investigation. No recovery mutations applied in this document.
+Status: mitigated/recovered on 2026-05-25. NAS VM is running, NAS NFS storage is active again, and the unsafe VM103-to-NAS backup job is disabled. Temporary quorum recovery is still in effect because node `tori` retains a runtime vote count of 2 until the remaining cluster/qdevice state can be normalized safely.
 
 ## Symptom
 
@@ -139,3 +139,51 @@ Fallback if the blocked NFS writeback does not unwind after NAS returns: conside
 - Disable or replace the `vzdump` job for VM 103 that targets storage `NAS`.
 - Back up the NAS VM to storage that is independent of the NAS VM itself, or use a host-local/PBS target and replicate externally.
 - Move qdevice/qnetd away from the NAS VM / cluster-dependent storage.
+
+## Recovery actions applied - 2026-05-25
+
+Approved bounded recovery was performed from `tori`.
+
+1. Stopped `corosync-qdevice` clients on the reachable Proxmox partition:
+   - `emperor` / `192.168.0.6`
+   - `shogun` / `192.168.0.7`
+   - `jester` / `192.168.0.8`
+2. Temporarily restored quorum by assigning node `tori` (`nodeid 4`) two votes with `corosync-quorumtool -v 2 -n 4`.
+3. Cleared the VM 103 backup lock on `shogun` with `qm unlock 103`.
+4. Started VM 103 (`NAS-OMV`) with `qm start 103`.
+5. Verified NAS network and NFS readiness:
+   - `192.168.0.250` ping responsive.
+   - TCP ports `111` and `2049` open.
+   - `showmount -e 192.168.0.250` exports `/export` and `/export/nas` to `192.168.0.0/24`.
+   - `pvesm status` reports storage `NAS` active.
+6. Disabled the unsafe scheduled backup job `e0a8bf3c-88d0-4316-9dad-4b61ac30943e` by setting `enabled: 0`.
+7. Restarted `corosync-qdevice` on `emperor`, `shogun`, and `jester`.
+
+Verification after recovery:
+
+```text
+VM 103: running
+VM 103 lock: absent
+NAS storage: active
+Unsafe backup job enabled: 0
+Stuck vzdump/zstd processes: no longer present
+Task UPID:shogun:0033F5E7:110A8027:6A11DD1B:vzdump:103:root@pam: status: stopped, exitstatus: job errors
+```
+
+Important residual state:
+
+```text
+Quorate: Yes
+Expected votes: 9
+Total votes: 5
+Node 4 / tori votes: 2
+Qdevice row: votes 4 configured, but currently contributing 0 votes
+```
+
+Attempting to restore `tori` to one vote immediately with `corosync-quorumtool -v 1 -n 4` failed with `CS_ERR_INVALID_PARAM`. Because the reachable partition currently has only four ordinary votes and qdevice is not contributing, removing the extra runtime vote would likely make the partition non-quorate again. Leave the temporary vote in place until the missing node/qdevice state is repaired or a safer quorum normalization procedure is planned.
+
+## Remaining follow-up
+
+- Normalize quorum/qdevice state and return `tori` to one vote without dropping cluster quorum.
+- Move qnetd/qdevice dependency off the NAS VM and any cluster-dependent storage.
+- Replace the disabled VM 103 backup job with a backup target independent of VM 103 itself.
