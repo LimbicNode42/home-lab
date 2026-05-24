@@ -7,7 +7,7 @@
     ],
     "id": "0a0b23aa-8390-4b21-b8f5-1220a990ac61",
     "mode": "snapshot",
-    "next-run": 1779552000,
+    "next-run": 1780156800,
     "node": "emperor",
     "notes-template": "{{guestname}}_{{node}}_backup",
     "prune-backups": {
@@ -26,7 +26,7 @@
     ],
     "id": "dcee4477-dea2-4354-a67a-66c31c65a46d",
     "mode": "snapshot",
-    "next-run": 1779553800,
+    "next-run": 1780158600,
     "node": "jester",
     "notes-template": "{{guestname}}_{{node}}_backup",
     "prune-backups": {
@@ -39,10 +39,10 @@
   },
   {
     "compress": "zstd",
-    "enabled": 1,
+    "enabled": 0,
     "id": "e0a8bf3c-88d0-4316-9dad-4b61ac30943e",
     "mode": "snapshot",
-    "next-run": 1779555600,
+    "next-run": 1780160400,
     "node": "shogun",
     "notes-template": "{{guestname}}_{{node}}_backup",
     "prune-backups": {
@@ -58,7 +58,7 @@
     "enabled": 1,
     "id": "e2a54e82-31de-42d0-90ba-e143d6c1153d",
     "mode": "snapshot",
-    "next-run": 1779557400,
+    "next-run": 1780162200,
     "node": "toyota",
     "notes-template": "{{guestname}}_{{node}}_backup",
     "prune-backups": {
@@ -74,7 +74,7 @@
     "enabled": 1,
     "id": "56f23a19-e97b-4ade-ba85-1b6492339570",
     "mode": "snapshot",
-    "next-run": 1779559200,
+    "next-run": 1780164000,
     "node": "toyota",
     "notes-template": "{{guestname}}_{{node}}_backup",
     "prune-backups": {
@@ -90,7 +90,7 @@
     "enabled": 1,
     "id": "d8067c84-8472-40c0-8c46-a58e7a8202f3",
     "mode": "snapshot",
-    "next-run": 1779561000,
+    "next-run": 1780165800,
     "node": "toyota",
     "notes-template": "{{guestname}}_{{node}}_backup",
     "prune-backups": {
