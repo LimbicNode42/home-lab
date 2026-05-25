@@ -25,7 +25,7 @@ http:
     jellyfin:
       loadBalancer:
         servers:
-          - url: http://192.168.0.249:8096
+          - url: http://192.168.0.8:8096
     traefik:
       loadBalancer:
         servers:
