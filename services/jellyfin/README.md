@@ -19,8 +19,9 @@ None identified in the candidate compose.
 
 Import notes:
 - Archive includes separate LXC config for a `jellyfin` host at 192.168.0.249, not necessarily critical LXC.
-- Live Traefik config currently routes `jellyfin.wheeler-network.com` to `http://192.168.0.249:8096`, while the observed live container is on `jester` (`192.168.0.8`) with port `8096` published. Reconcile before proxy changes.
-- The candidate compose mounts `/mnt/nas/...`, but the observed live container mounts `/mnt/pve/NAS/...` and `/opt/jellyfin-config`; reconcile before apply.
+- Live Traefik config currently routes `jellyfin.wheeler-network.com` to `http://192.168.0.249:8096`, while an observed live Docker container is on `jester` (`192.168.0.8`) with port `8096` published. Reconcile before proxy changes.
+- 2026-05-25 follow-up: Proxmox CT `101` named `jellyfin` also exists on `jester`, is running, has neighbor entry `192.168.0.249` for MAC `BC:24:11:65:41:B0`, mounts `/mnt/pve/NAS` as `/mnt/nas`, and has GPU/video device passthrough entries. This appears to be the original LXC placement and may still be the Traefik upstream. Do not delete until its internal services, config, backups, and traffic path are fully reconciled.
+- The candidate compose mounts `/mnt/nas/...`, but the observed host Docker container mounts `/mnt/pve/NAS/...` and `/opt/jellyfin-config`; reconcile before apply.
 - Privileged + host networking are high-risk and require explicit approval before apply.
 
 ## Incident notes
