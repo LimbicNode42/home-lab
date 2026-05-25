@@ -20,7 +20,7 @@ None identified in the candidate compose.
 Import notes:
 - Archive includes separate LXC config for a `jellyfin` host at 192.168.0.249, not necessarily critical LXC.
 - Live Traefik config routes `jellyfin.wheeler-network.com` to the host Docker service at `http://192.168.0.8:8096` as of 2026-05-25.
-- 2026-05-25 follow-up: Proxmox CT `101` named `jellyfin` also exists on `jester`, is running, has neighbor entry `192.168.0.249` for MAC `BC:24:11:65:41:B0`, mounts `/mnt/pve/NAS` as `/mnt/nas`, and has GPU/video device passthrough entries. This appears to be the original LXC placement and is no longer the intended Traefik upstream. Do not delete until its internal services, config, backups, and traffic path are fully reconciled.
+- 2026-05-25 follow-up: Proxmox CT `101` named `jellyfin` also exists on `jester`, has MAC `BC:24:11:65:41:B0`, mounts `/mnt/pve/NAS` as `/mnt/nas`, and has GPU/video device passthrough entries. Read-only inspection found it had no IPv4 address despite the stale `192.168.0.249` neighbor entry, and Traefik now routes to the host Docker service. CT `101` was gracefully stopped after verification; do not delete until its internal config/backups are fully reconciled.
 - The candidate compose mounts `/mnt/nas/...`, but the observed host Docker container mounts `/mnt/pve/NAS/...` and `/opt/jellyfin-config`; reconcile before apply.
 - Privileged + host networking are high-risk and require explicit approval before apply.
 
@@ -45,3 +45,20 @@ Remediation performed:
 Follow-up:
 - If this recurs after NAS outages or NFS remounts, restart the affected media containers after verifying the host mount itself is healthy.
 - Consider an operational runbook/health check for stale bind-mount handles in containers that consume `/mnt/pve/NAS`.
+
+### 2026-05-25 legacy CT 101 reconciliation
+
+Findings:
+- CT `101` on `jester` was named `jellyfin`, used Alpine, had 4 cores, 4 GiB RAM, GPU/video passthrough devices, and mounted host `/mnt/pve/NAS` at guest `/mnt/nas`.
+- The CT config only had IPv6 DHCP (`ip6=dhcp`) on `net0`; read-only inspection showed no IPv4 address on `eth0`, no default route, and a stale/failed host neighbor entry for `192.168.0.249`.
+- Inside CT `101`, a nested Docker `lscr.io/linuxserver/jellyfin:latest` container was running with host networking and binds from `/mnt/nas/services/jellyfin/{config,cache}` plus `/mnt/nas/media/{movies,tv}`.
+- That legacy Jellyfin instance reported server id `87c1cabefb5c4940808f09b172165c53`; the active host Docker Jellyfin reports server id `d85ae9f6b5d34e779ed6f4f7cb1991ad`.
+- Legacy NAS-backed config had recent logs but older core config/database mtimes than the active host Docker config under `/opt/jellyfin-config`.
+
+Action performed:
+- Gracefully shut down CT `101` after verifying Traefik and direct access both use the host Docker Jellyfin on `192.168.0.8:8096`.
+- Verified host Docker Jellyfin still returned HTTP 200 on `http://127.0.0.1:8096/System/Info/Public`.
+- Verified Traefik route for `jellyfin.wheeler-network.com` still returned HTTP 200 from server `jester`.
+
+Next cleanup gate:
+- Keep CT `101` stopped for an observation window. Do not delete its rootfs or NAS-backed `/mnt/nas/services/jellyfin` data until confirming no unique users, metadata, plugins, or watch-state need migration.
