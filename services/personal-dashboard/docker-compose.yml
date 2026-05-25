@@ -1,0 +1,33 @@
+# Candidate desired-state seed generated from historical read-only discovery.
+# Do not apply until live docker inspect confirms image IDs, env, volumes, and networks.
+services:
+  frontend:
+    image: personal-dashboard-frontend
+    container_name: personal-dashboard-frontend-1
+    restart: unless-stopped
+    ports:
+      - "4322:80"
+    depends_on:
+      - db
+    environment:
+      DATABASE_HOST: db
+      DATABASE_PORT: "5432"
+      DATABASE_NAME: ${POSTGRES_DB}
+      DATABASE_USER: ${POSTGRES_USER}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+
+  db:
+    image: postgres:16-alpine
+    container_name: personal-dashboard-db-1
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - personal-dashboard-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  personal-dashboard-postgres-data:
