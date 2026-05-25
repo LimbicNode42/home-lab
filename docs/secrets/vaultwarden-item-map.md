@@ -18,6 +18,7 @@ Status: initial non-secret import map. Values live in Ben's personal Vaultwarden
 | Private registry HTTP secret | `homelab` | `repo/registry` | `http_secret` | Used by inactive Docker Registry candidate as `REGISTRY_HTTP_SECRET`. |
 | Private registry htpasswd username | `homelab` | `repo/registry` | `htpasswd_username` | Used to render `/mnt/nas/services/repo/config/htpasswd` outside Git. |
 | Private registry htpasswd password | `homelab` | `repo/registry` | `htpasswd_password` | Used to render `/mnt/nas/services/repo/config/htpasswd` outside Git. |
+| Personal Dashboard database | `homelab` | `personal-dashboard/database` | `database`, `username`, `password`, `host`, `port` | Used by historical/unverified personal-dashboard candidate on `dev`; render values outside Git. |
 
 ## Render mapping
 

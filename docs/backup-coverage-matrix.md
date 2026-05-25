@@ -29,9 +29,9 @@ Generated: 2026-05-21T11:16:00Z
 |---:|---|---|---|---|---|---|---|
 | 100 | critical | lxc | emperor | running | yes | 2026-05-17 02:00 local time, `vzdump-lxc-100-2026_05_17-02_00_01.tar.zst` | none obvious |
 | 103 | NAS-OMV | qemu | shogun | running | no | 2026-05-17 03:00 local time, `vzdump-qemu-103-2026_05_17-03_00_05.vma.zst` | scheduled backup disabled because backing up VM103 to NAS storage exported by VM103 caused a deadlock; replace with independent target |
-| 110 | dev | lxc | toyota | running | yes | none observed | new job added; artifact pending first successful backup |
-| 111 | staging | lxc | toyota | running | yes | none observed | new job added; artifact pending first successful backup |
-| 112 | prod | lxc | toyota | running | yes | none observed | new job added; artifact pending first successful backup |
+| 110 | dev | lxc | toyota | unknown; toyota offline in 2026-05-25 discovery | yes | none observed | new job added; artifact pending first successful backup; verify after toyota returns |
+| 111 | staging | lxc | toyota | unknown; toyota offline in 2026-05-25 discovery | yes | none observed | new job added; artifact pending first successful backup; verify after toyota returns |
+| 112 | prod | lxc | toyota | unknown; toyota offline in 2026-05-25 discovery | yes | none observed | new job added; artifact pending first successful backup; verify after toyota returns |
 
 ## VMID 101 stale-job details
 
@@ -66,7 +66,7 @@ Generated: 2026-05-21T11:16:00Z
 
 ## Immediate backup/reliability concerns
 
-- New backup jobs for VMIDs 110, 111, and 112 need first-run verification and restore-test evidence.
+- New backup jobs for VMIDs 110, 111, and 112 need first-run verification and restore-test evidence; current 2026-05-25 discovery shows `toyota` offline and those guests unknown.
 - VMID 103 is running, but its scheduled backup to storage `NAS` is disabled because it is self-referential. Replace with a host-local, PBS, or otherwise independent backup target before marking VM103 covered again.
 - NAS NFS export uses `no_root_squash` for the whole /24. That simplifies Proxmox backups but is high trust; consider narrowing clients via OMV-managed config after validating requirements.
 - NAS underlying disk `/dev/sdb1` is 98% full while mergerfs pool has free space. Validate mergerfs policy and rebalance if needed.
