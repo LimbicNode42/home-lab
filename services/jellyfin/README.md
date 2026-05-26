@@ -62,3 +62,30 @@ Action performed:
 
 Next cleanup gate:
 - Keep CT `101` stopped for an observation window. Do not delete its rootfs or NAS-backed `/mnt/nas/services/jellyfin` data until confirming no unique users, metadata, plugins, or watch-state need migration.
+
+### 2026-05-26 OpenClaw/Homer handoff and repeated stale handle remediation
+
+Symptoms:
+- Jellyfin playback failed again with `System.IO.IOException: Stale file handle` on `/tv` and `/movies`.
+- FFmpeg exited with code `140` during playback.
+- Legacy CT `101` had been started again even though the intended active service is host Docker Jellyfin on `jester` (`192.168.0.8:8096`).
+
+Findings:
+- `/etc/cron.d/homelab-backups` ran `/root/.openclaw/workspace-homer/scripts/daily_homelab_report.sh` daily.
+- That Homer report still treated CT `101` and `http://192.168.0.249:8096/health` as expected-good Jellyfin state, so it was stale relative to the Hermes-owned desired state.
+- OpenClaw user systemd units were present for `openclaw-agent@homer.service` and `openclaw-gateway.service`.
+
+Actions performed:
+- Disabled and preserved OpenClaw/Homer homelab cron entries under `/root/.openclaw/disabled-cron/20260526T223112+1000`.
+- Disabled/masked the OpenClaw user systemd units, preserving status/unit evidence under `/root/.openclaw/disabled-systemd-user/`.
+- Gracefully stopped CT `101` again; verified it is `status: stopped`.
+- Restarted only the active host Docker `jellyfin` container on `jester` after explicit approval to refresh stale NAS bind mounts.
+
+Verification:
+- Active host Docker Jellyfin returned HTTP 200 from `http://127.0.0.1:8096/System/Info/Public` with server id `d85ae9f6b5d34e779ed6f4f7cb1991ad`.
+- Traefik route for `jellyfin.wheeler-network.com` returned HTTP 200 to the same `jester` backend.
+- Inside the active container, `stat /tv`, `stat /movies`, and a sample read of the previously failing `Independence Day Resurgence` media path succeeded.
+- Recent logs after restart showed no new `Stale file handle` or FFmpeg code `140` errors.
+
+Operational note:
+- OpenClaw/Homer artifacts were disabled, not deleted. Do not re-enable them unless their checks are updated to the Hermes-owned desired state and Ben explicitly wants OpenClaw back in the loop.
