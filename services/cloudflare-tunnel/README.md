@@ -24,3 +24,7 @@ Secrets are not stored in Git. Required secret refs:
 Apply status:
 
 Do not apply this compose file blindly. It is a candidate desired-state seed. Applying it would recreate the live Cloudflare tunnel container and can interrupt external access to services. Confirm the token exists in Vaultwarden and have local LAN access to Traefik before replacing the running container.
+
+## Planned dashboard hostname
+
+`dashboard.wheeler-network.com` is prepared as a plan only in `dashboard-public-hostname-plan.md`. It should point the existing critical tunnel at local origin `http://192.168.0.50:80`, where Traefik routes by Host header to the personal dashboard backend. Apply requires Ben approval plus Cloudflare Zero Trust/API access; keep Cloudflare API credentials as Vaultwarden refs only.

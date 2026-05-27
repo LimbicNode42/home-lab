@@ -12,6 +12,8 @@ Status: initial non-secret import map. Values live in Ben's personal Vaultwarden
 | Postgres CA certificate path | `homelab` | `postgres/ca` | `ca_cert_path` | Reference path only; do not commit cert private keys. |
 | Shared Postgres service credentials | `homelab` | `postgres/service` | `password`, `postgres_password`, `host`, `port`, `tls_enabled`, `tls_cert_path`, `tls_key_path` | Values render to `services/postgres/.env`; `tls_key_path` is a path only, not private-key content. |
 | Cloudflare Tunnel token for critical | `homelab` | `cloudflare/tunnel-critical` | `tunnel_token`, `hostname_scope`, `local_origin` | Token used by the `cloudflare` container on critical; never commit the literal token or Docker command containing it. |
+| Cloudflare API automation | `homelab` | `cloudflare/api` | `api_token`, `zone_id`, `account_id` | Only needed if DNS/Zero Trust public-hostname changes are automated instead of applied manually in Cloudflare. |
+| Personal Dashboard app auth | `homelab` | `personal-dashboard/auth` | `shared-password`, `session-secret` | Only create if Ben chooses app-level auth instead of Cloudflare Access/reverse-proxy auth. |
 | Docmost app secret | `homelab` | `docmost/app` | `app_secret` | Used by inactive Docmost candidate; value rendered to `APP_SECRET`. |
 | Docmost database URL | `homelab` | `docmost/database` | `database_url` | Credential-bearing Postgres URL; never commit rendered value. |
 | Homarr encryption key | `homelab` | `homarr/app` | `secret_encryption_key` | Used by inactive Homarr candidate; generated/restored outside Git. |

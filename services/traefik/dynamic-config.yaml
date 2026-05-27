@@ -4,6 +4,10 @@ http:
       entryPoints: web
       rule: "Host(`jellyfin.wheeler-network.com`)"
       service: jellyfin
+    dashboard:
+      entryPoints: web
+      rule: "Host(`dashboard.wheeler-network.com`)"
+      service: dashboard
     traefik:
       entryPoints: web
       rule: "Host(`traefik.wheeler-network.com`)"
@@ -26,6 +30,10 @@ http:
       loadBalancer:
         servers:
           - url: http://192.168.0.8:8096
+    dashboard:
+      loadBalancer:
+        servers:
+          - url: http://192.168.0.50:4322
     traefik:
       loadBalancer:
         servers:
