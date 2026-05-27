@@ -1,33 +1,36 @@
-# Candidate desired-state seed generated from historical read-only discovery.
-# Do not apply until live docker inspect confirms image IDs, env, volumes, and networks.
 services:
-  frontend:
-    image: personal-dashboard-frontend
-    container_name: personal-dashboard-frontend-1
+  dashboard:
+    build:
+      context: .
+    image: personal-dashboard:local
+    container_name: personal-dashboard
     restart: unless-stopped
     ports:
-      - "4322:80"
-    depends_on:
-      - db
+      # Bind to the critical LXC LAN IP, not 0.0.0.0. Traefik currently runs in
+      # the default Docker bridge and routes to http://192.168.0.50:4322 via the
+      # file provider; revisit this if proxy/dashboard move to a user-defined network.
+      - "${DASHBOARD_PUBLISHED_IP:-192.168.0.50}:4322:4322"
     environment:
-      DATABASE_HOST: db
-      DATABASE_PORT: "5432"
-      DATABASE_NAME: ${POSTGRES_DB}
-      DATABASE_USER: ${POSTGRES_USER}
-      DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
-
-  db:
-    image: postgres:16-alpine
-    container_name: personal-dashboard-db-1
-    restart: unless-stopped
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      NODE_ENV: production
+      PORT: "4322"
+      HOST: 0.0.0.0
+      DASHBOARD_AUTH_MODE: ${DASHBOARD_AUTH_MODE:-reverse-proxy}
+      DASHBOARD_PROXY_USER_HEADER: ${DASHBOARD_PROXY_USER_HEADER:-cf-access-authenticated-user-email}
+      DASHBOARD_CONFIG_FILE: /app/config/dashboard.public.json
+      DASHBOARD_STATUS_CACHE_TTL_MS: ${DASHBOARD_STATUS_CACHE_TTL_MS:-30000}
+      DASHBOARD_STATUS_PROBE_TIMEOUT_MS: ${DASHBOARD_STATUS_PROBE_TIMEOUT_MS:-2500}
     volumes:
-      - personal-dashboard-postgres-data:/var/lib/postgresql/data
-
-volumes:
-  personal-dashboard-postgres-data:
+      - type: bind
+        source: ./config/dashboard.public.json
+        target: /app/config/dashboard.public.json
+        read_only: true
+        bind:
+          create_host_path: false
+    labels:
+      traefik.enable: "false"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4322/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s

@@ -51,6 +51,7 @@ __pycache__/
 *.env.local
 *.envrc
 .secrets/
+services/personal-dashboard/config/dashboard.public.json
 .bw_session
 bw-session
 vaultwarden-session

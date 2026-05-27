@@ -1,0 +1,20 @@
+{
+  "title": "Home Dashboard",
+  "sections": [
+    {
+      "title": "Core services",
+      "links": [
+        { "label": "Vaultwarden", "href": "https://vault.wheeler-network.com" },
+        { "label": "Traefik", "href": "https://traefik.wheeler-network.com" }
+      ]
+    }
+  ],
+  "statusChecks": [
+    {
+      "id": "vaultwarden",
+      "label": "Vaultwarden",
+      "targetUrl": "http://192.168.0.50:8084/alive",
+      "displayUrl": "https://vault.wheeler-network.com"
+    }
+  ]
+}

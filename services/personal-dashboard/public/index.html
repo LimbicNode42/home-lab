@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Home Dashboard</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <p class="eyebrow">Wheeler network</p>
+        <h1 id="dashboard-title">Home Dashboard</h1>
+        <p class="muted">Private household dashboard for useful links and lightweight service status.</p>
+      </header>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <h2>Service status</h2>
+          <button id="refresh-status" type="button">Refresh</button>
+        </div>
+        <div id="status-list" class="status-grid" aria-live="polite">
+          <p class="muted">Loading status…</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Links</h2>
+        <div id="sections" class="sections">
+          <p class="muted">Loading links…</p>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
