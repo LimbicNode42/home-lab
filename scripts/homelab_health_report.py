@@ -67,7 +67,7 @@ def ssh(host, command, user=None, password=None, timeout=30):
     user = user or os.environ.get("HOMELAB_SSH_USER", "root")
     password = password or os.environ.get("HOMELAB_SSH_PASS", "")
     cmd = [
-        "sshpass", "-p", password,
+        "sshpass", "-e",
         "ssh",
         "-o", "StrictHostKeyChecking=no",
         "-o", "UserKnownHostsFile=/dev/null",
@@ -75,7 +75,9 @@ def ssh(host, command, user=None, password=None, timeout=30):
         f"{user}@{host}",
         command,
     ]
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout)
+    env = os.environ.copy()
+    env["SSHPASS"] = password
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout, env=env)
     return proc.returncode, proc.stdout, proc.stderr
 
 
@@ -98,7 +100,10 @@ for base in [Path('/mnt/pve/NAS/dump')]:
         rows.append({'vmid':m.group(2),'name':f.name,'size':st.st_size,'mtime':int(st.st_mtime)})
 print(json.dumps(rows))
 '''
-    rc, out, err = ssh(host, f"python3 - <<'PY'\n{python}\nPY", timeout=45)
+    try:
+        rc, out, err = ssh(host, f"python3 - <<'PY'\n{python}\nPY", timeout=45)
+    except subprocess.TimeoutExpired:
+        return {}, f"backup artifact probe timed out on {BACKUP_STORAGE_NODE} after 45s"
     if rc != 0:
         return {}, f"backup artifact probe failed on {BACKUP_STORAGE_NODE}: {err.strip()}"
     rows = json.loads(out or "[]")
@@ -222,4 +227,8 @@ if __name__ == "__main__":
     try:
         main()
     except subprocess.TimeoutExpired as exc:
-        raise SystemExit(f"Probe timed out: {exc}")
+        cmd = getattr(exc, "cmd", None)
+        target = "unknown probe"
+        if isinstance(cmd, (list, tuple)):
+            target = " ".join(str(part) for part in cmd if isinstance(part, str) and "@192.168." in part)
+        raise SystemExit(f"Probe timed out after {exc.timeout} seconds: {target}")
