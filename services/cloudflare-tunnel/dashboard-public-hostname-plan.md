@@ -1,76 +1,54 @@
-# Dashboard Cloudflare public hostname plan
+# Dashboard Cloudflare public hostname
 
-Status: plan only. Do not apply without Ben's approval and Cloudflare Zero Trust/API access.
+Status: **APPLIED** 2026-05-28 via Cloudflare API (kobold worker).
 
-## Target
+## What was applied
 
-- Public hostname: `dashboard.wheeler-network.com`
-- Existing tunnel/container: `cloudflare` on `critical` (`192.168.0.50`)
-- Origin service for the public hostname: `http://192.168.0.50:80`
-- Traefik router expected at origin: ``Host(`dashboard.wheeler-network.com`)`` on entrypoint `web`
-- Backend behind Traefik: `http://192.168.0.50:4322`
+- Tunnel ingress rule added to `nippon-overpass` (38a5cb27-6f7b-4812-999f-1e151528df38) for `dashboard.wheeler-network.com` -> `http://192.168.0.50:80`
+  - Tunnel config version bumped to 59.
+- Proxied CNAME DNS record created: `dashboard.wheeler-network.com` -> `38a5cb27-6f7b-4812-999f-1e151528df38.cfargotunnel.com` (DNS record ID: 6fc97d9fb63391db64fd72ffde8e7aed)
 
-This mirrors the existing Vaultwarden/Traefik pattern where Cloudflare Tunnel points to local Traefik on port 80 and Traefik selects the backend by Host header.
+## Route chain
 
-## Authentication requirement
-
-Protect `dashboard.wheeler-network.com` with Cloudflare Access before exposing it beyond the LAN. The dashboard app's deployment candidate expects Cloudflare Access to forward this identity header:
-
-- `cf-access-authenticated-user-email`
-
-The app should run with:
-
-```env
-DASHBOARD_AUTH_MODE=reverse-proxy
-DASHBOARD_PROXY_USER_HEADER=cf-access-authenticated-user-email
+```
+https://dashboard.wheeler-network.com
+  -> Cloudflare CDN (proxied CNAME)
+  -> nippon-overpass tunnel -> Traefik on critical (192.168.0.50:80)
+  -> Host: dashboard.wheeler-network.com -> personal-dashboard container (192.168.0.50:4322)
 ```
 
-Without Cloudflare Access or another trusted reverse-proxy auth layer, `/api/*` intentionally returns `401` because no trusted identity header is present.
+## Authentication
 
-## Manual Zero Trust dashboard steps
+**Decision: No Cloudflare Access policy** (per Ben, 2026-05-28).
 
-1. Open Cloudflare Zero Trust for the `wheeler-network.com` account.
-2. Add a public hostname to the existing critical tunnel:
-   - Subdomain: `dashboard`
-   - Domain: `wheeler-network.com`
-   - Service type: `HTTP`
-   - URL: `192.168.0.50:80`
-3. Create an Access application for `dashboard.wheeler-network.com`.
-4. Add the allowed household/user policy Ben chooses.
-5. Confirm Access forwards an identity header compatible with `cf-access-authenticated-user-email`.
-6. Save, then verify DNS resolves to Cloudflare and the app requires authentication.
+The app enforces authentication internally in reverse-proxy mode:
+- `DASHBOARD_AUTH_MODE=reverse-proxy`
+- `DASHBOARD_PROXY_USER_HEADER=cf-access-authenticated-user-email`
+- `/api/*` returns 401 without the identity header
+- `/healthz` is open
 
-## Automation prerequisites
+In production, Cloudflare strips untrusted client-supplied headers, so the 401 on API calls from outside is expected without an Access policy forwarding the identity.
 
-If this is automated via API instead of the dashboard, use Vaultwarden refs only:
+**Note for future:** If a Cloudflare Access application is added later (to SSO-gate the app), Cloudflare will forward `cf-access-authenticated-user-email` and API endpoints will work for authenticated sessions.
 
-- Vaultwarden folder: `homelab`
-- Item: `cloudflare/api`
-- Fields: `api_token`, `zone_id`, `account_id`
+## Vaultwarden secret refs used
 
-The API token should be scoped narrowly to the target account/zone and Zero Trust/Tunnel/DNS operations required for this hostname. Do not put API values in Git, command transcripts, or comments.
+- Cloudflare API token: `homelab/cloudflare/api` > `api_token`
+- Account ID: `homelab/cloudflare/api` > `account_id`
+- Zone ID: `homelab/cloudflare/api` > `zone_id`
 
-## Verification after apply
+No raw secrets stored in Git.
 
-```bash
-# DNS should resolve to Cloudflare after the public hostname/DNS entry exists.
-dig +short dashboard.wheeler-network.com
+## Verified 2026-05-28
 
-# Origin path should be healthy from the LAN after dashboard container + Traefik route exist.
-curl -fsS -H 'Host: dashboard.wheeler-network.com' http://192.168.0.50/healthz
-
-# API should fail closed without the Access identity header at the origin.
-curl -i -H 'Host: dashboard.wheeler-network.com' http://192.168.0.50/api/config/public
-
-# Origin API should work with the configured identity header.
-curl -fsS   -H 'Host: dashboard.wheeler-network.com'   -H 'cf-access-authenticated-user-email: ben@example.invalid'   http://192.168.0.50/api/config/public
-```
-
-Public verification should be done from a browser or curl session that can complete Cloudflare Access login. Do not bypass Access for the public route.
+- `curl https://dashboard.wheeler-network.com/healthz` -> `{"status":"ok"}`
+- API endpoint returns 401 without identity header (fail-closed, expected on public path without Access policy)
+- Traefik LAN healthcheck: `curl -H 'Host: dashboard.wheeler-network.com' http://192.168.0.50/healthz` -> `{"status":"ok"}`
 
 ## Rollback
 
-1. Disable/delete the Cloudflare public hostname `dashboard.wheeler-network.com` from the existing tunnel.
-2. Disable/delete the Cloudflare Access application/policy for that hostname if it was created only for the dashboard.
-3. Revert/remove the Traefik `dashboard` router/service from `/mnt/nas/services/traefik/dynamic-config.yaml`.
-4. Stop only the dashboard container after traffic is no longer routed to it.
+1. Delete tunnel ingress rule for `dashboard.wheeler-network.com` from `nippon-overpass` via Zero Trust dashboard or Cloudflare API.
+2. Delete DNS record ID `6fc97d9fb63391db64fd72ffde8e7aed` from `wheeler-network.com` zone (or remove via Cloudflare dashboard).
+3. Optionally: restore `/mnt/nas/services/traefik/dynamic-config.yaml` from `/mnt/nas/services/traefik/dynamic-config.yaml.bak-dashboard-20260527T135706Z`, restart `proxy` if needed.
+4. Stop/remove dashboard container: `docker rm -f personal-dashboard`
+5. Optionally remove `/mnt/nas/services/personal-dashboard` after inspection.
