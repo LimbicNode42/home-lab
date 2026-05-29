@@ -27,12 +27,12 @@ Historical `dev`/Toyota evidence is not treated as current live state. The old P
 - Public hostname: `dashboard.wheeler-network.com`
 - Cloudflare Tunnel public hostname origin: `http://192.168.0.50:80`
 - Traefik entrypoint/router: `web`, ``Host(`dashboard.wheeler-network.com`)``
-- Traefik backend service: `http://192.168.0.50:4322`
+- Traefik backend service: `http://172.17.0.1:4322` from the `proxy` container to the Docker host gateway
 - Dashboard container: `personal-dashboard`, listening on container port `4322`
-- Compose host publish: `${DASHBOARD_PUBLISHED_IP:-192.168.0.50}:4322:4322`
+- Compose host publish: `${DASHBOARD_PUBLISHED_IP:-172.17.0.1}:4322:4322`
 - Auth expectation: Cloudflare Access protects the public hostname and forwards `cf-access-authenticated-user-email`; the app requires that header for `/api/*`.
 
-The direct LAN route to `192.168.0.50:4322` is not intended as public exposure. It exists because the current Traefik container runs on the default Docker bridge and file-provider routes use host/LAN origins. If Traefik and this app are later moved to a user-defined Docker network, prefer an un-published container port and route by service DNS instead.
+The direct LAN route to `192.168.0.50:4322` must not be published. The app trusts Cloudflare Access identity headers, so direct LAN clients must not be able to reach the API and forge `cf-access-*` headers. The Traefik dashboard router also limits source IPs to Docker private ranges so LAN clients cannot bypass Cloudflare Access by sending Host-header requests to Traefik directly. If Traefik and this app are later moved to a user-defined Docker network, prefer an un-published container port and route by service DNS instead.
 
 ## Auth model
 
@@ -87,7 +87,7 @@ Environment variables:
 | --- | --- | --- |
 | `PORT` | `4322` | HTTP listen port. |
 | `HOST` | `0.0.0.0` | HTTP bind address. |
-| `DASHBOARD_PUBLISHED_IP` | `192.168.0.50` in `.env.example` | Host IP used by Compose publish for the critical deployment candidate. |
+| `DASHBOARD_PUBLISHED_IP` | `172.17.0.1` in `.env.example` | Host IP used by Compose publish for the critical deployment candidate. Keep this on the Docker bridge gateway unless the auth model changes. |
 | `DASHBOARD_CONFIG_FILE` | built-in defaults | Path to JSON config file. Compose uses `/app/config/dashboard.public.json`. |
 | `DASHBOARD_AUTH_MODE` | `reverse-proxy` | `reverse-proxy` or local-dev `disabled`. |
 | `DASHBOARD_PROXY_USER_HEADER` | `cf-access-authenticated-user-email` in `.env.example` | Header trusted from Cloudflare Access or another reverse-proxy auth layer. |
@@ -130,12 +130,13 @@ For the critical deployment candidate, render the real non-secret `.env` locally
    - `netstat -ltnp | grep -E ':(80|443|4322)\\b'` (`ss` is not currently installed on critical)
 2. Render/copy `services/personal-dashboard` to `/mnt/nas/services/personal-dashboard` and render `config/dashboard.public.json`.
 3. Start only the dashboard container. Preferred once Compose is available:
-   - `DASHBOARD_PUBLISHED_IP=192.168.0.50 docker compose up -d --build dashboard`
+   - `DASHBOARD_PUBLISHED_IP=172.17.0.1 docker compose up -d --build dashboard`
    Current critical fallback, because the Docker Compose plugin is not installed there:
    - `sh scripts/run-critical-docker.sh`
 4. Verify direct health from critical and through Traefik:
-   - `curl -fsS http://192.168.0.50:4322/healthz`
+   - `curl -fsS http://172.17.0.1:4322/healthz`
    - `curl -fsS -H 'Host: dashboard.wheeler-network.com' http://192.168.0.50/healthz`
+   - `curl -i http://192.168.0.50:4322/api/config/public -H 'cf-access-authenticated-user-email: forged@example.invalid'` should fail to connect or otherwise not return `200`.
 5. Sync the prepared Traefik `dynamic-config.yaml` route to `/mnt/nas/services/traefik/dynamic-config.yaml`.
 6. Verify Traefik loaded the route; if the NAS file-provider watcher misses the update, restart only `proxy` after approval.
 7. Create the Cloudflare Tunnel public hostname and Access policy described in `../cloudflare-tunnel/dashboard-public-hostname-plan.md`.

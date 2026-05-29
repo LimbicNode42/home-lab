@@ -33,6 +33,16 @@ Cloudflare Tunnel routing note:
 
 The Cloudflare Zero Trust tunnel publishes `vault.wheeler-network.com` to the local origin `http://192.168.0.50:80`, so the Vaultwarden router must be bound to Traefik's `web` entrypoint. Binding Vaultwarden only to `websecure` makes direct HTTPS-to-Traefik tests work, but tunnel traffic returns Traefik's default 404.
 
+Dashboard ingress note:
+
+The dashboard app trusts Cloudflare Access identity headers, so its router must not accept arbitrary LAN clients that can forge `cf-access-*` headers. The intended shape is:
+
+- `personal-dashboard` publishes `4322` on the Docker bridge host gateway (`172.17.0.1`) only.
+- Traefik reaches it from the `proxy` container via the Docker host gateway, `http://172.17.0.1:4322`.
+- The `dashboard` router uses the `dashboard-cloudflared-only` `ipWhiteList` middleware to allow only Docker-network source ranges (`172.16.0.0/12`), where the `cloudflare`/cloudflared container is the expected caller.
+
+This closes both LAN bypasses: direct `192.168.0.50:4322` is no longer published, and Host-header requests to Traefik from `192.168.0.0/24` do not reach the dashboard router.
+
 Recovery note, 2026-05-22:
 
 OpenClaw had left the live Traefik container running from CLI flags instead of `/traefik.toml`, and `/mnt/nas/services/traefik/dynamic-config.yaml` was missing. Hermes restored `dynamic-config.yaml`, corrected the dashboard upstream from HTTPS to HTTP, and recreated `proxy` with `--configFile=/traefik.toml`.
