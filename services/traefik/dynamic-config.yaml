@@ -7,6 +7,8 @@ http:
     dashboard:
       entryPoints: web
       rule: "Host(`dashboard.wheeler-network.com`)"
+      middlewares:
+        - dashboard-cloudflared-only
       service: dashboard
     traefik:
       entryPoints: web
@@ -33,7 +35,7 @@ http:
     dashboard:
       loadBalancer:
         servers:
-          - url: http://192.168.0.50:4322
+          - url: http://172.17.0.1:4322
     traefik:
       loadBalancer:
         servers:
@@ -61,3 +63,13 @@ http:
   serversTransports:
     proxmox:
       insecureSkipVerify: true
+
+  middlewares:
+    dashboard-cloudflared-only:
+      ipWhiteList:
+        sourceRange:
+          # Dashboard trusts Cloudflare Access identity headers. Only accept
+          # requests that enter Traefik from local Docker networks, where the
+          # cloudflared container is the expected caller. LAN clients hitting
+          # Traefik directly must not be able to forge cf-access-* headers.
+          - 172.16.0.0/12

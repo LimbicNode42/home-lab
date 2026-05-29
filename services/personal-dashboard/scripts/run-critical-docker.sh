@@ -6,7 +6,7 @@ set -eu
 # Run from /mnt/nas/services/personal-dashboard on critical after syncing this dir.
 
 APP_DIR=${APP_DIR:-/mnt/nas/services/personal-dashboard}
-PUBLISHED_IP=${DASHBOARD_PUBLISHED_IP:-192.168.0.50}
+PUBLISHED_IP=${DASHBOARD_PUBLISHED_IP:-172.17.0.1}
 IMAGE=${DASHBOARD_IMAGE:-personal-dashboard:local}
 CONTAINER=${DASHBOARD_CONTAINER:-personal-dashboard}
 

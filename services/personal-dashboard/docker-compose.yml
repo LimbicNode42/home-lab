@@ -6,10 +6,12 @@ services:
     container_name: personal-dashboard
     restart: unless-stopped
     ports:
-      # Bind to the critical LXC LAN IP, not 0.0.0.0. Traefik currently runs in
-      # the default Docker bridge and routes to http://192.168.0.50:4322 via the
-      # file provider; revisit this if proxy/dashboard move to a user-defined network.
-      - "${DASHBOARD_PUBLISHED_IP:-192.168.0.50}:4322:4322"
+      # Bind only to the Docker bridge host gateway. Traefik runs on the same
+      # host and reaches this published port through that gateway
+      # (http://172.17.0.1:4322 in services/traefik/dynamic-config.yaml).
+      # Do not publish this on the LAN IP: the app trusts Cloudflare Access
+      # identity headers after Traefik/cloudflared has performed ingress control.
+      - "${DASHBOARD_PUBLISHED_IP:-172.17.0.1}:4322:4322"
     environment:
       NODE_ENV: production
       PORT: "4322"
