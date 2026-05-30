@@ -1,0 +1,132 @@
+#
+# Hermes Discord Gateway — compose service definition
+#
+# This file is the deployment artifact for the Discord-integrated Hermes Agent gateway.
+# It is a CANDIDATE desired-state seed. Do not apply without:
+#   1. Reading SECRETS INJECTION section below.
+#   2. Ensuring ~/.hermes/profiles/kobold/ exists on the target host.
+#   3. Explicit approval from Ben.
+#
+# Usage (on the critical LXC at 192.168.0.50):
+#
+#   # Render .env from Vaultwarden (see env.example for field references)
+#   cp env.example .env && chmod 600 .env
+#   # Fill in values from Vaultwarden folder: homelab / hermes-discord
+#   vim .env
+#
+#   HERMES_UID=$(id -u) HERMES_GID=$(id -g) docker compose up -d
+#
+# To attach to gateway logs:
+#   docker compose logs -f hermes-discord
+#
+
+services:
+  hermes-discord:
+    # Pin to the image digest of the currently running Hermes instance.
+    # To resolve: docker image inspect $(docker inspect hermes --format '{{.Image}}') --format '{{index .RepoDigests 0}}'
+    # Update HERMES_IMAGE_DIGEST in .env or replace the placeholder below.
+    image: ${HERMES_IMAGE:-hermes-agent}@${HERMES_IMAGE_DIGEST:-sha256:REPLACE_WITH_RUNNING_DIGEST}
+    container_name: hermes-discord
+    restart: unless-stopped
+
+    # network_mode: host is used so the gateway can reach other homelab
+    # services (Proxmox, NAS, Vaultwarden) on the LAN without extra routing.
+    # If you move to bridge mode, open ports explicitly and update Traefik.
+    network_mode: host
+
+    volumes:
+      # Hermes profile data (config, skills, memory, kanban.db).
+      # Must be owned by HERMES_UID:HERMES_GID. The s6-overlay stage2 hook
+      # remaps the internal `hermes` user to HERMES_UID/HERMES_GID on startup.
+      - ${HERMES_DATA_DIR:-/opt/hermes-data}:/opt/data
+
+    environment:
+      # ---- UID / GID remap ----
+      - HERMES_UID=${HERMES_UID:-10000}
+      - HERMES_GID=${HERMES_GID:-10000}
+
+      # ---- Discord (REQUIRED) ----
+      # DISCORD_BOT_TOKEN: secret — store in Vaultwarden, inject at runtime.
+      # Vaultwarden ref: homelab / hermes-discord / bot_token
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+
+      # ---- Discord (OPTIONAL but recommended) ----
+      # Comma-separated Discord user IDs allowed to invoke the bot.
+      # Omit DISCORD_ALLOWED_USERS only if DISCORD_ALLOW_ALL_USERS=true (dev only).
+      - DISCORD_ALLOWED_USERS=${DISCORD_ALLOWED_USERS}
+
+      # Default channel for cron/notification delivery (numeric channel ID).
+      - DISCORD_HOME_CHANNEL=${DISCORD_HOME_CHANNEL}
+
+      # Slash-command sync policy: safe (default) | bulk | off
+      # safe: only syncs commands that have changed; preferred for production.
+      # bulk: overwrites all guild commands at startup; use once to reset.
+      # off: never syncs; use if you manage commands via the Discord portal.
+      - DISCORD_COMMAND_SYNC_POLICY=${DISCORD_COMMAND_SYNC_POLICY:-safe}
+
+      # Hide /kanban commands from non-admin guild members (server-side auth still applies).
+      - DISCORD_HIDE_SLASH_COMMANDS=${DISCORD_HIDE_SLASH_COMMANDS:-false}
+
+      # Comma-separated channel IDs that may invoke slash commands.
+      # Restricts /kanban and other slash commands to specific channels.
+      - DISCORD_ALLOWED_CHANNELS=${DISCORD_ALLOWED_CHANNELS:-}
+
+      # ---- LLM provider (one of: openai, anthropic, openrouter, etc.) ----
+      # These mirror what you have in ~/.hermes/.env / Hermes config.
+      # If the profile config already has these, you can omit them here —
+      # they will be read from the mounted /opt/data volume.
+      # - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+
+    # Command: start the Hermes gateway in Discord-only mode.
+    # The gateway reads its platform config from /opt/data (the volume mount).
+    command: ["gateway", "run"]
+
+    # Health check: the gateway process stays running as long as the
+    # Discord WebSocket connection is alive. We probe liveness by checking
+    # the process is up. Adjust if you expose an API server endpoint.
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'hermes.*gateway' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    # Resource limits — adjust for the critical LXC's available RAM.
+    # The gateway typically uses 200-400 MB at idle with a loaded model context.
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+        reservations:
+          memory: 256m
+
+    # Log rotation — prevents unbounded log growth on the LXC host.
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # Optional: dashboard service for web UI access.
+  # Keep bound to 127.0.0.1. For remote access, tunnel via SSH:
+  #   ssh -L 9119:localhost:9119 user@192.168.0.50
+  # Do NOT expose 0.0.0.0 — the dashboard stores API keys.
+  hermes-dashboard:
+    image: ${HERMES_IMAGE:-hermes-agent}@${HERMES_IMAGE_DIGEST:-sha256:REPLACE_WITH_RUNNING_DIGEST}
+    container_name: hermes-discord-dashboard
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      - hermes-discord
+    volumes:
+      - ${HERMES_DATA_DIR:-/opt/hermes-data}:/opt/data
+    environment:
+      - HERMES_UID=${HERMES_UID:-10000}
+      - HERMES_GID=${HERMES_GID:-10000}
+    command: ["dashboard", "--host", "127.0.0.1", "--no-open"]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
