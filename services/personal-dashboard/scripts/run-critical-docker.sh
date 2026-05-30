@@ -9,7 +9,7 @@ APP_DIR=${APP_DIR:-/mnt/nas/services/personal-dashboard}
 PUBLISHED_IP=${DASHBOARD_PUBLISHED_IP:-172.17.0.1}
 IMAGE=${DASHBOARD_IMAGE:-personal-dashboard:local}
 CONTAINER=${DASHBOARD_CONTAINER:-personal-dashboard}
-FINNICK_REPORT_HOST_PATH=${FINNICK_REPORT_HOST_PATH:-/root/.hermes/profiles/kobold/runtime/finnick-capital/logs/latest_report.txt}
+FINNICK_REPORT_HOST_PATH=${FINNICK_REPORT_HOST_PATH:-/mnt/nas/services/personal-dashboard/finnick/latest_report.txt}
 
 cd "$APP_DIR"
 

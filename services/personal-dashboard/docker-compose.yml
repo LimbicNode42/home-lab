@@ -30,7 +30,7 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ${FINNICK_REPORT_HOST_PATH:-/root/.hermes/profiles/kobold/runtime/finnick-capital/logs/latest_report.txt}
+        source: ${FINNICK_REPORT_HOST_PATH:-/mnt/nas/services/personal-dashboard/finnick/latest_report.txt}
         target: /app/finnick/latest_report.txt
         read_only: true
         bind:
