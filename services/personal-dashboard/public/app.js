@@ -2,6 +2,8 @@ const title = document.querySelector('#dashboard-title');
 const sections = document.querySelector('#sections');
 const statusList = document.querySelector('#status-list');
 const refreshButton = document.querySelector('#refresh-status');
+const finnickContent = document.querySelector('#finnick-content');
+const refreshFinnickButton = document.querySelector('#refresh-finnick');
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -80,7 +82,29 @@ async function boot() {
     sections.replaceChildren(el('p', { className: 'error', text: `Config unavailable: ${error.message}` }));
   }
   await refreshStatus();
+  await refreshFinnick();
 }
 
 refreshButton.addEventListener('click', refreshStatus);
 boot();
+
+async function refreshFinnick() {
+  if (refreshFinnickButton) refreshFinnickButton.disabled = true;
+  try {
+    const data = await getJson('/api/finnick/report');
+    finnickContent.replaceChildren(el('pre', { className: 'finnick-report', text: data.content }));
+  } catch (error) {
+    const msg = error.message.includes('404')
+      ? 'No report yet — check back after the 08:00 AEST cron runs.'
+      : error.message.includes('503')
+        ? 'Finnick report is not configured on this instance.'
+        : `Report unavailable: ${error.message}`;
+    finnickContent.replaceChildren(el('p', { className: 'error', text: msg }));
+  } finally {
+    if (refreshFinnickButton) refreshFinnickButton.disabled = false;
+  }
+}
+
+if (refreshFinnickButton) {
+  refreshFinnickButton.addEventListener('click', refreshFinnick);
+}

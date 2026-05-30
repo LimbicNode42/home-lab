@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import http from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -90,6 +90,7 @@ export async function createApp(options = {}) {
   const proxyUserHeader = options.proxyUserHeader ?? process.env.DASHBOARD_PROXY_USER_HEADER ?? 'x-forwarded-user';
   const nodeEnv = options.nodeEnv ?? process.env.NODE_ENV ?? 'development';
   const allowDisabledAuth = options.allowDisabledAuth ?? process.env.DASHBOARD_ALLOW_DISABLED_AUTH === 'true';
+  const finnickReportFile = options.finnickReportFile ?? process.env.FINNICK_REPORT_FILE ?? null;
   assertSafeAuth({ authMode, nodeEnv, allowDisabledAuth });
 
   const statusService = new StatusService({
@@ -116,6 +117,21 @@ export async function createApp(options = {}) {
 
       if (request.method === 'GET' && url.pathname === '/api/status') {
         return json(response, 200, await statusService.getStatus());
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/finnick/report') {
+        if (!finnickReportFile) {
+          return json(response, 503, { error: 'finnick_not_configured', message: 'FINNICK_REPORT_FILE is not set' });
+        }
+        try {
+          const content = await readFile(finnickReportFile, 'utf8');
+          return json(response, 200, { content: content.trim() });
+        } catch (err) {
+          if (err.code === 'ENOENT') {
+            return json(response, 404, { error: 'report_not_found', message: 'No Finnick report has been generated yet' });
+          }
+          return json(response, 502, { error: 'report_read_error', message: err.message });
+        }
       }
 
       return json(response, 404, { error: 'not_found' });

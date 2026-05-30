@@ -21,10 +21,17 @@ services:
       DASHBOARD_CONFIG_FILE: /app/config/dashboard.public.json
       DASHBOARD_STATUS_CACHE_TTL_MS: ${DASHBOARD_STATUS_CACHE_TTL_MS:-30000}
       DASHBOARD_STATUS_PROBE_TIMEOUT_MS: ${DASHBOARD_STATUS_PROBE_TIMEOUT_MS:-2500}
+      FINNICK_REPORT_FILE: /app/finnick/latest_report.txt
     volumes:
       - type: bind
         source: ./config/dashboard.public.json
         target: /app/config/dashboard.public.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${FINNICK_REPORT_HOST_PATH:-/root/.hermes/profiles/kobold/runtime/finnick-capital/logs/latest_report.txt}
+        target: /app/finnick/latest_report.txt
         read_only: true
         bind:
           create_host_path: false
