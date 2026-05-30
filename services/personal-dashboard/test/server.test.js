@@ -115,7 +115,8 @@ test('GET /api/status probes configured targets and hides target URLs', async ()
 
 test('GET /api/finnick/report returns 503 when finnickReportFile is not configured', async () => {
   const configPath = await writeConfig(basicConfig);
-  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true });
+  // Pass finnickReportFile: null explicitly to override any env var set in the process environment
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, finnickReportFile: null });
   const server = await listen(app);
 
   try {
