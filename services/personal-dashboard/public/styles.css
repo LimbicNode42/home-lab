@@ -54,3 +54,17 @@ h2, h3 { margin-top: 0; }
   border-radius: 0.65rem;
   background: #0e1626;
 }
+.finnick-report {
+  margin: 0;
+  padding: 0.75rem;
+  font-family: ui-monospace, SFMono-Regular, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #cdd9e5;
+  background: #0d1117;
+  border: 1px solid #273244;
+  border-radius: 0.65rem;
+  overflow-x: auto;
+}
