@@ -90,7 +90,9 @@ export async function createApp(options = {}) {
   const proxyUserHeader = options.proxyUserHeader ?? process.env.DASHBOARD_PROXY_USER_HEADER ?? 'x-forwarded-user';
   const nodeEnv = options.nodeEnv ?? process.env.NODE_ENV ?? 'development';
   const allowDisabledAuth = options.allowDisabledAuth ?? process.env.DASHBOARD_ALLOW_DISABLED_AUTH === 'true';
-  const finnickReportFile = options.finnickReportFile ?? process.env.FINNICK_REPORT_FILE ?? null;
+  const finnickReportFile = Object.prototype.hasOwnProperty.call(options, 'finnickReportFile')
+    ? options.finnickReportFile
+    : (process.env.FINNICK_REPORT_FILE ?? null);
   assertSafeAuth({ authMode, nodeEnv, allowDisabledAuth });
 
   const statusService = new StatusService({
