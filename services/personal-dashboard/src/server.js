@@ -1,7 +1,9 @@
 import { createReadStream } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import http from 'node:http';
-import { extname, join, normalize, resolve, sep } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { extname, join, normalize, relative, resolve, sep } from 'node:path';
+import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 import { loadConfig, toPublicConfig } from './config.js';
@@ -84,6 +86,207 @@ async function serveStatic(request, response) {
   }
 }
 
+const HOME_LAB_ROOT = '/root/work/home-lab';
+const GITHUB_BASE = 'https://github.com/LimbicNode42/home-lab/blob/master';
+
+/**
+ * Resolve the kanban DB path from an option or environment variable.
+ * Expands leading ~ to the user home directory.
+ */
+function resolveKanbanDbPath(kanbanDbPath) {
+  const raw = kanbanDbPath ?? process.env.KANBAN_DB_PATH ?? '~/.hermes/kanban.db';
+  if (raw.startsWith('~/') || raw === '~') {
+    const home = process.env.HOME ?? homedir();
+    return join(home, raw.slice(1));
+  }
+  return raw;
+}
+
+/**
+ * Escape a string literal for SQLite. Task ids are internal, but keeping shell-out SQL
+ * boringly quoted is cheaper than explaining the incident later.
+ */
+function sqlString(value) {
+  return `'${String(value).replaceAll("'", "''")}'`;
+}
+
+/**
+ * Query the kanban SQLite DB via the sqlite3 CLI and return parsed JSON.
+ * Throws if the DB is not readable or the CLI fails.
+ */
+function queryKanbanDb(dbPath, sql) {
+  const output = execFileSync('sqlite3', ['-json', dbPath, sql], {
+    encoding: 'utf8',
+    timeout: 10_000,
+    stdio: ['ignore', 'pipe', 'ignore']
+  });
+  if (!output.trim()) return [];
+  return JSON.parse(output);
+}
+
+function parseMetadata(raw) {
+  if (!raw || typeof raw !== 'string') return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Parse a child_tasks entry like "t_28e723be (map)" and return just the task id.
+ */
+function parseChildTaskId(entry) {
+  if (entry && typeof entry === 'object') {
+    const id = entry.id ?? entry.task_id ?? entry.taskId;
+    if (typeof id === 'string' && /^t_[0-9a-f]+$/.test(id)) return id;
+  }
+  const match = /^(t_[0-9a-f]+)/.exec(String(entry).trim());
+  return match ? match[1] : null;
+}
+
+function metadataChildTaskIds(metadataRows) {
+  const ids = [];
+  for (const row of metadataRows) {
+    const metadata = parseMetadata(row.metadata);
+    const childTasks = Array.isArray(metadata.child_tasks) ? metadata.child_tasks : [];
+    for (const childTask of childTasks) {
+      const id = parseChildTaskId(childTask);
+      if (id) ids.push(id);
+    }
+  }
+  return ids;
+}
+
+function metadataArtifacts(metadataRows) {
+  const artifacts = [];
+  for (const row of metadataRows) {
+    const metadata = parseMetadata(row.metadata);
+    if (!Array.isArray(metadata.artifacts)) continue;
+    for (const artifact of metadata.artifacts) {
+      if (typeof artifact === 'string') artifacts.push(artifact);
+    }
+  }
+  return artifacts;
+}
+
+function isScribeTask(task, metadataRow) {
+  return task.assignee === 'scribe' || metadataRow.profile === 'scribe';
+}
+
+function scribeMetadataArtifacts(task, metadataRows) {
+  const artifacts = [];
+  for (const row of metadataRows) {
+    if (!isScribeTask(task, row)) continue;
+    artifacts.push(...metadataArtifacts([row]));
+  }
+  return artifacts;
+}
+
+/**
+ * Given a list of artifact paths from metadata, filter to those under HOME_LAB_ROOT
+ * and map them to { label, url } objects. Do not stat the paths: the data contract
+ * is the committed repo path prefix, not live filesystem presence in the container.
+ */
+function buildDocLinks(artifacts) {
+  if (!Array.isArray(artifacts) || artifacts.length === 0) return [];
+  const links = [];
+  const seen = new Set();
+  for (const artifactPath of artifacts) {
+    if (typeof artifactPath !== 'string') continue;
+    if (!artifactPath.startsWith(`${HOME_LAB_ROOT}/`)) continue;
+    const abs = resolve(artifactPath);
+    const rel = relative(HOME_LAB_ROOT, abs);
+    if (rel.startsWith('..') || rel.startsWith('/') || rel === '') continue;
+    const url = `${GITHUB_BASE}/${rel.split(sep).join('/')}`;
+    if (seen.has(url)) continue;
+    seen.add(url);
+    const label = abs.split(sep).pop();
+    links.push({ label, url });
+  }
+  return links;
+}
+
+function getRunMetadataRows(dbPath, taskId) {
+  return queryKanbanDb(
+    dbPath,
+    `SELECT profile, metadata FROM task_runs
+     WHERE task_id = ${sqlString(taskId)}
+       AND metadata IS NOT NULL
+     ORDER BY id ASC`
+  );
+}
+
+/**
+ * Build the epics response payload from the kanban DB.
+ */
+function getEpics(dbPath) {
+  const epicRows = queryKanbanDb(
+    dbPath,
+    `SELECT t.id, t.title, t.completed_at
+     FROM tasks t
+     WHERE t.status = 'done'
+       AND EXISTS (
+         SELECT 1 FROM task_events te
+         WHERE te.task_id = t.id AND te.kind = 'decomposed'
+       )
+     ORDER BY t.completed_at DESC`
+  );
+
+  const epics = [];
+  for (const epic of epicRows) {
+    const linkedChildren = queryKanbanDb(
+      dbPath,
+      `SELECT t.id, t.title, t.assignee, t.status
+       FROM task_links tl
+       JOIN tasks t ON t.id = tl.parent_id
+       WHERE tl.child_id = ${sqlString(epic.id)}
+       ORDER BY t.id ASC`
+    );
+
+    const epicMetadataRows = getRunMetadataRows(dbPath, epic.id);
+    const metadataSubtaskIds = metadataChildTaskIds(epicMetadataRows);
+    const seenIds = new Set(linkedChildren.map((child) => child.id));
+    const subtasks = [...linkedChildren];
+
+    if (metadataSubtaskIds.length > 0) {
+      const missingIds = metadataSubtaskIds.filter((id) => !seenIds.has(id));
+      if (missingIds.length > 0) {
+        const idsClause = missingIds.map(sqlString).join(',');
+        const metaChildren = queryKanbanDb(
+          dbPath,
+          `SELECT id, title, assignee, status
+           FROM tasks
+           WHERE id IN (${idsClause})
+           ORDER BY id ASC`
+        );
+        for (const child of metaChildren) {
+          if (!seenIds.has(child.id)) {
+            seenIds.add(child.id);
+            subtasks.push(child);
+          }
+        }
+      }
+    }
+
+    const artifacts = [...metadataArtifacts(epicMetadataRows)];
+    for (const child of subtasks) {
+      artifacts.push(...scribeMetadataArtifacts(child, getRunMetadataRows(dbPath, child.id)));
+    }
+
+    epics.push({
+      id: epic.id,
+      title: epic.title,
+      completed_at: epic.completed_at ? new Date(epic.completed_at * 1000).toISOString() : null,
+      subtasks: subtasks.map(({ id, title, assignee, status }) => ({ id, title, assignee, status })),
+      doc_links: buildDocLinks(artifacts)
+    });
+  }
+
+  return epics;
+}
+
 export async function createApp(options = {}) {
   const config = await loadConfig({ configPath: options.configPath });
   const authMode = options.authMode ?? process.env.DASHBOARD_AUTH_MODE ?? 'reverse-proxy';
@@ -93,6 +296,9 @@ export async function createApp(options = {}) {
   const finnickReportFile = Object.prototype.hasOwnProperty.call(options, 'finnickReportFile')
     ? options.finnickReportFile
     : (process.env.FINNICK_REPORT_FILE ?? null);
+  const kanbanDbPath = Object.prototype.hasOwnProperty.call(options, 'kanbanDbPath')
+    ? options.kanbanDbPath
+    : resolveKanbanDbPath(undefined);
   assertSafeAuth({ authMode, nodeEnv, allowDisabledAuth });
 
   const statusService = new StatusService({
@@ -133,6 +339,26 @@ export async function createApp(options = {}) {
             return json(response, 404, { error: 'report_not_found', message: 'No Finnick report has been generated yet' });
           }
           return json(response, 502, { error: 'report_read_error', message: err.message });
+        }
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/epics') {
+        if (!kanbanDbPath) {
+          return json(response, 200, { epics: [] });
+        }
+        try {
+          const info = await stat(kanbanDbPath);
+          if (!info.isFile()) {
+            return json(response, 200, { epics: [] });
+          }
+        } catch {
+          return json(response, 200, { epics: [] });
+        }
+        try {
+          const epics = getEpics(kanbanDbPath);
+          return json(response, 200, { epics });
+        } catch {
+          return json(response, 200, { epics: [] });
         }
       }
 
