@@ -68,3 +68,27 @@ h2, h3 { margin-top: 0; }
   border-radius: 0.65rem;
   overflow-x: auto;
 }
+
+/* Epics panel */
+#epics-list { display: flex; flex-direction: column; gap: 1rem; }
+.epic-card {
+  padding: 1rem;
+  border: 1px solid #273244;
+  border-radius: 0.8rem;
+  background: #111827;
+}
+.epic-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.3rem; }
+.epic-meta { font-size: 0.85rem; margin-bottom: 0.75rem; }
+.subtask-list { list-style: none; margin: 0 0 0.75rem; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.subtask-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; }
+.subtask-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subtask-assignee { max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge.neutral { color: #1f2937; background: #9aa7b4; }
+.doc-links { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; font-size: 0.82rem; }
+.doc-links a {
+  padding: 0.2rem 0.5rem;
+  border: 1px solid #2d3a4f;
+  border-radius: 0.4rem;
+  background: #0e1626;
+  color: #8cc2ff;
+}

@@ -3,6 +3,9 @@ FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 
+# sqlite3 CLI is needed by the /api/epics endpoint to query the kanban DB
+RUN apk add --no-cache sqlite
+
 COPY package.json package-lock.json* ./
 RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev --package-lock=false; fi
 

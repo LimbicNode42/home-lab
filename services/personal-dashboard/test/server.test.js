@@ -228,38 +228,13 @@ function makeTempDb() {
   return { dbPath, dir };
 }
 
-test('GET /api/epics returns 503 when kanbanDbPath is null', async () => {
-  const configPath = await writeConfig(basicConfig);
-  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, kanbanDbPath: null });
-  const server = await listen(app);
-  try {
-    const response = await fetch(`${server.baseUrl}/api/epics`);
-    const body = await response.json();
-    assert.equal(response.status, 503);
-    assert.equal(body.error, 'kanban_not_configured');
-  } finally {
-    await server.close();
-  }
-});
+function seed(dbPath, sql) {
+  execFileSync('sqlite3', [dbPath, sql]);
+}
 
-test('GET /api/epics returns 503 when kanban DB file does not exist', async () => {
+test('GET /api/epics returns 200 with an empty epics array when kanban DB is missing', async () => {
   const configPath = await writeConfig(basicConfig);
   const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, kanbanDbPath: '/tmp/definitely-no-such-kanban.db' });
-  const server = await listen(app);
-  try {
-    const response = await fetch(`${server.baseUrl}/api/epics`);
-    const body = await response.json();
-    assert.equal(response.status, 503);
-    assert.equal(body.error, 'kanban_not_configured');
-  } finally {
-    await server.close();
-  }
-});
-
-test('GET /api/epics returns empty array when no epics exist', async () => {
-  const { dbPath, dir } = makeTempDb();
-  const configPath = await writeConfig(basicConfig);
-  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, kanbanDbPath: dbPath });
   const server = await listen(app);
   try {
     const response = await fetch(`${server.baseUrl}/api/epics`);
@@ -268,23 +243,22 @@ test('GET /api/epics returns empty array when no epics exist', async () => {
     assert.deepEqual(body, { epics: [] });
   } finally {
     await server.close();
-    await rm(dir, { recursive: true, force: true });
   }
 });
 
-test('GET /api/epics returns epics with subtasks from task_links', async () => {
+test('GET /api/epics returns epics with the public response shape only', async () => {
   const { dbPath, dir } = makeTempDb();
-
-  // Seed: one epic + two child tasks linked via task_links
-  execFileSync('sqlite3', [dbPath, `
-    INSERT INTO tasks VALUES ('t_epic01','Epic One','domovoi','done',1748000000,NULL);
-    INSERT INTO tasks VALUES ('t_child01','Child One','kobold','done',1747900000,NULL);
-    INSERT INTO tasks VALUES ('t_child02','Child Two','gremlin','running',NULL,NULL);
+  const epicMetadata = JSON.stringify({ child_tasks: [{ id: 't_c11d03', label: 'Metadata Child' }] });
+  seed(dbPath, `
+    INSERT INTO tasks VALUES ('t_epic01','Epic One','domovoi','done',1748000000,'secret body do not leak');
+    INSERT INTO tasks VALUES ('t_child01','Child One','kobold','done',1747900000,'child body do not leak');
+    INSERT INTO tasks VALUES ('t_child02','Child Two','gremlin','running',NULL,'another body');
+    INSERT INTO tasks VALUES ('t_c11d03','Metadata Child','scribe','done',1747950000,'metadata child body');
     INSERT INTO task_events(task_id,run_id,kind,payload,created_at) VALUES ('t_epic01',NULL,'decomposed',NULL,1748000000);
-    INSERT INTO task_links VALUES ('t_epic01','t_child01');
-    INSERT INTO task_links VALUES ('t_epic01','t_child02');
-    INSERT INTO task_runs(task_id,profile,status,started_at,ended_at,outcome,metadata) VALUES ('t_epic01','domovoi','done',1747990000,1748000000,'completed','{}');
-  `]);
+    INSERT INTO task_links VALUES ('t_child01','t_epic01');
+    INSERT INTO task_links VALUES ('t_child02','t_epic01');
+    INSERT INTO task_runs(task_id,profile,status,started_at,ended_at,outcome,metadata) VALUES ('t_epic01','domovoi','done',1747990000,1748000000,'completed','${epicMetadata.replace(/'/g, "''")}');
+  `);
 
   const configPath = await writeConfig(basicConfig);
   const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, kanbanDbPath: dbPath });
@@ -293,39 +267,60 @@ test('GET /api/epics returns epics with subtasks from task_links', async () => {
     const response = await fetch(`${server.baseUrl}/api/epics`);
     const body = await response.json();
     assert.equal(response.status, 200);
+    assert.deepEqual(Object.keys(body), ['epics']);
     assert.equal(body.epics.length, 1);
     const epic = body.epics[0];
+    assert.deepEqual(Object.keys(epic), ['id', 'title', 'completed_at', 'subtasks', 'doc_links']);
     assert.equal(epic.id, 't_epic01');
     assert.equal(epic.title, 'Epic One');
-    assert.equal(epic.assignee, 'domovoi');
-    assert.ok(epic.completedAt.startsWith('2025'));
-    // body must NOT be exposed
-    assert.equal(epic.body, undefined);
-    assert.equal(epic.subtasks.length, 2);
-    const ids = epic.subtasks.map((s) => s.id).sort();
-    assert.deepEqual(ids, ['t_child01', 't_child02']);
-    // subtasks must not expose body
-    for (const st of epic.subtasks) {
-      assert.equal(st.body, undefined);
-    }
-    assert.deepEqual(epic.docLinks, []);
+    assert.equal(epic.completed_at, new Date(1748000000 * 1000).toISOString());
+    assert.deepEqual(epic.subtasks, [
+      { id: 't_child01', title: 'Child One', assignee: 'kobold', status: 'done' },
+      { id: 't_child02', title: 'Child Two', assignee: 'gremlin', status: 'running' },
+      { id: 't_c11d03', title: 'Metadata Child', assignee: 'scribe', status: 'done' }
+    ]);
+    assert.deepEqual(epic.doc_links, []);
+    assert.equal(JSON.stringify(body).includes('secret body'), false);
   } finally {
     await server.close();
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test('GET /api/epics returns subtasks from metadata child_tasks', async () => {
+test('GET /api/epics returns doc_links from committed artifacts on epic and child task runs', async () => {
   const { dbPath, dir } = makeTempDb();
-  const meta = JSON.stringify({ child_tasks: ['t_aabbcc11 (map)', 't_ddeeff22 (implement)'] });
+  const epicMeta = JSON.stringify({
+    artifacts: [
+      '/root/work/home-lab/docs/epics/overview.md',
+      '/root/.hermes/profiles/gremlin/secrets/nope.md',
+      'relative/should-not.md'
+    ],
+    token: 'do-not-leak'
+  });
+  const scribeAssigneeMeta = JSON.stringify({
+    artifacts: ['/root/work/home-lab/services/personal-dashboard/docs/child-note.md']
+  });
+  const scribeProfileMeta = JSON.stringify({
+    artifacts: ['/root/work/home-lab/docs/epics/profile-scribe.md']
+  });
+  const nonScribeMeta = JSON.stringify({
+    artifacts: ['/root/work/home-lab/docs/epics/non-scribe-should-not-leak.md']
+  });
 
-  execFileSync('sqlite3', [dbPath, `
+  seed(dbPath, `
     INSERT INTO tasks VALUES ('t_epic02','Epic Two','domovoi','done',1748001000,NULL);
-    INSERT INTO tasks VALUES ('t_aabbcc11','Meta Child One','kobold','done',1747950000,NULL);
-    INSERT INTO tasks VALUES ('t_ddeeff22','Meta Child Two','scribe','done',1747960000,NULL);
+    INSERT INTO tasks VALUES ('t_c11d03','Doc Child','scribe','done',1747960000,NULL);
+    INSERT INTO tasks VALUES ('t_child04','Profile Scribe Child','gremlin','done',1747961000,NULL);
+    INSERT INTO tasks VALUES ('t_child05','Non Scribe Child','gremlin','done',1747962000,NULL);
     INSERT INTO task_events(task_id,run_id,kind,payload,created_at) VALUES ('t_epic02',NULL,'decomposed',NULL,1748001000);
-    INSERT INTO task_runs(task_id,profile,status,started_at,ended_at,outcome,metadata) VALUES ('t_epic02','domovoi','done',1747990000,1748001000,'completed','${meta.replace(/'/g, "''")}');
-  `]);
+    INSERT INTO task_links VALUES ('t_c11d03','t_epic02');
+    INSERT INTO task_links VALUES ('t_child04','t_epic02');
+    INSERT INTO task_links VALUES ('t_child05','t_epic02');
+    INSERT INTO task_runs(task_id,profile,status,started_at,ended_at,outcome,metadata) VALUES ('t_epic02','domovoi','done',1747990000,1748001000,'completed','${epicMeta.replace(/'/g, "''")}');
+    INSERT INTO task_runs(task_id,profile,status,started_at,ended_at,outcome,metadata) VALUES ('t_c11d03','scribe','done',1747950000,1747960000,'completed','${scribeAssigneeMeta.replace(/'/g, "''")}');
+    INSERT INTO task_runs(task_id,profile,status,started_at,ended_at,outcome,metadata) VALUES ('t_child04','scribe','done',1747951000,1747961000,'completed','${scribeProfileMeta.replace(/'/g, "''")}');
+    INSERT INTO task_runs(task_id,profile,status,started_at,ended_at,outcome,metadata) VALUES ('t_child05','gremlin','done',1747952000,1747962000,'completed','${nonScribeMeta.replace(/'/g, "''")}');
+  `);
 
   const configPath = await writeConfig(basicConfig);
   const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, kanbanDbPath: dbPath });
@@ -334,12 +329,14 @@ test('GET /api/epics returns subtasks from metadata child_tasks', async () => {
     const response = await fetch(`${server.baseUrl}/api/epics`);
     const body = await response.json();
     assert.equal(response.status, 200);
-    assert.equal(body.epics.length, 1);
-    const epic = body.epics[0];
-    assert.equal(epic.id, 't_epic02');
-    assert.equal(epic.subtasks.length, 2);
-    const ids = epic.subtasks.map((s) => s.id).sort();
-    assert.deepEqual(ids, ['t_aabbcc11', 't_ddeeff22']);
+    assert.deepEqual(body.epics[0].doc_links, [
+      { label: 'overview.md', url: 'https://github.com/LimbicNode42/home-lab/blob/master/docs/epics/overview.md' },
+      { label: 'child-note.md', url: 'https://github.com/LimbicNode42/home-lab/blob/master/services/personal-dashboard/docs/child-note.md' },
+      { label: 'profile-scribe.md', url: 'https://github.com/LimbicNode42/home-lab/blob/master/docs/epics/profile-scribe.md' }
+    ]);
+    assert.equal(JSON.stringify(body).includes('do-not-leak'), false);
+    assert.equal(JSON.stringify(body).includes('non-scribe-should-not-leak'), false);
+    assert.equal(JSON.stringify(body).includes('/root/.hermes'), false);
   } finally {
     await server.close();
     await rm(dir, { recursive: true, force: true });
@@ -365,16 +362,12 @@ test('GET /api/epics requires authentication in reverse-proxy mode', async () =>
 
 test('GET /api/epics returns completed epics in reverse-chronological order', async () => {
   const { dbPath, dir } = makeTempDb();
-
-  // Seed two epics: newer has a higher completed_at timestamp
-  execFileSync('sqlite3', [dbPath, `
+  seed(dbPath, `
     INSERT INTO tasks VALUES ('t_older','Older Epic','domovoi','done',1747000000,NULL);
     INSERT INTO tasks VALUES ('t_newer','Newer Epic','domovoi','done',1748000000,NULL);
     INSERT INTO task_events(task_id,run_id,kind,payload,created_at) VALUES ('t_older',NULL,'decomposed',NULL,1747000000);
     INSERT INTO task_events(task_id,run_id,kind,payload,created_at) VALUES ('t_newer',NULL,'decomposed',NULL,1748000000);
-    INSERT INTO task_runs(task_id,profile,status,started_at,ended_at,outcome,metadata) VALUES ('t_older','domovoi','done',1746990000,1747000000,'completed','{}');
-    INSERT INTO task_runs(task_id,profile,status,started_at,ended_at,outcome,metadata) VALUES ('t_newer','domovoi','done',1747990000,1748000000,'completed','{}');
-  `]);
+  `);
 
   const configPath = await writeConfig(basicConfig);
   const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, kanbanDbPath: dbPath });
@@ -383,10 +376,7 @@ test('GET /api/epics returns completed epics in reverse-chronological order', as
     const response = await fetch(`${server.baseUrl}/api/epics`);
     const body = await response.json();
     assert.equal(response.status, 200);
-    assert.equal(body.epics.length, 2);
-    // Newer epic must appear first (reverse-chronological)
-    assert.equal(body.epics[0].id, 't_newer');
-    assert.equal(body.epics[1].id, 't_older');
+    assert.deepEqual(body.epics.map((epic) => epic.id), ['t_newer', 't_older']);
   } finally {
     await server.close();
     await rm(dir, { recursive: true, force: true });

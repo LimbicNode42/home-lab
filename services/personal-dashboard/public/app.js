@@ -4,6 +4,7 @@ const statusList = document.querySelector('#status-list');
 const refreshButton = document.querySelector('#refresh-status');
 const finnickContent = document.querySelector('#finnick-content');
 const refreshFinnickButton = document.querySelector('#refresh-finnick');
+const epicsList = document.querySelector('#epics-list');
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -83,6 +84,7 @@ async function boot() {
   }
   await refreshStatus();
   await refreshFinnick();
+  await refreshEpics();
 }
 
 refreshButton.addEventListener('click', refreshStatus);
@@ -107,4 +109,74 @@ async function refreshFinnick() {
 
 if (refreshFinnickButton) {
   refreshFinnickButton.addEventListener('click', refreshFinnick);
+}
+
+function formatDate(isoString) {
+  if (!isoString) return 'Unknown completion date';
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) return 'Unknown completion date';
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+function truncateTitle(title) {
+  const text = String(title ?? 'Untitled task');
+  return text.length > 60 ? `${text.slice(0, 57)}…` : text;
+}
+
+function statusBadgeClass(status) {
+  if (status === 'done') return 'badge up';
+  if (status === 'blocked') return 'badge down';
+  return 'badge neutral';
+}
+
+function statusIcon(status) {
+  if (status === 'done') return '✓';
+  if (status === 'blocked') return '!';
+  return '•';
+}
+
+async function refreshEpics() {
+  if (!epicsList) return;
+  try {
+    const data = await getJson('/api/epics');
+    epicsList.replaceChildren();
+
+    const epics = Array.isArray(data.epics) ? data.epics : [];
+    if (epics.length === 0) {
+      epicsList.append(el('p', { className: 'muted', text: 'No completed epics yet.' }));
+      return;
+    }
+
+    for (const epic of epics) {
+      const children = [
+        el('div', { className: 'epic-title', text: epic.title ?? 'Untitled epic' }),
+        el('div', { className: 'epic-meta muted', text: formatDate(epic.completed_at) })
+      ];
+
+      if (Array.isArray(epic.subtasks) && epic.subtasks.length > 0) {
+        const subtaskItems = epic.subtasks.map((task) => {
+          return el('li', { className: 'subtask-item' }, [
+            el('span', { className: 'badge neutral subtask-assignee', text: task.assignee ?? 'unassigned' }),
+            el('span', { className: statusBadgeClass(task.status), text: `${statusIcon(task.status)} ${task.status ?? 'unknown'}` }),
+            el('span', { className: 'subtask-title', title: task.title ?? '', text: truncateTitle(task.title) }),
+          ]);
+        });
+        children.push(el('ul', { className: 'subtask-list' }, subtaskItems));
+      }
+
+      if (Array.isArray(epic.doc_links) && epic.doc_links.length > 0) {
+        const links = epic.doc_links.map((doc) =>
+          el('a', { href: doc.url, text: doc.label ?? 'Document', rel: 'noreferrer noopener', target: '_blank' })
+        );
+        children.push(el('div', { className: 'doc-links' }, [
+          el('span', { className: 'muted', text: 'Docs: ' }),
+          ...links,
+        ]));
+      }
+
+      epicsList.append(el('article', { className: 'epic-card' }, children));
+    }
+  } catch (error) {
+    epicsList.replaceChildren(el('p', { className: 'error', text: `Epics unavailable: ${error.message}` }));
+  }
 }
