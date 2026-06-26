@@ -287,32 +287,36 @@ test('GET /api/epics returns epics with the public response shape only', async (
   }
 });
 
-test('GET /api/epics returns doc_links from committed artifacts on epic and child task runs', async () => {
+test('GET /api/epics returns doc_links only from committed scribe child artifacts', async () => {
   const { dbPath, dir } = makeTempDb();
   const epicMeta = JSON.stringify({
     artifacts: [
-      '/root/work/home-lab/docs/epics/overview.md',
+      '/root/work/home-lab/README.md',
       '/root/.hermes/profiles/gremlin/secrets/nope.md',
       'relative/should-not.md'
     ],
     token: 'do-not-leak'
   });
   const scribeAssigneeMeta = JSON.stringify({
-    artifacts: ['/root/work/home-lab/services/personal-dashboard/docs/child-note.md']
+    artifacts: [
+      '/root/work/home-lab/services/personal-dashboard/README.md',
+      '/root/work/home-lab/tmp/uncommitted-kanban-review-proof.md',
+      '/root/work/home-lab/services/personal-dashboard/README.md'
+    ]
   });
   const scribeProfileMeta = JSON.stringify({
-    artifacts: ['/root/work/home-lab/docs/epics/profile-scribe.md']
+    artifacts: ['/root/work/home-lab/docs/service-catalog.md']
   });
   const nonScribeMeta = JSON.stringify({
-    artifacts: ['/root/work/home-lab/docs/epics/non-scribe-should-not-leak.md']
+    artifacts: ['/root/work/home-lab/docs/backup-coverage-matrix.md']
   });
 
   seed(dbPath, `
-    INSERT INTO tasks VALUES ('t_epic02','Epic Two','domovoi','done',1748001000,NULL);
-    INSERT INTO tasks VALUES ('t_c11d03','Doc Child','scribe','done',1747960000,NULL);
+    INSERT INTO tasks VALUES ('t_epic02','Epic Two','domovoi','done',1748001000,'epic body should stay private');
+    INSERT INTO tasks VALUES ('t_c11d03','Doc Child','scribe','done',1747960000,'scribe body should stay private');
     INSERT INTO tasks VALUES ('t_child04','Profile Scribe Child','gremlin','done',1747961000,NULL);
     INSERT INTO tasks VALUES ('t_child05','Non Scribe Child','gremlin','done',1747962000,NULL);
-    INSERT INTO task_events(task_id,run_id,kind,payload,created_at) VALUES ('t_epic02',NULL,'decomposed',NULL,1748001000);
+    INSERT INTO task_events(task_id,run_id,kind,payload,created_at) VALUES ('t_epic02',NULL,'decomposed','event-payload-should-not-leak',1748001000);
     INSERT INTO task_links VALUES ('t_c11d03','t_epic02');
     INSERT INTO task_links VALUES ('t_child04','t_epic02');
     INSERT INTO task_links VALUES ('t_child05','t_epic02');
@@ -328,15 +332,19 @@ test('GET /api/epics returns doc_links from committed artifacts on epic and chil
   try {
     const response = await fetch(`${server.baseUrl}/api/epics`);
     const body = await response.json();
+    const serialized = JSON.stringify(body);
     assert.equal(response.status, 200);
     assert.deepEqual(body.epics[0].doc_links, [
-      { label: 'overview.md', url: 'https://github.com/LimbicNode42/home-lab/blob/master/docs/epics/overview.md' },
-      { label: 'child-note.md', url: 'https://github.com/LimbicNode42/home-lab/blob/master/services/personal-dashboard/docs/child-note.md' },
-      { label: 'profile-scribe.md', url: 'https://github.com/LimbicNode42/home-lab/blob/master/docs/epics/profile-scribe.md' }
+      { label: 'README.md', url: 'https://github.com/LimbicNode42/home-lab/blob/master/services/personal-dashboard/README.md' },
+      { label: 'service-catalog.md', url: 'https://github.com/LimbicNode42/home-lab/blob/master/docs/service-catalog.md' }
     ]);
-    assert.equal(JSON.stringify(body).includes('do-not-leak'), false);
-    assert.equal(JSON.stringify(body).includes('non-scribe-should-not-leak'), false);
-    assert.equal(JSON.stringify(body).includes('/root/.hermes'), false);
+    assert.equal(serialized.includes('do-not-leak'), false);
+    assert.equal(serialized.includes('event-payload-should-not-leak'), false);
+    assert.equal(serialized.includes('epic body should stay private'), false);
+    assert.equal(serialized.includes('scribe body should stay private'), false);
+    assert.equal(serialized.includes('backup-coverage-matrix'), false);
+    assert.equal(serialized.includes('uncommitted-kanban-review-proof'), false);
+    assert.equal(serialized.includes('/root/'), false);
   } finally {
     await server.close();
     await rm(dir, { recursive: true, force: true });

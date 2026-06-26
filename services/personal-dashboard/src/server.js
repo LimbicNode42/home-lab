@@ -1,4 +1,4 @@
-import { createReadStream } from 'node:fs';
+import { createReadStream, readFileSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import http from 'node:http';
 import { execFileSync } from 'node:child_process';
@@ -88,6 +88,22 @@ async function serveStatic(request, response) {
 
 const HOME_LAB_ROOT = '/root/work/home-lab';
 const GITHUB_BASE = 'https://github.com/LimbicNode42/home-lab/blob/master';
+// Build/deploy trust boundary: this manifest is generated from `git ls-files` in
+// the home-lab repo and copied into the container. If it is absent in development,
+// fall back to a local git check against HOME_LAB_ROOT.
+const COMMITTED_PATHS_FILE = resolve(__dirname, '..', 'config', 'home-lab-committed-files.txt');
+let committedPathSet;
+
+function getCommittedPathSet() {
+  if (committedPathSet !== undefined) return committedPathSet;
+  try {
+    const content = readFileSync(process.env.HOME_LAB_COMMITTED_PATHS_FILE ?? COMMITTED_PATHS_FILE, 'utf8');
+    committedPathSet = new Set(content.split(/\r?\n/).map((line) => line.trim()).filter(Boolean));
+  } catch {
+    committedPathSet = null;
+  }
+  return committedPathSet;
+}
 
 /**
  * Resolve the kanban DB path from an option or environment variable.
@@ -185,9 +201,29 @@ function scribeMetadataArtifacts(task, metadataRows) {
 }
 
 /**
- * Given a list of artifact paths from metadata, filter to those under HOME_LAB_ROOT
- * and map them to { label, url } objects. Do not stat the paths: the data contract
- * is the committed repo path prefix, not live filesystem presence in the container.
+ * Return true only for repo paths that are present in HEAD. The API maps artifacts
+ * to public GitHub blob URLs, so repo-prefix alone is not enough; uncommitted local
+ * scratch files must not become convincing-looking links.
+ */
+function isCommittedHomeLabPath(relativePath) {
+  const committedPaths = getCommittedPathSet();
+  if (committedPaths) return committedPaths.has(relativePath);
+
+  try {
+    execFileSync('git', ['-C', HOME_LAB_ROOT, 'cat-file', '-e', `HEAD:${relativePath}`], {
+      stdio: 'ignore',
+      timeout: 5000
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Given a list of artifact paths from metadata, filter to committed files under
+ * HOME_LAB_ROOT and map them to { label, url } objects. The response never exposes
+ * the local filesystem path, only the GitHub blob URL and basename label.
  */
 function buildDocLinks(artifacts) {
   if (!Array.isArray(artifacts) || artifacts.length === 0) return [];
@@ -199,7 +235,9 @@ function buildDocLinks(artifacts) {
     const abs = resolve(artifactPath);
     const rel = relative(HOME_LAB_ROOT, abs);
     if (rel.startsWith('..') || rel.startsWith('/') || rel === '') continue;
-    const url = `${GITHUB_BASE}/${rel.split(sep).join('/')}`;
+    const repoPath = rel.split(sep).join('/');
+    if (!isCommittedHomeLabPath(repoPath)) continue;
+    const url = `${GITHUB_BASE}/${repoPath}`;
     if (seen.has(url)) continue;
     seen.add(url);
     const label = abs.split(sep).pop();
@@ -270,7 +308,7 @@ function getEpics(dbPath) {
       }
     }
 
-    const artifacts = [...metadataArtifacts(epicMetadataRows)];
+    const artifacts = [];
     for (const child of subtasks) {
       artifacts.push(...scribeMetadataArtifacts(child, getRunMetadataRows(dbPath, child.id)));
     }
