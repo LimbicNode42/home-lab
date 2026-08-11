@@ -1,0 +1,106 @@
+# Investment Screener Product Guide
+
+## What this is
+
+The Investment Screener is a private research aid for turning a prepared universe of public companies into a short list of candidates worth human review. It applies value-growth heuristics inspired by Graham, Buffett, and Munger, then publishes a sanitized result into the home dashboard.
+
+It is not a brokerage tool, valuation model, alerting system, or recommendation engine. It is a triage tool: it helps decide what to read next.
+
+## Who it is for
+
+| Audience | Use |
+| --- | --- |
+| Ben | Review a small set of candidates without reading raw JSON first. |
+| Future Hermes workers | Keep generator, dashboard, and docs aligned without exposing internals. |
+| Household/authenticated dashboard users | Read the latest safe, summarized output if Ben chooses to share the panel. |
+
+## When to use it
+
+Use the screener when you want a first-pass shortlist before deeper investment research. It is useful for questions like:
+
+- Which candidates currently look strongest on quality and valuation heuristics?
+- Which markets are represented in the current export?
+- What changed in the latest generated report compared with the last manual review?
+- Which high-scoring candidates carry risk flags or missing-data caveats?
+
+Do not use it as the final reason to buy, sell, hold, size, or time a position. The boring disclaimer is doing real work here.
+
+## Product and deliverable map
+
+| Deliverable | Purpose | Primary user action | Doc |
+| --- | --- | --- | --- |
+| Screener concept | Defines what the product is and is not. | Decide whether this tool fits the research question. | This guide |
+| CLI/generator artifact | Produces the ranked export and plain-text report from a prepared universe. | Run or schedule a generation job after verifying inputs. | [CLI and generator](./cli-generator.md) |
+| Ranked JSON output | Machine-readable, dashboard-safe candidate data. | Feed the dashboard; do not read manually unless debugging. | [Interpreting results](./interpreting-results.md) |
+| Plain-text report output | Human-readable snapshot of the latest run. | Skim candidates, caveats, and limitations when the dashboard is unavailable. | [Interpreting results](./interpreting-results.md) |
+| Dashboard panel | Authenticated UI for the latest export with filters and suggestion counts. | Review candidates and adjust display focus. | [Dashboard panel](./dashboard-panel.md) |
+| Operational runbook | Safe local checks and troubleshooting. | Diagnose missing/stale output without live deployment. | [Operations and limitations](./operations-limitations.md) |
+
+## How to use it
+
+1. Open the home dashboard.
+2. Go to the Reports tab.
+3. Find the Investment Screener panel.
+4. Check the generated timestamp and data-as-of value.
+5. Start with the default Top 6 composite view.
+6. Read every caveat, risk flag, and limitation shown for a candidate.
+7. Use Market, Score focus, Weight preset, and Suggestions only to change the view of the current export.
+8. For anything interesting, leave the dashboard and verify against primary filings or an authorized market-data source.
+
+## Inputs
+
+The product depends on a prepared company universe and whatever financial fields the generator can safely score. Input quality matters more than UI polish. If the universe is stale, sparse, or market-skewed, the output will be stale, sparse, or market-skewed with a nicer hat.
+
+The dashboard does not fetch fresh market data. It reads only the latest sanitized export mounted into the dashboard runtime.
+
+## Outputs
+
+| Output | Human meaning | Notes |
+| --- | --- | --- |
+| Candidate rank | Relative order inside the current export. | Not comparable across unrelated runs unless inputs and weights match. |
+| Composite score | Overall heuristic score. | Useful for sorting, not a valuation. |
+| Sub-scores | Category-level signals such as quality, valuation, growth, Graham safety, durability, and risk adjustments. | Use to understand why a candidate surfaced. |
+| Risk flags | Reasons to slow down before trusting a high score. | Read before excitement. Excitement is how spreadsheets get you. |
+| Caveats | Missing data, caps, or interpretation warnings. | A caveat can matter more than the headline score. |
+| Limitations | Run-level warnings about coverage, source quality, filters, or mode. | Apply to the whole output. |
+
+## Interpreting scores
+
+Scores are screening heuristics. Treat a high score as "worth reading" rather than "worth buying." Treat a low score as "not prioritized by this model" rather than proof that the company is poor.
+
+The useful workflow is:
+
+1. Look at rank and composite score.
+2. Check the score dimensions that drove the result.
+3. Read risk flags and caveats.
+4. Confirm whether the candidate fits the intended market and currency context.
+5. Do independent research before making any decision.
+
+## Known limitations
+
+- The screener can only score fields present in the input data.
+- Cross-market comparisons may be distorted by accounting, currency, reporting cadence, and data-provider differences.
+- Dashboard filters operate on the latest exported data; they do not recompute the model.
+- Unofficial or prototype data sources should be treated as untrusted until independently verified.
+- The dashboard intentionally exposes a sanitized projection, not raw scorer internals.
+
+## Operational runbook
+
+For routine operation, use the dashboard first. If the dashboard says output is missing, stale, or unavailable, follow [Operations and limitations](./operations-limitations.md). Do not restart the live dashboard or change deployment mounts just to refresh docs or read a report.
+
+## Troubleshooting
+
+| Symptom | Likely meaning | First check |
+| --- | --- | --- |
+| Panel says output is not configured | Runtime does not know where to read the sanitized export. | Check dashboard deployment configuration in the operator runbook. |
+| Panel says output has not been generated | Export file is missing or not a regular file. | Run or inspect the generator job. |
+| Filters return no candidates | Current export has no matching candidates after sanitization. | Clear filters, then check whether the requested field exists in the export. |
+| Scores look surprising | Weighting, missing data, score caps, or source quality may be driving the result. | Read sub-scores, risk flags, caveats, and limitations. |
+
+## Next improvements
+
+- Keep the in-browser documentation map current as new screener docs are added.
+- Export richer safe metadata for exchange, region, sector, and industry filters.
+- Add a freshness badge and last-success marker for the generator job.
+- Add side-by-side run comparison once historical sanitized exports exist.
+- Add a human review notes field outside the ranked JSON contract.

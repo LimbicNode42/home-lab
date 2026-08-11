@@ -2,9 +2,8 @@ FROM node:22-alpine
 
 WORKDIR /app
 ENV NODE_ENV=production
-
-# sqlite3 CLI is needed by the /api/epics endpoint to query the kanban DB
-RUN apk add --no-cache sqlite
+ENV REPO_DOCS_ROOT=/app/repo-docs
+ENV EPIC_DOCS_INDEX_PATH=/app/repo-docs/services/personal-dashboard/docs/epics/index.json
 
 COPY package.json package-lock.json* ./
 RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev --package-lock=false; fi
@@ -12,6 +11,9 @@ RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit
 COPY src ./src
 COPY public ./public
 COPY config ./config
+RUN mkdir -p /app/repo-docs/services/personal-dashboard
+COPY README.md ./repo-docs/services/personal-dashboard/README.md
+COPY docs ./repo-docs/services/personal-dashboard/docs
 
 USER node
 EXPOSE 4322

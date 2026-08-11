@@ -52,6 +52,11 @@ __pycache__/
 *.envrc
 .secrets/
 services/personal-dashboard/config/dashboard.public.json
+services/personal-dashboard/data/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.db
 .bw_session
 bw-session
 vaultwarden-session

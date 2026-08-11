@@ -2,7 +2,9 @@
 
 Private homelab dashboard MVP for household links and lightweight service status.
 
-Status: implementation/deployment candidate only. Do not deploy, sync Traefik config, restart services, or create Cloudflare hostnames until Ben approves the exact apply commands.
+Status: implementation/deployment candidate only. Do not deploy, sync Traefik config, restart services, create Cloudflare hostnames, or enable Kanban mutations until Ben approves the exact apply commands.
+
+Kanban board freshness and mutation planning lives in [`kanban-state-bridge-plan.md`](./kanban-state-bridge-plan.md). That plan deliberately separates read-only tori board snapshots from any future narrow mutation bridge.
 
 ## What is included
 
@@ -13,9 +15,12 @@ Status: implementation/deployment candidate only. Do not deploy, sync Traefik co
   - `GET /api/config/public` authenticated public dashboard config, with server-side probe targets stripped.
   - `GET /api/status` authenticated status probe results, using an in-memory TTL cache.
   - `GET /api/finnick/report` authenticated endpoint that returns the latest Finnick/Polymarket daily betting report as `{ "content": "..." }` (see [Finnick report panel](#finnick-report-panel)).
+  - `GET /api/investment-screener/ranked` and `GET /api/investment-screener/report` authenticated endpoints that return sanitized generated investment screener output with freshness metadata and doc links (see [Investment screener panel](#investment-screener-panel)).
+  - `GET /api/docs` and `GET /api/docs/:id` authenticated documentation endpoints backed by an approved committed Markdown manifest (see [Documentation panel](#documentation-panel)).
+  - `GET /api/epics` authenticated completed-epics endpoint that reads Kanban via Node's in-process SQLite API and exposes only redacted task summaries and committed GitHub doc links.
 - Reverse-proxy authentication gate by default.
 - Dockerfile and Compose service for local/homelab container runs.
-- Node built-in test suite (9 tests, covering auth, config, status, and the Finnick report endpoint).
+- Node built-in test suite covering auth, config, status, Finnick, Kanban, completed epics, and documentation endpoints.
 
 ## Source evidence / deployment constraints
 
@@ -96,7 +101,13 @@ Environment variables:
 | `DASHBOARD_STATUS_CACHE_TTL_MS` | `30000` | Status result cache TTL. |
 | `DASHBOARD_STATUS_PROBE_TIMEOUT_MS` | `2500` | Per-probe timeout. |
 | `FINNICK_REPORT_FILE` | unset | Absolute path inside the container to the Finnick report file. Set to `/app/finnick/latest_report.txt` in the critical deployment (bind-mounted from the host). If unset, `GET /api/finnick/report` returns 503. |
-| `FINNICK_REPORT_HOST_PATH` | `/root/.hermes/profiles/kobold/runtime/finnick-capital/logs/latest_report.txt` | Host-side source path for the bind-mount. Used only by `run-critical-docker.sh`; not read by the app itself. |
+| `FINNICK_REPORT_HOST_PATH` | operator-provided host path | Host-side source path for the bind-mount. Used only by `run-critical-docker.sh`; not read by the app itself. Keep the concrete local path out of runtime-served docs. |
+| `INVESTMENT_SCREENER_REPORT_FILE` | unset | Absolute path inside the container to the latest sanitized investment screener text report. Set to `/app/investment-screener/latest_report.txt` in the deployment candidate. |
+| `INVESTMENT_SCREENER_RANKED_FILE` | unset | Absolute path inside the container to the latest sanitized ranked investment screener JSON export. Set to `/app/investment-screener/latest_ranked.json` in the deployment candidate. |
+| `INVESTMENT_SCREENER_REPORT_HOST_PATH` | operator-provided host path | Host-side report bind source used by Compose / `run-critical-docker.sh`; must be a regular file before container recreate. |
+| `INVESTMENT_SCREENER_RANKED_HOST_PATH` | operator-provided host path | Host-side ranked JSON bind source used by Compose / `run-critical-docker.sh`; must be a regular file before container recreate. |
+| `PERSONAL_DASHBOARD_DB_FILE` | unset | Absolute path inside the container for the private Diary/Goals SQLite database. Compose sets `/app/data/personal-dashboard.sqlite3`; if unset, diary/goal APIs return 503 without creating data in surprise locations. |
+| `PERSONAL_DASHBOARD_DB_HOST_PATH` | operator-provided host path | Host-side SQLite file bind source for Compose; create the parent directory and file outside Git before container recreate, and include it in personal-data backups. |
 
 ## Local development
 
@@ -106,6 +117,17 @@ DASHBOARD_AUTH_MODE=disabled DASHBOARD_ALLOW_DISABLED_AUTH=true DASHBOARD_CONFIG
 ```
 
 Then open `http://127.0.0.1:4322`.
+
+## Dashboard navigation
+
+The dashboard is organised into four hash-backed tabs. `/` defaults to Overview; direct links such as `/#work`, `/#knowledge`, and `/#reports` select the matching tab without adding server routes.
+
+- **Overview**: service status and configured household links.
+- **Work**: the Kanban board, still read-only unless the server explicitly enables the mutation bridge.
+- **Knowledge**: completed epics first, then the approved documentation viewer.
+- **Reports**: Finnick daily betting output and investment screener output.
+
+Tabs support click, Back/Forward hash changes, and ArrowLeft/ArrowRight/Home/End keyboard navigation. The mobile layout keeps the tab strip horizontal and scrollable rather than turning into a tiny accordion hydra.
 
 To exercise reverse-proxy auth locally:
 
@@ -175,12 +197,12 @@ Error states surfaced to the user:
 | API route | `src/server.js` → `GET /api/finnick/report` | Reads the report file from `FINNICK_REPORT_FILE`, returns `{ content: "..." }` or an error object |
 | Frontend panel | `public/index.html` `#finnick-panel`, `public/app.js` `refreshFinnick()` | Fetches the API on load and on Refresh click, renders `<pre class="finnick-report">` |
 | Deploy script | `scripts/run-critical-docker.sh` | Bind-mounts the host report file read-only into the container at `/app/finnick/latest_report.txt` |
-| Report source | Kobold cron writes to `/root/.hermes/profiles/kobold/runtime/finnick-capital/logs/latest_report.txt` on `critical` at 08:00 AEST | The same path is used as the bind-mount source |
+| Report source | Kobold cron writes the latest report on `critical` at 08:00 AEST | The rendered host path is operator-local and must stay out of runtime-served docs. |
 
 **`createApp()` option / env var:**
 
 ```
-FINNICK_REPORT_FILE=/root/.hermes/profiles/kobold/runtime/finnick-capital/logs/latest_report.txt
+FINNICK_REPORT_FILE=/app/finnick/latest_report.txt
 ```
 
 The container environment uses `FINNICK_REPORT_FILE=/app/finnick/latest_report.txt` (the bind-mount target path). The host-side source path is controlled by `FINNICK_REPORT_HOST_PATH` in `.env.example` / `run-critical-docker.sh`.
@@ -196,8 +218,8 @@ npm test
 # Smoke-test the endpoint with a fixture file
 echo "test report" > /tmp/test-report.txt
 FINNICK_REPORT_FILE=/tmp/test-report.txt \
-  DASHBOARD_AUTH_MODE=*** \
-  DASHBOARD_ALLOW_DISABLED_AUTH=*** \
+  DASHBOARD_AUTH_MODE=disabled \
+  DASHBOARD_ALLOW_DISABLED_AUTH=true \
   node src/server.js &
 curl -s http://127.0.0.1:4322/api/finnick/report
 # Expected: {"content":"test report"}
@@ -225,6 +247,236 @@ sh /mnt/nas/services/personal-dashboard/scripts/run-critical-docker.sh
 
 This rebuilds the image and recreates the container with the bind-mount intact. The report file on the host is untouched.
 
+## Investment screener panel
+
+The dashboard includes an authenticated **Investment Screener** panel for the latest generated value-growth screener output. It is intentionally file-backed and read-only: an external writer exports sanitized files, then the dashboard reads those files through read-only container mounts.
+
+The screener is an investigation aid only. It is not financial advice, not a rating, not a trading signal, and not a recommendation to buy/sell/hold anything. Treat every candidate as a prompt for human due diligence against primary filings or an authorised market-data source.
+
+### Product documentation
+
+Human-facing Investment Screener docs now live under `services/personal-dashboard/docs/products/investment-screener/` and are included in the dashboard's approved documentation manifest:
+
+| Doc | Purpose |
+| --- | --- |
+| [Product guide](./docs/products/investment-screener/README.md) | What the screener is for, who should use it, and the deliverable map. |
+| [CLI and generator](./docs/products/investment-screener/cli-generator.md) | How the generator artifact produces safe ranked JSON and report outputs. |
+| [Dashboard panel](./docs/products/investment-screener/dashboard-panel.md) | How to use the Reports-tab panel and understand its controls. |
+| [Interpreting results](./docs/products/investment-screener/interpreting-results.md) | How to read scores, filters, risk flags, caveats, and suggestion counts. |
+| [Operations and limitations](./docs/products/investment-screener/operations-limitations.md) | Runbook, trust boundaries, troubleshooting, and future improvements. |
+
+The sections below remain the implementation/API notes for maintainers; the product docs above are the intended starting point for humans trying to use the screener without reading JSON.
+
+### User-facing location and controls
+
+The panel appears in the **Reports** tab as **"Investment Screener"**. It loads automatically when the Reports tab is opened and has a manual **Refresh** button.
+
+Default behavior:
+
+- **Market**: `All markets`.
+- **Exchange / Region / Sector / Industry**: visible but disabled in the current dashboard because the sanitized ranked output does not yet export those fields safely.
+- **Score focus**: `Composite score`.
+- **Weight preset**: `Balanced`.
+- **Suggestions**: `Top 6`.
+
+Available controls:
+
+| Control | What it does |
+| --- | --- |
+| Market | Filters candidates by the `market` field already present in the sanitized ranked JSON. Current UI options are US, Japan/`JP`, and Switzerland/`CH`; the API also accepts any plain label matching the validation regex for future exports. |
+| Exchange / Region / Sector / Industry | Disabled until those fields are present in the sanitized ranked export. The backend accepts those query keys only to return a clear unsupported-filter error instead of pretending an empty result is meaningful. |
+| Score focus | Re-sorts the already-sanitized candidates by a public sub-score. Supported safe values are `composite`/default, `quality`, `valuation`, `growth`, `graham_safety`, `durability`, and `risk_adjustments`. |
+| Weight preset | Applies the same public sub-score sort as a preset tilt. Supported safe values are `balanced`/default, `quality`, `valuation`, `growth`, `graham_safety`, `durability`, and `risk_adjustments`. |
+| Suggestions | Limits the rendered suggestions to Top 3, Top 6, Top 10, or Top 25. The API validates `topN` as an integer from 1 to 25. |
+| Reset filters | Restores All markets, Composite score, Balanced weight, and Top 6 suggestions, then refreshes the panel. |
+
+The panel renders ranked candidates with ticker, name, market/currency, score, selected risk flags, caveats, generated timestamp, data-as-of timestamp, limitations, and links to the committed investment screener product docs.
+
+### Dashboard API filters and validation
+
+`GET /api/investment-screener/ranked` supports these query parameters:
+
+| Parameter | Accepted values | Behavior |
+| --- | --- | --- |
+| `market` | Plain market label matching `/^[a-z0-9][a-z0-9 ._-]{0,79}$/i` | Exact, case-insensitive match against candidate `market`. |
+| `exchange`, `region`, `sector`, `industry` | Any non-empty value currently rejected | Returns `400 unsupported_investment_screener_filter` because these fields are not available in the sanitized dashboard export yet. |
+| `metric` | `composite`, `quality`, `valuation`, `growth`, `graham_safety`, `durability`, `risk_adjustments` | Re-sorts by the selected public sub-score unless `composite` is selected. |
+| `weight` | `balanced`, `quality`, `valuation`, `growth`, `graham_safety`, `durability`, `risk_adjustments` | Re-sorts by the selected tilt unless `balanced` is selected. |
+| `topN` | Integer `1` through `25` | Limits the returned/rendered candidate list. Defaults to 6 when filters are active and no top-N is provided. |
+
+Unsupported query keys return `400 unsupported_investment_screener_filter`. Invalid market labels, metric values, weight presets, or top-N values return `400 invalid_investment_screener_filter`. When filters are valid but match nothing, the API returns `200` with an empty `candidates` list and the message: "No candidates match the selected investment screener filters. Try clearing one filter or waiting for richer ranked data." No-match is not treated as a server error; the goblin found zero mushrooms, not a fire.
+
+Other user-visible error states:
+
+| Condition | Message |
+| --- | --- |
+| Ranked output not yet generated | "No investment screener output yet — run the screener export first." |
+| Screener output env vars not set in container | "Investment screener output is not configured on this instance." |
+| Any other read/parse error | "Investment screener unavailable: \<error message\>" |
+
+### Data contract
+
+The screener CLI `--output` file is now the dashboard-safe ranked JSON object consumed by `GET /api/investment-screener/ranked`. It is not the raw internal scorer output and it is not an array. The CLI writes this object shape:
+
+```json
+{
+  "mode": "fixture|compact|full",
+  "generated_at": "ISO timestamp",
+  "data_as_of": "ISO timestamp, source string, or null",
+  "limitations": ["safe strings, including filter/top_n notes when relevant"],
+  "candidates": [
+    {
+      "rank": 1,
+      "ticker": "BRK-B",
+      "name": "Berkshire Hathaway",
+      "market": "US",
+      "currency": "USD",
+      "score": 91.4,
+      "sub_scores": {
+        "quality": 28,
+        "valuation": 17,
+        "growth": 14,
+        "graham_safety": 18,
+        "durability": 13,
+        "risk_adjustments": 10
+      },
+      "missing_penalty_points": 0,
+      "risk_flags": ["safe strings"],
+      "caveats": ["safe strings"],
+      "score_caps": ["safe strings"],
+      "sanitized_provenance_summary": "safe string or null"
+    }
+  ],
+  "excluded": []
+}
+```
+
+The dashboard API reads that object, sanitizes it again, caps `candidates` and `excluded` to 25 rows each, normalizes `mode` to `fixture`, `live`, or `unknown`, and adds the dashboard-only fields `disclaimer` and `doc_links`. When API query filters are active, it also adds `applied_filters` and `messages`, for example:
+
+```json
+{
+  "applied_filters": { "market": "US", "metric": "quality", "weight": "quality", "topN": 3 },
+  "messages": ["Showing 3 candidates after the selected filters."]
+}
+```
+
+`GET /api/investment-screener/report` returns a sanitized plain-text report projection with `{ mode, generated_at, data_as_of, disclaimer, content, doc_links }`.
+
+Sanitization strips or nulls local paths, Kanban DB names, stderr/diagnostic references, broad raw metadata, bearer tokens, and secret-shaped assignments before API responses reach the browser. The endpoint never returns the configured host path or task bodies.
+
+### Screener artifact usage
+
+The backend screener artifact exposes these safe local commands:
+
+```bash
+# Fixture sample, no network required.
+python3 investment_screener.py --fixture --mode full
+
+# Filter by fields present in the input data and limit suggestions.
+python3 investment_screener.py --fixture --market US,JP --top-n 5
+
+# Re-weight categories for a run; safe names are quality, valuation, growth,
+# graham_safety, durability, and risk_adjustments. Values must be numeric and non-negative.
+python3 investment_screener.py --fixture --weight quality=30 valuation=20
+
+# Select displayed metrics/categories in the full report.
+python3 investment_screener.py --fixture --mode full --metric pe_ratio,quality,fcf_margin
+
+# Save the dashboard-safe ranked JSON object plus the plain-text report.
+# The JSON is the object contract consumed by /api/investment-screener/ranked.
+python3 investment_screener.py --fixture --output ranked.json --report report.txt
+
+# Run the artifact tests.
+python3 -m unittest tests/test_screener.py -v
+```
+
+The screener config includes `suggestion_count.min` and `suggestion_count.max` bounds for `--top-n` / `--count`; the current artifact documents a max of 25. CLI filter support covers `market`, `exchange`, `region`, `sector`, and `industry` only where those fields exist in the supplied universe. The built-in fixture has `market`; exchange/region/sector/industry require richer input rows. If a requested field is absent, the CLI exits with an explicit error rather than returning mystery-empty output. If supported filters match no rows, the CLI succeeds and writes a valid ranked JSON object with empty `candidates`/`excluded` lists plus the applied filter note in `limitations`.
+
+Live Yahoo Finance mode remains prototype-only and guarded by `--allow-unofficial-yahoo-live`. It uses unofficial Yahoo endpoints with basic caching/retry/throttling and should not be treated as reliable coverage. Keep it out of unattended dashboard publication unless Ben has explicitly approved the data-source risk.
+
+### Data caveats
+
+- Fixture data is illustrative/backfill data and may be stale. `generated_at` says when the report was produced, not when the underlying financials became fresh.
+- Live/prototype data can be incomplete, missing fields, or source-dependent. Fields are only filterable where present and supported in the sanitized export.
+- Dashboard filtering is applied after sanitization to the currently mounted ranked JSON. It does not fetch fresh market data and does not recompute raw financial metrics.
+- Scores are simplified Graham/Buffett/Munger-style screening heuristics, not a valuation model. International FX is not normalized, and cross-market scores are not strictly comparable.
+- Risk flags, caveats, missing-data penalties, and score caps are part of the output and should be read before treating a high score as interesting.
+
+### Local run and test commands
+
+These are safe local checks and do not deploy anything:
+
+```bash
+# Dashboard tests. Requires Node >=22; the wrapper falls back to npx node@22 when needed.
+npm test
+
+# Local dashboard candidate with auth disabled only for local testing.
+DASHBOARD_AUTH_MODE=disabled DASHBOARD_ALLOW_DISABLED_AUTH=true DASHBOARD_CONFIG_FILE=./config/dashboard.public.example.json npm start
+```
+
+Manual UI regression: open `/#reports`, confirm the Investment Screener panel loads or shows the safe empty/error state, change Market / Score focus / Weight preset / Suggestions, use Reset filters, and confirm no browser console errors.
+
+### Approval-gated deployment notes
+
+Do not deploy, restart the live dashboard, recreate the container, sync Traefik, or publish new hostnames without Ben approving the exact apply commands.
+
+When approval is granted, Compose and `scripts/run-critical-docker.sh` expect two host-side files before container recreate:
+
+- `INVESTMENT_SCREENER_REPORT_HOST_PATH` → `/app/investment-screener/latest_report.txt`
+- `INVESTMENT_SCREENER_RANKED_HOST_PATH` → `/app/investment-screener/latest_ranked.json`
+
+The current defaults point at `/mnt/nas/services/personal-dashboard/investment-screener/`. Create/copy sanitized exports there atomically before deployment; do not bind Hermes artifact directories, task DBs, stderr logs, or unsanitized workspaces directly. No live deploy or restart was performed as part of this documentation update.
+
+## Documentation panel
+
+The dashboard includes an authenticated **Documentation** panel for a small allowlist of committed, non-secret Markdown files from the `home-lab` repository. The browser renders those Markdown files as structured documentation with headings, lists, tables, code blocks, safe links, per-document table of contents, stable heading anchors, grouped navigation, and selected-document state.
+
+### Safety model
+
+- The browser can list approved docs with `GET /api/docs` and fetch one by opaque manifest id with `GET /api/docs/:id`.
+- The browser cannot submit a filesystem path or browse repository directories.
+- The API response uses repo-relative metadata paths and never accepts browser-supplied filesystem paths.
+- Only `.md` files present in the committed-path manifest / Git `HEAD` are eligible.
+- Uncommitted scratch artifacts, traversal paths, `.env`/secret-shaped files, and malformed manifest entries are silently excluded.
+- Document content is read from `REPO_DOCS_ROOT` (defaulting to the local repo root in development and `/app/repo-docs` in the container) and then projected through a runtime sanitizer before being returned. The projection drops lines containing local filesystem paths, DB paths, command stderr/diagnostics, or secret-shaped assignments.
+- The docs viewer reads committed Markdown content only after the id survives the manifest filter. Raw HTML in docs is not injected into the DOM; Markdown is converted with DOM nodes/text content, and Markdown links are limited to `http`, `https`, `mailto`, or same-page anchors with `rel="noopener noreferrer"` on new-tab links.
+- Document `category` or `group` manifest metadata is optional and used only for navigation grouping after the same sanitizer used for other runtime values. Unsafe category values are dropped rather than served.
+- This is for operator-readable documentation, not a generic file server wearing a moustache.
+
+Default approved docs currently include:
+
+- `services/personal-dashboard/README.md` (`Dashboard` category)
+- `services/personal-dashboard/docs/products/investment-screener/*.md` (`Investment Screener` category)
+- `docs/service-catalog.md` (`Operations` category)
+- `docs/backup-coverage-matrix.md` (`Operations` category, when present in the committed manifest)
+
+To add a new dashboard doc:
+
+1. Create or update a `.md` file under the `home-lab` repo. Keep it committed, non-secret, and free of local absolute paths, DB paths, stderr/diagnostic dumps, and credential-shaped assignments.
+2. Add the repo-relative Markdown path to `DEFAULT_DOCS_MANIFEST` in `src/server.js` with a stable opaque `id`, human `title`, and optional `category`/`group` for the navigation list.
+3. Ensure the path appears in `config/home-lab-committed-files.txt` (generated from committed repo files for container trust-boundary checks).
+4. Run `npm test` and manually open Knowledge → Documentation to confirm the doc renders with headings/TOC/anchors rather than raw text.
+
+Completed epics continue to expose outbound GitHub blob links for relevant scribe artifacts where available. Those links are built from committed repo-local artifact paths only and avoid exposing task bodies or secret-shaped values.
+
+## Kanban DB runtime
+
+The dashboard container reads its mounted Kanban SQLite database via Node's built-in `node:sqlite` module, not the `sqlite3` CLI. This avoids the prior subprocess permission failure path in the `node:22-alpine` runtime and keeps the Docker image free of an extra SQLite subprocess dependency.
+
+The host-side bind source is `KANBAN_DB_HOST_PATH`, defaulting to the dashboard's operator-managed read-only Kanban snapshot path in Compose and `scripts/run-critical-docker.sh`. Use a readable snapshot/export there. Do not bind the Hermes runtime DB directly: it is commonly root-owned under a private home directory, while the container runs as `USER node`.
+
+If the DB path is missing, not a file, unreadable, or fails a query, Kanban-backed APIs return a sanitized `503 { "error": "kanban_db_unavailable", ... }` instead of silently returning empty epics/cards. The response intentionally omits host paths and SQLite diagnostics; check server logs for the grimy details.
+
+Kanban UI/API behavior remains read-only by default. `KANBAN_MUTATIONS_ENABLED` is not set by Compose or the live run script; mutation bridge work is out of scope until explicitly approved.
+
+Container regression smoke:
+
+```bash
+# Start a local candidate with DASHBOARD_AUTH_MODE=disabled and a readable test DB bind.
+npm run smoke:container
+# Expected: container smoke passed: /api/epics includes t_a1193120
+```
+
 ### Intended future expansion
 
 The Finnick report panel is the first of three planned data panels on the dashboard:
@@ -241,7 +493,25 @@ Each future panel will follow the same pattern: a Hermes cron (kobold or another
 npm test
 ```
 
-The suite covers config validation, auth gate behavior, health endpoint topology minimization, status probing, and hiding server-side target URLs. Four tests specifically cover `GET /api/finnick/report`: unconfigured (503), file missing (404), file present (200 with content), and auth enforcement (401 without proxy header).
+`npm test` requires Node >=22 because the server uses `node:sqlite`. When the host `node` is older, the test wrapper prints that fact and runs the suite through `npx -y node@22 --test`; failures after that are real test failures, not host-version noise.
+
+The suite covers config validation, auth gate behavior, health endpoint topology minimization, status probing, hiding server-side target URLs, Kanban board/mutation safety, completed-epic doc link sanitization, and documentation viewer allowlist behavior. Five tests specifically cover `GET /api/finnick/report`: unconfigured (503), file missing (404), directory bind-source guard (404 without leaking EISDIR), file present (200 with content), and auth enforcement (401 without proxy header).
+
+### Manual browser regression checklist
+
+Use this for UI-only behavior that the Node built-in test harness cannot prove reliably:
+
+1. Start a local candidate only, without live deployment: `DASHBOARD_AUTH_MODE=disabled DASHBOARD_ALLOW_DISABLED_AUTH=true DASHBOARD_CONFIG_FILE=./config/dashboard.public.example.json npm start`.
+2. Open `/` and confirm **Overview** is selected with Service status and Links visible.
+3. Open `/#work`, `/#knowledge`, and `/#reports` directly; confirm each tab is selected after reload and only its panel group is visible.
+4. Use ArrowLeft/ArrowRight/Home/End on focused tabs; confirm focus and selected tab move predictably.
+5. Confirm the mobile/narrow viewport keeps the tab strip horizontally scrollable and panel content readable.
+6. In Work, confirm the Kanban panel initially renders compactly, the **Expand board** / **Compact board** control toggles with `aria-expanded`, and the preference persists across reload via `localStorage`.
+7. Collapse and expand at least one Kanban lane; confirm its count/title remain visible, cards hide/show by keyboard-operable buttons, and the lane preference persists across reload.
+8. Confirm read-only mode is visible and card move controls remain disabled unless the server explicitly reports mutations enabled.
+9. In Knowledge, confirm Completed Epics and Documentation load; selecting a document still fetches by opaque manifest id.
+10. In Reports, confirm Finnick and Investment Screener load or show their existing safe empty/error states.
+11. With browser devtools open, confirm no console errors during initial load, tab changes, Kanban expand/collapse, docs selection, status refresh, and report refreshes.
 
 ## Secret handling
 

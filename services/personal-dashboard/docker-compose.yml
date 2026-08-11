@@ -23,6 +23,10 @@ services:
       DASHBOARD_STATUS_PROBE_TIMEOUT_MS: ${DASHBOARD_STATUS_PROBE_TIMEOUT_MS:-2500}
       KANBAN_DB_PATH: /app/kanban/kanban.db
       FINNICK_REPORT_FILE: /app/finnick/latest_report.txt
+      INVESTMENT_SCREENER_REPORT_FILE: /app/investment-screener/latest_report.txt
+      INVESTMENT_SCREENER_RANKED_FILE: /app/investment-screener/latest_ranked.json
+      PERSONAL_DASHBOARD_DB_FILE: /app/data/personal-dashboard.sqlite3
+      REPO_DOCS_ROOT: /app/repo-docs
     volumes:
       - type: bind
         source: ./config/dashboard.public.json
@@ -37,9 +41,27 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ${KANBAN_DB_HOST_PATH:-/root/.hermes/kanban.db}
+        source: ${INVESTMENT_SCREENER_REPORT_HOST_PATH:-/mnt/nas/services/personal-dashboard/investment-screener/latest_report.txt}
+        target: /app/investment-screener/latest_report.txt
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${INVESTMENT_SCREENER_RANKED_HOST_PATH:-/mnt/nas/services/personal-dashboard/investment-screener/latest_ranked.json}
+        target: /app/investment-screener/latest_ranked.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${KANBAN_DB_HOST_PATH:-/mnt/nas/services/personal-dashboard/kanban/kanban.db}
         target: /app/kanban/kanban.db
         read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${PERSONAL_DASHBOARD_DB_HOST_PATH:-/mnt/nas/services/personal-dashboard/data/personal-dashboard.sqlite3}
+        target: /app/data/personal-dashboard.sqlite3
+        read_only: false
         bind:
           create_host_path: false
     labels:

@@ -1,0 +1,63 @@
+{
+  "mode": "fixture",
+  "generated_at": "2026-08-09T08:00:00.000Z",
+  "data_as_of": "2026-08-08",
+  "limitations": [
+    "Fixture data for dashboard rendering tests.",
+    "Incomplete coverage outside configured markets."
+  ],
+  "candidates": [
+    {
+      "rank": 1,
+      "ticker": "BRK.B",
+      "name": "Berkshire Hathaway Inc.",
+      "market": "US",
+      "currency": "USD",
+      "score": 91.4,
+      "sub_scores": {
+        "quality": 28,
+        "valuation": 24,
+        "growth": 22,
+        "graham_safety": 17.4,
+        "durability": 16,
+        "risk_adjustments": 12
+      },
+      "missing_penalty_points": 0,
+      "risk_flags": ["conglomerate complexity"],
+      "caveats": ["Large-cap scale limits reinvestment runway."],
+      "score_caps": [],
+      "sanitized_provenance_summary": "Company facts normalized from public filings/provider export."
+    },
+    {
+      "rank": 2,
+      "ticker": "7203.T",
+      "name": "Toyota Motor Corporation",
+      "market": "JP",
+      "currency": "JPY",
+      "score": 84.2,
+      "sub_scores": {
+        "quality": 24,
+        "valuation": 23,
+        "growth": 20,
+        "graham_safety": 17.2,
+        "durability": 15,
+        "risk_adjustments": 11
+      },
+      "missing_penalty_points": 1,
+      "risk_flags": ["cyclical earnings", "FX exposure"],
+      "caveats": ["Auto-cycle exposure can make normalized earnings noisy."],
+      "score_caps": ["cyclical cap applied"]
+    }
+  ],
+  "excluded": [
+    {
+      "rank": 999,
+      "ticker": "NOPE",
+      "name": "Excluded Example",
+      "market": "TEST",
+      "currency": "USD",
+      "score": 12,
+      "risk_flags": ["insufficient history"]
+    }
+  ]
+}

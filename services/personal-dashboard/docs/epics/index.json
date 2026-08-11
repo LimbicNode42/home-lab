@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "generated_from": "dashboard-api-epics-shape",
+  "documents": [
+    {
+      "id": "epic-t-f4e81ce9",
+      "epic_id": "t_f4e81ce9",
+      "title": "Epic t_f4e81ce9: ops: approval-gated deploy for completed-epics dashboard fix",
+      "path": "services/personal-dashboard/docs/epics/t_f4e81ce9.md",
+      "completed_at": "2026-08-09T03:57:42Z",
+      "subtask_count": 5
+    },
+    {
+      "id": "epic-t-c29f1570",
+      "epic_id": "t_c29f1570",
+      "title": "Epic t_c29f1570: review personal-dashboard container Kanban DB deploy blocker fix",
+      "path": "services/personal-dashboard/docs/epics/t_c29f1570.md",
+      "completed_at": "2026-08-09T03:24:47Z",
+      "subtask_count": 1
+    },
+    {
+      "id": "epic-t-a1193120",
+      "epic_id": "t_a1193120",
+      "title": "Epic t_a1193120: investment screener: global Graham/Buffett/Munger value-growth reporting",
+      "path": "services/personal-dashboard/docs/epics/t_a1193120.md",
+      "completed_at": "2026-08-08T03:38:31Z",
+      "subtask_count": 9
+    },
+    {
+      "id": "epic-t-792f7c02",
+      "epic_id": "t_792f7c02",
+      "title": "Epic t_792f7c02: Home dashboard improvements: layout, navigation, and documentation",
+      "path": "services/personal-dashboard/docs/epics/t_792f7c02.md",
+      "completed_at": "2026-06-27T10:39:31Z",
+      "subtask_count": 7
+    },
+    {
+      "id": "epic-t-7c84112c",
+      "epic_id": "t_7c84112c",
+      "title": "Epic t_7c84112c: fix personal-dashboard container docs manifest listing unreachable docs",
+      "path": "services/personal-dashboard/docs/epics/t_7c84112c.md",
+      "completed_at": "2026-08-09T00:17:05Z",
+      "subtask_count": 1
+    },
+    {
+      "id": "epic-t-a870af65",
+      "epic_id": "t_a870af65",
+      "title": "Epic t_a870af65: Kanban GUI: approved deployment/apply checklist",
+      "path": "services/personal-dashboard/docs/epics/t_a870af65.md",
+      "completed_at": "2026-06-27T08:13:26Z",
+      "subtask_count": 10
+    },
+    {
+      "id": "epic-t-1e6524e8",
+      "epic_id": "t_1e6524e8",
+      "title": "Epic t_1e6524e8: Plan safe fresh Kanban state/bridge path after GUI blockers",
+      "path": "services/personal-dashboard/docs/epics/t_1e6524e8.md",
+      "completed_at": "2026-06-27T08:10:11Z",
+      "subtask_count": 8
+    },
+    {
+      "id": "epic-t-d27cf347",
+      "epic_id": "t_d27cf347",
+      "title": "Epic t_d27cf347: Home dashboard: Completed Epics panel with doc links",
+      "path": "services/personal-dashboard/docs/epics/t_d27cf347.md",
+      "completed_at": "2026-05-31T05:07:53Z",
+      "subtask_count": 6
+    },
+    {
+      "id": "epic-t-e257ce35",
+      "epic_id": "t_e257ce35",
+      "title": "Epic t_e257ce35: Dashboard epics panel: build and redeploy on critical",
+      "path": "services/personal-dashboard/docs/epics/t_e257ce35.md",
+      "completed_at": "2026-06-15T10:52:04Z",
+      "subtask_count": 3
+    },
+    {
+      "id": "epic-t-3757feb2",
+      "epic_id": "t_3757feb2",
+      "title": "Epic t_3757feb2: Fix Traefik LAN bypass: add IP-whitelist middleware to cluster + vault/admin routes, remove trae",
+      "path": "services/personal-dashboard/docs/epics/t_3757feb2.md",
+      "completed_at": "2026-05-30T07:29:44Z",
+      "subtask_count": 6
+    },
+    {
+      "id": "epic-t-d33783f2",
+      "epic_id": "t_d33783f2",
+      "title": "Epic t_d33783f2: Now that we have our Polymarket betting (Finnick) migrated and a foundation for a home dashboard",
+      "path": "services/personal-dashboard/docs/epics/t_d33783f2.md",
+      "completed_at": "2026-05-30T07:05:06Z",
+      "subtask_count": 4
+    },
+    {
+      "id": "epic-t-90eb0f88",
+      "epic_id": "t_90eb0f88",
+      "title": "Epic t_90eb0f88: Let's build a Discord plugin that will allow discord to connect to Hermes and be able to manage",
+      "path": "services/personal-dashboard/docs/epics/t_90eb0f88.md",
+      "completed_at": "2026-05-30T06:51:08Z",
+      "subtask_count": 5
+    },
+    {
+      "id": "epic-t-0c100a54",
+      "epic_id": "t_0c100a54",
+      "title": "Epic t_0c100a54: Can we do overall security hardening of the homelab and network. The goal is that I can securely",
+      "path": "services/personal-dashboard/docs/epics/t_0c100a54.md",
+      "completed_at": "2026-05-30T06:47:46Z",
+      "subtask_count": 7
+    },
+    {
+      "id": "epic-t-4d07f3a5",
+      "epic_id": "t_4d07f3a5",
+      "title": "Epic t_4d07f3a5: Migrate Finnish/Finnick agent capabilities from OpenClaw to Hermes ensuring that we maintain the",
+      "path": "services/personal-dashboard/docs/epics/t_4d07f3a5.md",
+      "completed_at": "2026-05-30T01:04:42Z",
+      "subtask_count": 7
+    },
+    {
+      "id": "epic-t-9aa3807e",
+      "epic_id": "t_9aa3807e",
+      "title": "Epic t_9aa3807e: Reconcile Finnick Hermes runtime freshness and paper-cycle cron errors",
+      "path": "services/personal-dashboard/docs/epics/t_9aa3807e.md",
+      "completed_at": "2026-05-29T16:44:11Z",
+      "subtask_count": 5
+    },
+    {
+      "id": "epic-t-f3f37a9b",
+      "epic_id": "t_f3f37a9b",
+      "title": "Epic t_f3f37a9b: follow-up: reconcile dashboard ingress live state after NAS config path is healthy",
+      "path": "services/personal-dashboard/docs/epics/t_f3f37a9b.md",
+      "completed_at": "2026-05-29T10:40:52Z",
+      "subtask_count": 6
+    },
+    {
+      "id": "epic-t-76593dfc",
+      "epic_id": "t_76593dfc",
+      "title": "Epic t_76593dfc: Setup a home dashboard that is available online so I can access remotely. This will require deve",
+      "path": "services/personal-dashboard/docs/epics/t_76593dfc.md",
+      "completed_at": "2026-05-26T11:01:47Z",
+      "subtask_count": 7
+    }
+  ]
+}
