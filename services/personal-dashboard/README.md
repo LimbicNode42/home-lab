@@ -120,13 +120,14 @@ Then open `http://127.0.0.1:4322`.
 
 ## Dashboard navigation
 
-The dashboard is organised into five hash-backed tabs. `/` defaults to Overview; direct links such as `/#work`, `/#knowledge`, `/#reports`, and `/#diary` select the matching tab without adding server routes.
+The dashboard is organised into six hash-backed tabs. `/` defaults to Overview; direct links such as `/#work`, `/#knowledge`, `/#reports`, `/#diary`, and `/#goals` select the matching tab without adding server routes.
 
 - **Overview**: service status and configured household links.
 - **Work**: the Kanban board, still read-only unless the server explicitly enables the mutation bridge.
 - **Knowledge**: completed epics first, then the approved documentation viewer.
 - **Reports**: Finnick daily betting output and investment screener output.
-- **Diary**: private diary and goal tracking backed by the local SQLite personal-data store.
+- **Diary**: private diary entries backed by the local SQLite personal-data store.
+- **Goals**: private goal tracking backed by the same SQLite personal-data store, with stable goal ids and status/timestamp fields for later diary comparison work. There is no LLM assessment/scoring in the MVP.
 
 Tabs support click, Back/Forward hash changes, and ArrowLeft/ArrowRight/Home/End keyboard navigation. The mobile layout keeps the tab strip horizontal and scrollable rather than turning into a tiny accordion hydra.
 
