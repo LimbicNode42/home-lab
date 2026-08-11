@@ -89,3 +89,48 @@ Verification:
 
 Operational note:
 - OpenClaw/Homer artifacts were disabled, not deleted. Do not re-enable them unless their checks are updated to the Hermes-owned desired state and Ben explicitly wants OpenClaw back in the loop.
+
+### 2026-05-27 bounded stale-handle watchdog workaround
+
+Context:
+- Root-cause investigation points at recurring NAS VM/storage instability, with VM `103` passing disks through a JMicron JMS567 USB bridge (`152d:0567`).
+- Ben explicitly chose to keep the USB bridge and keep VM `103` as the cluster qdevice for now, accepting that this is a pragmatic workaround rather than structural remediation. Yes, Febreze. Labeled as such.
+
+Live change performed after approval:
+- Installed `/usr/local/sbin/jellyfin-stale-handle-watchdog` on `jester` (`192.168.0.8`).
+- Installed and enabled `jellyfin-stale-handle-watchdog.service` and `jellyfin-stale-handle-watchdog.timer` under `/etc/systemd/system/`.
+- Timer runs every 5 minutes after boot and previous activation.
+- Repo copies are stored under `services/jellyfin/ops/`:
+  - `ops/jellyfin-stale-handle-watchdog`
+  - `ops/systemd/jellyfin-stale-handle-watchdog.service`
+  - `ops/systemd/jellyfin-stale-handle-watchdog.timer`
+
+Safety boundaries:
+- The watchdog first verifies host NAS paths under `/mnt/pve/NAS/media/{movies,tv}` are healthy.
+- It restarts only the Docker container named `jellyfin`, and only when container-side probes show `Stale file handle` while host-side probes are healthy.
+- It refuses action if the host mount is unhealthy, the container is missing, the container is not running, or probes fail for a reason other than stale handles.
+- It has a 30-minute restart cooldown via `/run/jellyfin-stale-handle-watchdog.last-restart`.
+- It logs actions through stdout/journald and logger tag `jellyfin-stale-handle-watchdog`.
+
+Verification:
+- Script passed `bash -n` on the source and installed copy.
+- `systemd-analyze verify` passed on the installed service/timer on `jester`.
+- Dry-run and live healthy-state runs did not restart the container; `docker inspect jellyfin --format '{{.State.StartedAt}}'` was unchanged.
+- Timer was enabled and active: `systemctl is-enabled/is-active jellyfin-stale-handle-watchdog.timer` returned `enabled` / `active`.
+
+Manual inspection commands:
+```bash
+systemctl status jellyfin-stale-handle-watchdog.timer --no-pager
+systemctl list-timers jellyfin-stale-handle-watchdog.timer --no-pager
+journalctl -u jellyfin-stale-handle-watchdog.service -u jellyfin-stale-handle-watchdog.timer --since '24 hours ago' --no-pager
+DRY_RUN=1 /usr/local/sbin/jellyfin-stale-handle-watchdog
+```
+
+Rollback:
+```bash
+systemctl disable --now jellyfin-stale-handle-watchdog.timer
+rm -f /etc/systemd/system/jellyfin-stale-handle-watchdog.service \
+      /etc/systemd/system/jellyfin-stale-handle-watchdog.timer \
+      /usr/local/sbin/jellyfin-stale-handle-watchdog
+systemctl daemon-reload
+```
