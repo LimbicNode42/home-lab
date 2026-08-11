@@ -1,0 +1,12 @@
+[Unit]
+Description=Check and repair Jellyfin stale NAS bind mounts
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/jellyfin-stale-handle-watchdog
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

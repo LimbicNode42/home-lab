@@ -1,0 +1,13 @@
+[Unit]
+Description=Run Jellyfin stale NAS bind mount watchdog
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+AccuracySec=30s
+RandomizedDelaySec=30s
+Persistent=false
+Unit=jellyfin-stale-handle-watchdog.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONTAINER="${CONTAINER:-jellyfin}"
+HOST_PATHS=(
+  "/mnt/pve/NAS/media/tv"
+  "/mnt/pve/NAS/media/movies"
+)
+CONTAINER_PATHS=(
+  "/tv"
+  "/movies"
+)
+SAMPLE_HOST="/mnt/pve/NAS/media/movies/Independence Day Resurgence (2016) [1080p] [YTS.AG]/Independence.Day.Resurgence.2016.1080p.BluRay.x264-[YTS.AG].mp4"
+SAMPLE_CONTAINER="/movies/Independence Day Resurgence (2016) [1080p] [YTS.AG]/Independence.Day.Resurgence.2016.1080p.BluRay.x264-[YTS.AG].mp4"
+LOG_TAG="jellyfin-stale-handle-watchdog"
+LOCK_FILE="/run/jellyfin-stale-handle-watchdog.lock"
+COOLDOWN_FILE="/run/jellyfin-stale-handle-watchdog.last-restart"
+COOLDOWN_SECONDS="${COOLDOWN_SECONDS:-1800}"
+DRY_RUN="${DRY_RUN:-0}"
+
+log() {
+  local msg="$*"
+  printf '%s %s\n' "$(date -Is)" "$msg"
+  logger -t "$LOG_TAG" -- "$msg" || true
+}
+
+stat_path() {
+  timeout 10 stat -c '%F %s %y' "$1" >/dev/null
+}
+
+host_healthy=1
+for p in "${HOST_PATHS[@]}"; do
+  if ! stat_path "$p"; then
+    log "host path unhealthy; refusing restart: $p"
+    host_healthy=0
+  fi
+done
+if [[ -e "$SAMPLE_HOST" ]] && ! stat_path "$SAMPLE_HOST"; then
+  log "sample host file unhealthy; refusing restart: $SAMPLE_HOST"
+  host_healthy=0
+fi
+[[ "$host_healthy" -eq 1 ]] || exit 0
+
+if ! docker inspect "$CONTAINER" >/dev/null 2>&1; then
+  log "container missing; refusing action: $CONTAINER"
+  exit 0
+fi
+
+state="$(docker inspect "$CONTAINER" --format '{{.State.Status}}' 2>/dev/null || true)"
+if [[ "$state" != "running" ]]; then
+  log "container is not running ($state); refusing stale-handle restart"
+  exit 0
+fi
+
+stale=0
+for p in "${CONTAINER_PATHS[@]}"; do
+  out="$(timeout 10 docker exec "$CONTAINER" stat -c '%F %s %y' "$p" 2>&1 >/dev/null || true)"
+  if grep -qi 'Stale file handle' <<<"$out"; then
+    log "detected stale container path: $p"
+    stale=1
+  elif [[ -n "$out" ]]; then
+    log "container path probe failed but not stale; refusing restart: $p :: $out"
+    exit 0
+  fi
+done
+
+if [[ "$stale" -eq 0 && -e "$SAMPLE_HOST" ]]; then
+  out="$(timeout 15 docker exec "$CONTAINER" stat -c '%F %s %y' "$SAMPLE_CONTAINER" 2>&1 >/dev/null || true)"
+  if grep -qi 'Stale file handle' <<<"$out"; then
+    log "detected stale sample media file inside container"
+    stale=1
+  elif [[ -n "$out" ]]; then
+    log "sample container probe failed but not stale; refusing restart: $out"
+    exit 0
+  fi
+fi
+
+if [[ "$stale" -eq 0 ]]; then
+  exit 0
+fi
+
+now="$(date +%s)"
+if [[ -f "$COOLDOWN_FILE" ]]; then
+  last="$(cat "$COOLDOWN_FILE" 2>/dev/null || echo 0)"
+  if [[ "$last" =~ ^[0-9]+$ ]] && (( now - last < COOLDOWN_SECONDS )); then
+    log "stale handle detected but restart suppressed by cooldown (${COOLDOWN_SECONDS}s)"
+    exit 0
+  fi
+fi
+
+if [[ "$DRY_RUN" = "1" ]]; then
+  log "DRY_RUN: would restart $CONTAINER after confirmed stale bind mounts and healthy host NAS paths"
+  exit 0
+fi
+
+log "restarting $CONTAINER after confirmed stale bind mounts and healthy host NAS paths"
+docker restart "$CONTAINER" >/dev/null
+printf '%s\n' "$now" > "$COOLDOWN_FILE"
+
+for i in $(seq 1 30); do
+  code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:8096/System/Info/Public || true)"
+  if [[ "$code" = "200" ]]; then
+    log "post-restart Jellyfin readiness OK (HTTP 200)"
+    exit 0
+  fi
+  sleep 2
+done
+
+log "post-restart Jellyfin readiness did not reach HTTP 200 within timeout"
+exit 1
