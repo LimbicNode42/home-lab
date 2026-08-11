@@ -172,6 +172,7 @@ const KANBAN_SAFE_MOVE_STATUSES = ['ready', 'blocked', 'done', 'archived'];
 const TASK_ID_PATTERN = /^t_[0-9a-f]+$/;
 const MAX_MOVE_BODY_BYTES = 8 * 1024;
 const MAX_DIARY_BODY_BYTES = 40 * 1024;
+const MAX_GOAL_BODY_BYTES = 16 * 1024;
 
 function personalDataNotConfiguredPayload() {
   return {
@@ -204,6 +205,32 @@ function safePublicDiaryError(err) {
     return { statusCode: 400, payload: { error: 'invalid_request_body', message: 'Invalid JSON request body' } };
   }
   return { statusCode: 503, payload: personalDataUnavailablePayload() };
+}
+
+function safePublicGoalError(err) {
+  if (err?.code === 'validation_failed') {
+    return { statusCode: 400, payload: { error: 'validation_failed', message: 'Goal validation failed' } };
+  }
+  if (err?.code === 'unsupported_media_type') {
+    return { statusCode: 415, payload: { error: 'unsupported_media_type', message: 'Expected application/json request body' } };
+  }
+  if (err?.code === 'request_body_too_large') {
+    return { statusCode: 413, payload: { error: 'request_body_too_large', message: 'Request body is too large' } };
+  }
+  if (err?.code === 'invalid_json') {
+    return { statusCode: 400, payload: { error: 'invalid_request_body', message: 'Invalid JSON request body' } };
+  }
+  return { statusCode: 503, payload: personalDataUnavailablePayload() };
+}
+
+function parseGoalListParams(searchParams) {
+  const status = searchParams.get('status') ?? 'all';
+  if (!['all', 'active', 'paused', 'completed', 'archived'].includes(status)) {
+    const error = new Error('Invalid goal status filter');
+    error.code = 'validation_failed';
+    throw error;
+  }
+  return { status };
 }
 
 function parseDiaryListParams(searchParams) {
@@ -1306,6 +1333,63 @@ export async function createApp(options = {}) {
             return json(response, 200, { entry });
           } catch (err) {
             const result = safePublicDiaryError(err);
+            return json(response, result.statusCode, result.payload);
+          }
+        }
+
+        return json(response, 405, { error: 'method_not_allowed' });
+      }
+
+
+      const goalMatch = /^\/api\/goals\/([^/]+)$/.exec(url.pathname);
+      if (url.pathname === '/api/goals' || goalMatch) {
+        if (!personalDataDbFile) {
+          return json(response, 503, personalDataNotConfiguredPayload());
+        }
+        if (personalData.unavailable || !personalData.store) {
+          return json(response, 503, personalDataUnavailablePayload());
+        }
+
+        if (request.method === 'GET' && url.pathname === '/api/goals') {
+          try {
+            const params = parseGoalListParams(url.searchParams);
+            return json(response, 200, { goals: personalData.store.listGoals(params), ...params });
+          } catch (err) {
+            const result = safePublicGoalError(err);
+            return json(response, result.statusCode, result.payload);
+          }
+        }
+
+        if (request.method === 'POST' && url.pathname === '/api/goals') {
+          try {
+            const body = await readJsonBody(request, MAX_GOAL_BODY_BYTES);
+            const goal = personalData.store.createGoal(body);
+            return json(response, 201, { goal });
+          } catch (err) {
+            const result = safePublicGoalError(err);
+            return json(response, result.statusCode, result.payload);
+          }
+        }
+
+        if (request.method === 'GET' && goalMatch) {
+          try {
+            const goal = personalData.store.getGoal(decodeURIComponent(goalMatch[1]));
+            if (!goal) return json(response, 404, { error: 'goal_not_found', message: 'Goal was not found' });
+            return json(response, 200, { goal });
+          } catch (err) {
+            const result = safePublicGoalError(err);
+            return json(response, result.statusCode, result.payload);
+          }
+        }
+
+        if (request.method === 'PATCH' && goalMatch) {
+          try {
+            const body = await readJsonBody(request, MAX_GOAL_BODY_BYTES);
+            const goal = personalData.store.updateGoal(decodeURIComponent(goalMatch[1]), body);
+            if (!goal) return json(response, 404, { error: 'goal_not_found', message: 'Goal was not found' });
+            return json(response, 200, { goal });
+          } catch (err) {
+            const result = safePublicGoalError(err);
             return json(response, result.statusCode, result.payload);
           }
         }

@@ -30,6 +30,18 @@ const diaryEntryList = document.querySelector('#diary-entry-list');
 const diaryEntryDetail = document.querySelector('#diary-entry-detail');
 const diaryFormMessage = document.querySelector('#diary-form-message');
 const refreshDiaryButton = document.querySelector('#refresh-diary');
+const goalForm = document.querySelector('#goal-form');
+const goalTitle = document.querySelector('#goal-title');
+const goalDescription = document.querySelector('#goal-description');
+const goalStatus = document.querySelector('#goal-status');
+const goalTargetDate = document.querySelector('#goal-target-date');
+const goalStatusFilter = document.querySelector('#goal-status-filter');
+const goalsList = document.querySelector('#goals-list');
+const goalDetail = document.querySelector('#goal-detail');
+const refreshGoalsButton = document.querySelector('#refresh-goals');
+const newGoalButton = document.querySelector('#new-goal');
+const goalFormMessage = document.querySelector('#goal-form-message');
+let currentGoalId = null;
 const KANBAN_COMPACT_STORAGE_KEY = 'personal-dashboard:kanban-compact';
 const KANBAN_COLLAPSED_LANES_STORAGE_KEY = 'personal-dashboard:kanban-collapsed-lanes';
 const KANBAN_COMPACT_CARD_LIMIT = 4;
@@ -94,9 +106,9 @@ function setStoredBoolean(key, value) {
   }
 }
 
-async function postJson(path, payload) {
+async function writeJson(path, method, payload) {
   const response = await fetch(path, {
-    method: 'POST',
+    method,
     headers: { accept: 'application/json', 'content-type': 'application/json' },
     body: JSON.stringify(payload)
   });
@@ -105,6 +117,14 @@ async function postJson(path, payload) {
     throw new Error(data.message || data.error || `${path} returned ${response.status}`);
   }
   return data;
+}
+
+function postJson(path, payload) {
+  return writeJson(path, 'POST', payload);
+}
+
+function patchJson(path, payload) {
+  return writeJson(path, 'PATCH', payload);
 }
 
 function renderConfig(config) {
@@ -158,7 +178,7 @@ async function refreshStatus() {
   }
 }
 
-const TAB_IDS = ['overview', 'work', 'knowledge', 'reports', 'diary'];
+const TAB_IDS = ['overview', 'work', 'knowledge', 'reports', 'diary', 'goals'];
 const DEFAULT_TAB_ID = 'overview';
 const tabs = new Map(TAB_IDS.map((id) => [id, document.querySelector(`#tab-${id}`)]));
 const tabPanels = new Map(TAB_IDS.map((id) => [id, document.querySelector(`#panel-${id}`)]));
@@ -193,6 +213,8 @@ async function loadTabData(tabId) {
     await refreshInvestmentScreener();
   } else if (tabId === 'diary') {
     await refreshDiaryEntries();
+  } else if (tabId === 'goals') {
+    await refreshGoals();
   }
 }
 
@@ -244,9 +266,9 @@ function bindTabNavigation() {
       }
     });
   }
-  window.addEventListener('hashchange', () => {
+  window.addEventListener('hashchange', async () => {
     const tabId = tabIdFromHash();
-    if (tabId) selectTab(tabId, { updateHash: false });
+    if (tabId) await selectTab(tabId, { updateHash: false });
   });
 }
 
@@ -360,6 +382,130 @@ async function submitDiaryEntry(event) {
 if (diaryEntryForm) diaryEntryForm.addEventListener('submit', submitDiaryEntry);
 if (refreshDiaryButton) refreshDiaryButton.addEventListener('click', refreshDiaryEntries);
 setDiaryDefaultDate();
+
+
+function setGoalMessage(message, kind = 'muted') {
+  if (!goalFormMessage) return;
+  goalFormMessage.className = kind;
+  goalFormMessage.textContent = message;
+}
+
+function goalErrorMessage(error) {
+  const message = String(error?.message ?? 'Goals unavailable');
+  if (message.includes('503')) return 'Goal storage is not configured or unavailable on this instance.';
+  if (/validation|invalid/i.test(message)) return 'Check the goal fields and try again.';
+  return message.replace(/\/[^\s]+/g, '[redacted]');
+}
+
+function goalsRequestPath() {
+  const status = goalStatusFilter?.value || 'all';
+  return `/api/goals?status=${encodeURIComponent(status)}`;
+}
+
+async function loadGoal(goal) {
+  if (!goal?.id || !goalDetail) return;
+  goalDetail.replaceChildren(el('p', { className: 'muted', text: 'Loading goal…' }));
+  try {
+    const data = await getJson(`/api/goals/${encodeURIComponent(goal.id)}`);
+    renderGoalDetail(data.goal);
+  } catch (error) {
+    goalDetail.replaceChildren(el('p', { className: 'error', text: `Goal unavailable: ${goalErrorMessage(error)}` }));
+  }
+}
+
+function renderGoalDetail(goal) {
+  if (!goalDetail) return;
+  currentGoalId = goal.id;
+  if (goalTitle) goalTitle.value = goal.title || '';
+  if (goalDescription) goalDescription.value = goal.description || '';
+  if (goalStatus) goalStatus.value = goal.status || 'active';
+  if (goalTargetDate) goalTargetDate.value = goal.target_date || '';
+  const meta = [goal.status, goal.target_date ? `target ${goal.target_date}` : null, goal.updated_at ? `updated ${formatDateTime(goal.updated_at)}` : null].filter(Boolean).join(' · ');
+  goalDetail.replaceChildren(el('div', { className: 'personal-entry-detail-card' }, [
+    el('h3', { text: goal.title || '(untitled goal)' }),
+    el('p', { className: 'muted', text: meta }),
+    el('p', { text: goal.description || 'No description yet.' })
+  ]));
+}
+
+function renderGoalSummary(goal) {
+  const view = el('button', { className: 'entry-view-button', type: 'button', text: 'View' });
+  view.addEventListener('click', () => loadGoal(goal));
+  const statusSelect = el('select', { 'aria-label': `Move goal ${goal.title || goal.id}` }, [
+    el('option', { value: 'active', text: 'active' }),
+    el('option', { value: 'paused', text: 'paused' }),
+    el('option', { value: 'completed', text: 'completed' }),
+    el('option', { value: 'archived', text: 'archived' })
+  ]);
+  statusSelect.value = goal.status || 'active';
+  statusSelect.addEventListener('change', async () => {
+    try {
+      const data = await patchJson(`/api/goals/${encodeURIComponent(goal.id)}`, { status: statusSelect.value });
+      renderGoalDetail(data.goal);
+      await refreshGoals();
+    } catch (error) {
+      setGoalMessage(goalErrorMessage(error), 'error');
+    }
+  });
+  const meta = [goal.status, goal.target_date ? `target ${goal.target_date}` : null, goal.updated_at ? `updated ${formatDateTime(goal.updated_at)}` : null].filter(Boolean).join(' · ');
+  return el('article', { className: 'personal-entry-card' }, [
+    el('div', { className: 'personal-entry-heading' }, [el('strong', { text: goal.title || '(untitled goal)' }), view]),
+    el('div', { className: `badge ${goal.status || 'unknown'}`, text: goal.status || 'unknown' }),
+    el('p', { className: 'muted personal-entry-meta', text: meta }),
+    el('p', { text: goal.description || 'No description yet.' }),
+    el('label', { className: 'inline-control' }, [document.createTextNode('Status '), statusSelect])
+  ]);
+}
+
+async function refreshGoals() {
+  if (!goalsList) return;
+  if (refreshGoalsButton) refreshGoalsButton.disabled = true;
+  try {
+    const data = await getJson(goalsRequestPath());
+    const goals = Array.isArray(data.goals) ? data.goals : [];
+    goalsList.replaceChildren();
+    if (goals.length === 0) goalsList.append(el('p', { className: 'muted', text: 'No goals yet.' }));
+    else goalsList.append(...goals.map(renderGoalSummary));
+  } catch (error) {
+    goalsList.replaceChildren(el('p', { className: 'error', text: `Goals unavailable: ${goalErrorMessage(error)}` }));
+  } finally {
+    if (refreshGoalsButton) refreshGoalsButton.disabled = false;
+  }
+}
+
+function resetGoalForm() {
+  currentGoalId = null;
+  goalForm?.reset();
+  if (goalStatus) goalStatus.value = 'active';
+  goalDetail?.replaceChildren(el('p', { className: 'muted', text: 'Select a goal to view it.' }));
+  setGoalMessage('Ready to create a new goal.');
+}
+
+async function submitGoal(event) {
+  event.preventDefault();
+  const payload = {
+    title: goalTitle?.value || '',
+    description: goalDescription?.value || '',
+    status: goalStatus?.value || 'active',
+    target_date: goalTargetDate?.value || null
+  };
+  setGoalMessage('Saving goal…');
+  try {
+    const data = currentGoalId
+      ? await patchJson(`/api/goals/${encodeURIComponent(currentGoalId)}`, payload)
+      : await postJson('/api/goals', payload);
+    setGoalMessage('Saved goal.');
+    await refreshGoals();
+    renderGoalDetail(data.goal);
+  } catch (error) {
+    setGoalMessage(goalErrorMessage(error), 'error');
+  }
+}
+
+if (goalForm) goalForm.addEventListener('submit', submitGoal);
+if (refreshGoalsButton) refreshGoalsButton.addEventListener('click', refreshGoals);
+if (newGoalButton) newGoalButton.addEventListener('click', resetGoalForm);
+if (goalStatusFilter) goalStatusFilter.addEventListener('change', refreshGoals);
 
 async function boot() {
   await selectTab(tabIdFromHash() ?? DEFAULT_TAB_ID, { updateHash: false });

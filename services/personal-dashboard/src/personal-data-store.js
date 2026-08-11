@@ -6,6 +6,7 @@ const ENTRY_ID_PREFIX = 'd_';
 const GOAL_ID_PREFIX = 'g_';
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DIARY_PREVIEW_CHARS = 180;
+const GOAL_STATUSES = new Set(['active', 'paused', 'completed', 'archived']);
 
 function publicError(code, message) {
   const error = new Error(message);
@@ -14,6 +15,10 @@ function publicError(code, message) {
 }
 
 function validationError(message = 'Diary entry validation failed') {
+  return publicError('validation_failed', message);
+}
+
+function goalValidationError(message = 'Goal validation failed') {
   return publicError('validation_failed', message);
 }
 
@@ -66,6 +71,30 @@ function normalizeEntryDate(value) {
   return text;
 }
 
+function normalizeGoalStatus(value, { fallback = 'active', required = false } = {}) {
+  if (value === undefined || value === null || value === '') {
+    if (required) throw goalValidationError('status is required');
+    return fallback;
+  }
+  if (typeof value !== 'string') throw goalValidationError('status must be a string');
+  const status = value.trim();
+  if (!GOAL_STATUSES.has(status)) throw goalValidationError('status is invalid');
+  return status;
+}
+
+function normalizeGoalStatusFilter(value = 'all') {
+  if (value === undefined || value === null || value === '' || value === 'all') return 'all';
+  return normalizeGoalStatus(value, { required: true });
+}
+
+function normalizeGoalTargetDate(value) {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string') throw goalValidationError('target_date must be a date string');
+  const text = value.trim();
+  if (!validCalendarDate(text)) throw goalValidationError('target_date is invalid');
+  return text;
+}
+
 function normalizeGoalIds(value) {
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value) || value.length > 20) throw validationError('goal_ids is invalid');
@@ -103,6 +132,42 @@ function entryFromRow(row, { includeBody = false, goals = [] } = {}) {
     entry.goals = goals.map((goal) => ({ id: goal.id, title: goal.title, status: goal.status }));
   }
   return entry;
+}
+
+function goalFromRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    status: row.status,
+    target_date: row.target_date ?? null,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    completed_at: row.completed_at ?? null,
+    archived_at: row.archived_at ?? null
+  };
+}
+
+function normalizeGoalCreateInput(input) {
+  if (!isPlainObject(input)) throw goalValidationError('Request body must be an object');
+  return {
+    title: normalizedRequiredText(input.title, 160, 'title'),
+    description: normalizedOptionalText(input.description, 5000, 'description'),
+    status: normalizeGoalStatus(input.status),
+    target_date: normalizeGoalTargetDate(input.target_date)
+  };
+}
+
+function normalizeGoalUpdateInput(input) {
+  if (!isPlainObject(input)) throw goalValidationError('Request body must be an object');
+  const patch = {};
+  if (Object.hasOwn(input, 'title')) patch.title = normalizedRequiredText(input.title, 160, 'title');
+  if (Object.hasOwn(input, 'description')) patch.description = normalizedOptionalText(input.description, 5000, 'description');
+  if (Object.hasOwn(input, 'status')) patch.status = normalizeGoalStatus(input.status, { required: true });
+  if (Object.hasOwn(input, 'target_date')) patch.target_date = normalizeGoalTargetDate(input.target_date);
+  if (Object.keys(patch).length === 0) throw goalValidationError('At least one goal field is required');
+  return patch;
 }
 
 function migrate(db) {
@@ -165,6 +230,54 @@ export function createPersonalDataStore({ dbFile }) {
   migrate(db);
 
   return {
+    createGoal(input = {}) {
+      const goalInput = normalizeGoalCreateInput(input);
+      const created_at = nowIso();
+      const goal = {
+        id: id(GOAL_ID_PREFIX),
+        ...goalInput,
+        created_at,
+        updated_at: created_at,
+        completed_at: goalInput.status === 'completed' ? created_at : null,
+        archived_at: goalInput.status === 'archived' ? created_at : null
+      };
+      db.prepare(`
+        INSERT INTO goals (id, title, description, status, target_date, created_at, updated_at, completed_at, archived_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(goal.id, goal.title, goal.description, goal.status, goal.target_date, goal.created_at, goal.updated_at, goal.completed_at, goal.archived_at);
+      return goalFromRow(goal);
+    },
+
+    listGoals({ status = 'all' } = {}) {
+      const normalizedStatus = normalizeGoalStatusFilter(status);
+      const rows = normalizedStatus === 'all'
+        ? db.prepare('SELECT id, title, description, status, target_date, created_at, updated_at, completed_at, archived_at FROM goals ORDER BY status ASC, updated_at DESC, created_at DESC').all()
+        : db.prepare('SELECT id, title, description, status, target_date, created_at, updated_at, completed_at, archived_at FROM goals WHERE status = ? ORDER BY updated_at DESC, created_at DESC').all(normalizedStatus);
+      return rows.map(goalFromRow);
+    },
+
+    getGoal(goalId) {
+      if (typeof goalId !== 'string' || !/^g_[0-9a-f]{8,64}$/.test(goalId)) return null;
+      return goalFromRow(db.prepare('SELECT id, title, description, status, target_date, created_at, updated_at, completed_at, archived_at FROM goals WHERE id = ?').get(goalId));
+    },
+
+    updateGoal(goalId, input = {}) {
+      const patch = normalizeGoalUpdateInput(input);
+      if (typeof goalId !== 'string' || !/^g_[0-9a-f]{8,64}$/.test(goalId)) return null;
+      const existing = this.getGoal(goalId);
+      if (!existing) return null;
+      const updated_at = nowIso();
+      const next = { ...existing, ...patch, updated_at };
+      if (next.status === 'completed' && !next.completed_at) next.completed_at = updated_at;
+      if (next.status === 'archived' && !next.archived_at) next.archived_at = updated_at;
+      db.prepare(`
+        UPDATE goals
+        SET title = ?, description = ?, status = ?, target_date = ?, updated_at = ?, completed_at = ?, archived_at = ?
+        WHERE id = ?
+      `).run(next.title, next.description, next.status, next.target_date, next.updated_at, next.completed_at, next.archived_at, goalId);
+      return this.getGoal(goalId);
+    },
+
     createDiaryEntry(input = {}) {
       if (!isPlainObject(input)) throw validationError('Request body must be an object');
       const entry_date = normalizeEntryDate(input.entry_date);
