@@ -6,9 +6,10 @@
   "description": "Private homelab dashboard MVP",
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test"
+    "test": "node scripts/test-node22.mjs",
+    "smoke:container": "node scripts/container-smoke.mjs"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   }
 }

@@ -4,7 +4,40 @@ const statusList = document.querySelector('#status-list');
 const refreshButton = document.querySelector('#refresh-status');
 const finnickContent = document.querySelector('#finnick-content');
 const refreshFinnickButton = document.querySelector('#refresh-finnick');
+const investmentScreenerContent = document.querySelector('#investment-screener-content');
+const refreshInvestmentScreenerButton = document.querySelector('#refresh-investment-screener');
+const investmentScreenerControls = document.querySelector('#investment-screener-controls');
+const investmentMarketFilter = document.querySelector('#investment-market-filter');
+const investmentMetricFilter = document.querySelector('#investment-metric-filter');
+const investmentWeightFilter = document.querySelector('#investment-weight-filter');
+const investmentTopNFilter = document.querySelector('#investment-topn-filter');
+const resetInvestmentScreenerFiltersButton = document.querySelector('#reset-investment-screener-filters');
 const epicsList = document.querySelector('#epics-list');
+const docsList = document.querySelector('#docs-list');
+const docsContent = document.querySelector('#docs-content');
+const refreshDocsButton = document.querySelector('#refresh-docs');
+const kanbanPanel = document.querySelector('#kanban-panel');
+const kanbanBoard = document.querySelector('#kanban-board');
+const kanbanMessage = document.querySelector('#kanban-message');
+const refreshKanbanButton = document.querySelector('#refresh-kanban');
+const kanbanCompactToggle = document.querySelector('#toggle-kanban-density');
+const diaryEntryForm = document.querySelector('#diary-entry-form');
+const diaryEntryDate = document.querySelector('#diary-entry-date');
+const diaryEntryTitle = document.querySelector('#diary-entry-title');
+const diaryEntryBody = document.querySelector('#diary-entry-body');
+const diaryEntryMood = document.querySelector('#diary-entry-mood');
+const diaryEntryList = document.querySelector('#diary-entry-list');
+const diaryEntryDetail = document.querySelector('#diary-entry-detail');
+const diaryFormMessage = document.querySelector('#diary-form-message');
+const refreshDiaryButton = document.querySelector('#refresh-diary');
+const KANBAN_COMPACT_STORAGE_KEY = 'personal-dashboard:kanban-compact';
+const KANBAN_COLLAPSED_LANES_STORAGE_KEY = 'personal-dashboard:kanban-collapsed-lanes';
+const KANBAN_COMPACT_CARD_LIMIT = 4;
+let currentDraggedTaskId = null;
+let currentKanbanMutations = { enabled: false, supported_statuses: [] };
+let kanbanCompactMode = readStoredBoolean(KANBAN_COMPACT_STORAGE_KEY, true);
+let collapsedKanbanLanes = readStoredJson(KANBAN_COLLAPSED_LANES_STORAGE_KEY, []);
+let dashboardBootComplete = false;
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -25,6 +58,55 @@ async function getJson(path) {
   return response.json();
 }
 
+function readStoredBoolean(key, fallback) {
+  try {
+    const value = window.localStorage?.getItem(key);
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+  } catch {
+    // Rendering should not depend on storage availability. Browsers get touchy.
+  }
+  return fallback;
+}
+
+function readStoredJson(key, fallback) {
+  try {
+    const value = window.localStorage?.getItem(key);
+    return value ? JSON.parse(value) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStoredJson(key, value) {
+  try {
+    window.localStorage?.setItem(key, JSON.stringify(value));
+  } catch {
+    // Ignore storage failures; the board still renders.
+  }
+}
+
+function setStoredBoolean(key, value) {
+  try {
+    window.localStorage?.setItem(key, String(value));
+  } catch {
+    // Ignore storage failures; the board still renders.
+  }
+}
+
+async function postJson(path, payload) {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: { accept: 'application/json', 'content-type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.message || data.error || `${path} returned ${response.status}`);
+  }
+  return data;
+}
+
 function renderConfig(config) {
   document.title = config.title;
   title.textContent = config.title;
@@ -36,7 +118,7 @@ function renderConfig(config) {
   }
 
   for (const section of config.sections) {
-    const links = section.links.map((link) => el('a', { href: link.href, text: link.label, rel: 'noreferrer' }));
+    const links = section.links.map((link) => el('a', { href: link.href, text: link.label, rel: 'noreferrer noopener' }));
     sections.append(el('article', { className: 'link-section' }, [
       el('h3', { text: section.title }),
       el('div', { className: 'link-list' }, links)
@@ -59,7 +141,7 @@ function renderStatus(payload) {
       el('p', { className: 'muted', text: `${check.httpStatus ?? check.error ?? 'no response'} · ${check.latencyMs}ms` })
     ];
     if (check.displayUrl) {
-      body.push(el('a', { href: check.displayUrl, text: 'Open', rel: 'noreferrer' }));
+      body.push(el('a', { href: check.displayUrl, text: 'Open', rel: 'noreferrer noopener' }));
     }
     statusList.append(el('article', { className: 'status-card' }, body));
   }
@@ -76,18 +158,216 @@ async function refreshStatus() {
   }
 }
 
-async function boot() {
+const TAB_IDS = ['overview', 'work', 'knowledge', 'reports', 'diary'];
+const DEFAULT_TAB_ID = 'overview';
+const tabs = new Map(TAB_IDS.map((id) => [id, document.querySelector(`#tab-${id}`)]));
+const tabPanels = new Map(TAB_IDS.map((id) => [id, document.querySelector(`#panel-${id}`)]));
+const loadedTabs = new Set();
+
+function tabIdFromHash(hash = window.location.hash) {
+  const id = String(hash || '').replace(/^#/, '').toLowerCase();
+  return TAB_IDS.includes(id) ? id : null;
+}
+
+async function loadOverviewData() {
   try {
     renderConfig(await getJson('/api/config/public'));
   } catch (error) {
     sections.replaceChildren(el('p', { className: 'error', text: `Config unavailable: ${error.message}` }));
   }
   await refreshStatus();
-  await refreshFinnick();
-  await refreshEpics();
+}
+
+async function loadTabData(tabId) {
+  if (loadedTabs.has(tabId)) return;
+  loadedTabs.add(tabId);
+  if (tabId === 'overview') {
+    await loadOverviewData();
+  } else if (tabId === 'work') {
+    await refreshKanban();
+  } else if (tabId === 'knowledge') {
+    await refreshEpics();
+    await refreshDocs();
+  } else if (tabId === 'reports') {
+    await refreshFinnick();
+    await refreshInvestmentScreener();
+  } else if (tabId === 'diary') {
+    await refreshDiaryEntries();
+  }
+}
+
+async function selectTab(tabId, { updateHash = true } = {}) {
+  const nextTabId = TAB_IDS.includes(tabId) ? tabId : DEFAULT_TAB_ID;
+  for (const id of TAB_IDS) {
+    const selected = id === nextTabId;
+    tabs.get(id)?.setAttribute('aria-selected', String(selected));
+    tabs.get(id)?.setAttribute('tabindex', selected ? '0' : '-1');
+    const panel = tabPanels.get(id);
+    if (panel) panel.hidden = !selected;
+  }
+  if (updateHash && window.location.hash !== `#${nextTabId}`) {
+    window.history.pushState(null, '', `#${nextTabId}`);
+  }
+  await loadTabData(nextTabId);
+}
+
+function focusAdjacentTab(currentId, direction) {
+  const index = TAB_IDS.indexOf(currentId);
+  const nextIndex = (index + direction + TAB_IDS.length) % TAB_IDS.length;
+  const nextId = TAB_IDS[nextIndex];
+  tabs.get(nextId)?.focus();
+  selectTab(nextId);
+}
+
+function bindTabNavigation() {
+  for (const [id, tab] of tabs) {
+    tab?.addEventListener('click', (event) => {
+      event.preventDefault();
+      selectTab(id);
+    });
+    tab?.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        focusAdjacentTab(id, 1);
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        focusAdjacentTab(id, -1);
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        tabs.get(DEFAULT_TAB_ID)?.focus();
+        selectTab(DEFAULT_TAB_ID);
+      } else if (event.key === 'End') {
+        event.preventDefault();
+        const lastTabId = TAB_IDS.at(-1);
+        tabs.get(lastTabId)?.focus();
+        selectTab(lastTabId);
+      }
+    });
+  }
+  window.addEventListener('hashchange', () => {
+    const tabId = tabIdFromHash();
+    if (tabId) selectTab(tabId, { updateHash: false });
+  });
+}
+
+function setDiaryMessage(message, kind = 'muted') {
+  if (!diaryFormMessage) return;
+  diaryFormMessage.className = kind;
+  diaryFormMessage.textContent = message;
+}
+
+function diaryErrorMessage(error) {
+  const message = String(error?.message ?? 'Diary unavailable');
+  if (message.includes('503')) return 'Diary storage is not configured or unavailable on this instance.';
+  if (/validation|invalid/i.test(message)) return 'Check the diary entry fields and try again.';
+  return message.replace(/\/[^\s]+/g, '[redacted]');
+}
+
+function todayInputDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function setDiaryDefaultDate() {
+  if (diaryEntryDate && !diaryEntryDate.value) diaryEntryDate.value = todayInputDate();
+}
+
+function renderDiaryEntrySummary(entry) {
+  const title = entry.title || '(untitled)';
+  const button = el('button', { className: 'entry-view-button', type: 'button', text: 'View' });
+  button.addEventListener('click', () => loadDiaryEntry(entry));
+  const meta = [entry.entry_date, entry.mood, entry.created_at ? `created ${formatDateTime(entry.created_at)}` : null].filter(Boolean).join(' · ');
+  return el('article', { className: 'personal-entry-card' }, [
+    el('div', { className: 'personal-entry-heading' }, [
+      el('strong', { text: title }),
+      button
+    ]),
+    el('div', { className: 'muted personal-entry-meta', text: meta }),
+    el('p', { text: entry.preview || 'No preview available.' })
+  ]);
+}
+
+function renderDiaryEntryDetail(entry) {
+  if (!diaryEntryDetail) return;
+  const title = entry.title || '(untitled)';
+  const meta = [entry.entry_date, entry.mood, entry.created_at ? `created ${formatDateTime(entry.created_at)}` : null].filter(Boolean).join(' · ');
+  const linkedGoals = Array.isArray(entry.goals) && entry.goals.length > 0
+    ? el('ul', { className: 'linked-goal-list' }, entry.goals.map((goal) => el('li', { text: `${goal.title || goal.id} (${goal.status || 'unknown'})` })))
+    : el('p', { className: 'muted', text: 'No linked goals yet.' });
+  diaryEntryDetail.replaceChildren(el('div', { className: 'personal-entry-detail-card' }, [
+    el('h3', { text: title }),
+    el('p', { className: 'muted', text: meta }),
+    el('p', { className: 'diary-entry-body', text: entry.body || '' }),
+    el('h4', { text: 'Linked goals' }),
+    linkedGoals
+  ]));
+}
+
+async function loadDiaryEntry(entry) {
+  if (!entry?.id || !diaryEntryDetail) return;
+  diaryEntryDetail.replaceChildren(el('p', { className: 'muted', text: 'Loading diary entry…' }));
+  try {
+    const data = await getJson(`/api/diary/entries/${encodeURIComponent(entry.id)}`);
+    renderDiaryEntryDetail(data.entry);
+  } catch (error) {
+    diaryEntryDetail.replaceChildren(el('p', { className: 'error', text: `Diary entry unavailable: ${diaryErrorMessage(error)}` }));
+  }
+}
+
+async function refreshDiaryEntries() {
+  if (!diaryEntryList) return;
+  setDiaryDefaultDate();
+  if (refreshDiaryButton) refreshDiaryButton.disabled = true;
+  try {
+    const data = await getJson('/api/diary/entries?limit=20&offset=0');
+    const entries = Array.isArray(data.entries) ? data.entries : [];
+    diaryEntryList.replaceChildren();
+    if (entries.length === 0) {
+      diaryEntryList.append(el('p', { className: 'muted', text: 'No diary entries yet.' }));
+    } else {
+      diaryEntryList.append(...entries.map(renderDiaryEntrySummary));
+    }
+  } catch (error) {
+    diaryEntryList.replaceChildren(el('p', { className: 'error', text: `Diary unavailable: ${diaryErrorMessage(error)}` }));
+  } finally {
+    if (refreshDiaryButton) refreshDiaryButton.disabled = false;
+  }
+}
+
+async function submitDiaryEntry(event) {
+  event.preventDefault();
+  if (!diaryEntryBody) return;
+  const payload = {
+    entry_date: diaryEntryDate?.value || undefined,
+    title: diaryEntryTitle?.value || '',
+    body: diaryEntryBody.value,
+    mood: diaryEntryMood?.value || ''
+  };
+  setDiaryMessage('Saving diary entry…');
+  try {
+    const data = await postJson('/api/diary/entries', payload);
+    if (diaryEntryTitle) diaryEntryTitle.value = '';
+    if (diaryEntryBody) diaryEntryBody.value = '';
+    if (diaryEntryMood) diaryEntryMood.value = '';
+    setDiaryDefaultDate();
+    setDiaryMessage('Saved diary entry.');
+    await refreshDiaryEntries();
+    renderDiaryEntryDetail(data.entry);
+  } catch (error) {
+    setDiaryMessage(diaryErrorMessage(error), 'error');
+  }
+}
+
+if (diaryEntryForm) diaryEntryForm.addEventListener('submit', submitDiaryEntry);
+if (refreshDiaryButton) refreshDiaryButton.addEventListener('click', refreshDiaryEntries);
+setDiaryDefaultDate();
+
+async function boot() {
+  await selectTab(tabIdFromHash() ?? DEFAULT_TAB_ID, { updateHash: false });
+  dashboardBootComplete = true;
 }
 
 refreshButton.addEventListener('click', refreshStatus);
+bindTabNavigation();
 boot();
 
 async function refreshFinnick() {
@@ -109,6 +389,480 @@ async function refreshFinnick() {
 
 if (refreshFinnickButton) {
   refreshFinnickButton.addEventListener('click', refreshFinnick);
+}
+
+
+function investmentScreenerRequestPath() {
+  const searchParams = new URLSearchParams();
+  const market = investmentMarketFilter?.value?.trim();
+  const metric = investmentMetricFilter?.value?.trim();
+  const weight = investmentWeightFilter?.value?.trim();
+  const topN = investmentTopNFilter?.value?.trim();
+  if (market) searchParams.set('market', market);
+  if (metric && metric !== 'composite') searchParams.set('metric', metric);
+  if (weight && weight !== 'balanced') searchParams.set('weight', weight);
+  if (topN && topN !== '6') searchParams.set('topN', topN);
+  const query = searchParams.toString();
+  return query ? `/api/investment-screener/ranked?${query}` : '/api/investment-screener/ranked';
+}
+
+function investmentSuggestionLimit(payload) {
+  const serverLimit = payload?.applied_filters?.topN;
+  const controlLimit = Number(investmentTopNFilter?.value ?? 6);
+  const limit = Number.isInteger(serverLimit) ? serverLimit : controlLimit;
+  return Number.isInteger(limit) && limit > 0 ? Math.min(limit, 25) : 6;
+}
+
+function renderInvestmentScreener(payload) {
+  if (!investmentScreenerContent) return;
+  const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
+  const suggestionLimit = investmentSuggestionLimit(payload);
+  const metaItems = [
+    payload.mode ? `Mode: ${payload.mode}` : null,
+    payload.generated_at ? `Generated: ${formatDateTime(payload.generated_at)}` : null,
+    payload.data_as_of ? `Data as of: ${formatDateTime(payload.data_as_of)}` : null
+  ].filter(Boolean);
+
+  const children = [
+    el('p', { className: 'investment-disclaimer', text: payload.disclaimer ?? 'Informational screener output only; not financial advice.' })
+  ];
+  if (metaItems.length) {
+    children.push(el('div', { className: 'investment-meta muted', text: metaItems.join(' · ') }));
+  }
+
+  const messages = Array.isArray(payload.messages) ? payload.messages : [];
+  if (messages.length) {
+    children.push(el('ul', { className: 'investment-filter-messages muted' }, messages.slice(0, 3).map((message) => el('li', { text: message }))));
+  }
+
+  if (candidates.length === 0) {
+    const message = messages.length ? 'No candidates match the selected filters.' : 'No ranked candidates are present in the latest screener output.';
+    children.push(el('p', { className: 'muted', text: message }));
+  } else {
+    children.push(el('div', { className: 'investment-candidate-grid' }, candidates.slice(0, suggestionLimit).map(renderInvestmentCandidate)));
+  }
+
+  const limitations = Array.isArray(payload.limitations) ? payload.limitations : [];
+  if (limitations.length) {
+    children.push(el('ul', { className: 'investment-limitations muted' }, limitations.slice(0, 4).map((item) => el('li', { text: item }))));
+  }
+
+  if (Array.isArray(payload.doc_links) && payload.doc_links.length > 0) {
+    children.push(el('div', { className: 'doc-links investment-doc-links' }, [
+      el('span', { className: 'muted', text: 'Details: ' }),
+      ...payload.doc_links.map((doc) => el('a', { href: doc.url, text: doc.label ?? 'Document', rel: 'noreferrer noopener', target: '_blank' }))
+    ]));
+  }
+
+  investmentScreenerContent.replaceChildren(el('div', { className: 'investment-screener-card' }, children));
+}
+
+function renderInvestmentCandidate(candidate) {
+  const meta = [candidate.market, candidate.currency].filter(Boolean).join(' · ');
+  const riskFlags = Array.isArray(candidate.risk_flags) ? candidate.risk_flags.slice(0, 3) : [];
+  const caveats = Array.isArray(candidate.caveats) ? candidate.caveats.slice(0, 2) : [];
+  const children = [
+    el('div', { className: 'investment-candidate-heading' }, [
+      el('span', { className: 'badge neutral', text: `#${candidate.rank ?? '?'}` }),
+      el('strong', { text: candidate.ticker ?? 'UNKNOWN' }),
+      candidate.score == null ? el('span', { className: 'muted', text: 'No score' }) : el('span', { className: 'badge up', text: String(candidate.score) })
+    ]),
+    el('div', { className: 'investment-candidate-name', text: candidate.name ?? 'Unknown candidate' })
+  ];
+  if (meta) children.push(el('div', { className: 'muted investment-candidate-meta', text: meta }));
+  if (riskFlags.length) {
+    children.push(el('div', { className: 'investment-risk-flags' }, riskFlags.map((flag) => el('span', { className: 'badge down', text: flag }))));
+  }
+  if (caveats.length) {
+    children.push(el('ul', { className: 'investment-caveats muted' }, caveats.map((caveat) => el('li', { text: caveat }))));
+  }
+  return el('article', { className: 'investment-candidate' }, children);
+}
+
+function formatDateTime(isoString) {
+  if (!isoString) return 'unknown';
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) return String(isoString);
+  return date.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+async function refreshInvestmentScreener() {
+  if (!investmentScreenerContent) return;
+  if (refreshInvestmentScreenerButton) refreshInvestmentScreenerButton.disabled = true;
+  try {
+    renderInvestmentScreener(await getJson(investmentScreenerRequestPath()));
+  } catch (error) {
+    const msg = error.message.includes('404')
+      ? 'No investment screener output yet — run the screener export first.'
+      : error.message.includes('503')
+        ? 'Investment screener output is not configured on this instance.'
+        : `Investment screener unavailable: ${error.message}`;
+    investmentScreenerContent.replaceChildren(el('p', { className: 'error', text: msg }));
+  } finally {
+    if (refreshInvestmentScreenerButton) refreshInvestmentScreenerButton.disabled = false;
+  }
+}
+
+if (refreshInvestmentScreenerButton) {
+  refreshInvestmentScreenerButton.addEventListener('click', refreshInvestmentScreener);
+}
+
+if (investmentScreenerControls) {
+  investmentScreenerControls.addEventListener('change', refreshInvestmentScreener);
+}
+
+if (resetInvestmentScreenerFiltersButton) {
+  resetInvestmentScreenerFiltersButton.addEventListener('click', () => {
+    if (investmentMarketFilter) investmentMarketFilter.value = '';
+    if (investmentMetricFilter) investmentMetricFilter.value = 'composite';
+    if (investmentWeightFilter) investmentWeightFilter.value = 'balanced';
+    if (investmentTopNFilter) investmentTopNFilter.value = '6';
+    refreshInvestmentScreener();
+  });
+}
+
+let selectedDocId = null;
+let selectedDocPath = null;
+let docsByPath = new Map();
+
+function groupDocsByCategory(documents) {
+  const groups = new Map();
+  for (const doc of documents) {
+    const category = typeof doc.category === 'string' && doc.category.trim() ? doc.category.trim() : 'General';
+    if (!groups.has(category)) groups.set(category, []);
+    groups.get(category).push(doc);
+  }
+  return [...groups.entries()].map(([category, docs]) => ({ category, docs }));
+}
+
+function renderDocList(documents) {
+  if (!docsList) return;
+  docsList.replaceChildren();
+  if (documents.length === 0) {
+    docsList.append(el('p', { className: 'muted', text: 'No approved dashboard docs are available.' }));
+    return;
+  }
+  for (const group of groupDocsByCategory(documents)) {
+    const groupItems = group.docs.map((doc) => {
+      const selected = doc.id === selectedDocId;
+      const button = el('button', {
+        className: selected ? 'doc-picker is-selected' : 'doc-picker',
+        type: 'button',
+        text: doc.title ?? doc.id,
+        'aria-current': selected ? 'true' : 'false'
+      });
+      button.classList.toggle('is-selected', selected);
+      button.addEventListener('click', () => loadDoc(doc));
+      return el('li', { className: 'doc-picker-item' }, [button, el('span', { className: 'muted doc-path', text: doc.path })]);
+    });
+    docsList.append(el('li', { className: 'doc-group' }, [
+      el('div', { className: 'doc-group-title', text: group.category }),
+      el('ul', { className: 'doc-group-list' }, groupItems)
+    ]));
+  }
+}
+
+function headingAnchorId(text, used = new Set()) {
+  const base = String(text ?? '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-') || 'section';
+  let candidate = base;
+  let index = 2;
+  while (used.has(candidate)) {
+    candidate = `${base}-${index}`;
+    index += 1;
+  }
+  used.add(candidate);
+  return candidate;
+}
+
+function markdownHeadings(markdown) {
+  const used = new Set();
+  return String(markdown ?? '')
+    .split(/\r?\n/)
+    .map((line) => /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line))
+    .filter(Boolean)
+    .map((match) => ({ level: match[1].length, text: match[2].trim(), id: headingAnchorId(match[2].trim(), used) }));
+}
+
+function normalizeDocPath(path) {
+  const parts = [];
+  for (const part of String(path ?? '').split('/')) {
+    if (!part || part === '.') continue;
+    if (part === '..') {
+      if (parts.length === 0) return null;
+      parts.pop();
+    } else {
+      parts.push(part);
+    }
+  }
+  return parts.join('/');
+}
+
+function relativeDocPath(basePath, href) {
+  const cleanHref = String(href ?? '').split('#')[0].split('?')[0];
+  if (!cleanHref || cleanHref.startsWith('/') || cleanHref.includes('\0')) return null;
+  const baseParts = String(basePath ?? '').split('/');
+  baseParts.pop();
+  return normalizeDocPath([...baseParts, cleanHref].join('/'));
+}
+
+function approvedDocHrefForRelativeLink(href) {
+  const path = relativeDocPath(selectedDocPath, href);
+  const doc = path ? docsByPath.get(path) : null;
+  return doc?.id ? `/api/docs/${encodeURIComponent(doc.id)}` : null;
+}
+
+function safeMarkdownHref(rawHref) {
+  const href = String(rawHref ?? '').trim();
+  if (!href) return null;
+  if (href.startsWith('#')) return href;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(href)) {
+    try {
+      const parsed = new URL(href);
+      if (['http:', 'https:', 'mailto:'].includes(parsed.protocol)) return parsed.href;
+    } catch {
+      return null;
+    }
+  }
+  return approvedDocHrefForRelativeLink(href);
+}
+
+function appendInlineMarkdown(parent, text) {
+  for (const node of renderMarkdownInline(text)) parent.append(node);
+}
+
+function renderMarkdownInline(text) {
+  const nodes = [];
+  const pattern = /(`([^`]+)`)|\[([^\]]+)\]\(([^\s)]+)(?:\s+"[^"]*")?\)/g;
+  let cursor = 0;
+  for (const match of String(text ?? '').matchAll(pattern)) {
+    if (match.index > cursor) nodes.push(document.createTextNode(String(text).slice(cursor, match.index)));
+    if (match[2] !== undefined) {
+      nodes.push(el('code', { text: match[2] }));
+    } else {
+      const href = safeMarkdownHref(match[4]);
+      nodes.push(href
+        ? el('a', { href, text: match[3], rel: 'noopener noreferrer', target: '_blank' })
+        : document.createTextNode(match[3]));
+    }
+    cursor = match.index + match[0].length;
+  }
+  const rawText = String(text ?? '');
+  if (cursor < rawText.length) nodes.push(document.createTextNode(rawText.slice(cursor)));
+  return nodes;
+}
+
+function isTableDivider(line) {
+  return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
+}
+
+function splitTableRow(line) {
+  return String(line).trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => cell.trim());
+}
+
+function renderMarkdownTable(lines) {
+  const table = el('table');
+  const [headerLine, _divider, ...bodyLines] = lines;
+  const thead = el('thead');
+  thead.append(el('tr', {}, splitTableRow(headerLine).map((cell) => {
+    const th = el('th');
+    appendInlineMarkdown(th, cell);
+    return th;
+  })));
+  table.append(thead);
+  const tbody = el('tbody');
+  for (const line of bodyLines) {
+    tbody.append(el('tr', {}, splitTableRow(line).map((cell) => {
+      const td = el('td');
+      appendInlineMarkdown(td, cell);
+      return td;
+    })));
+  }
+  table.append(tbody);
+  return el('div', { className: 'doc-table-wrap' }, [table]);
+}
+
+function renderMarkdownToc(headings) {
+  if (headings.length === 0) return null;
+  return el('nav', { className: 'doc-toc', 'aria-label': 'Document table of contents' }, [
+    el('div', { className: 'doc-toc-title', text: 'On this page' }),
+    el('ol', {}, headings.map((heading) => el('li', { className: `doc-toc-level-${Math.min(heading.level, 6)}` }, [
+      el('a', { href: `#${heading.id}`, text: heading.text })
+    ])))
+  ]);
+}
+
+function renderMarkdownDocument(markdown) {
+  const lines = String(markdown ?? '').split(/\r?\n/);
+  const headings = markdownHeadings(markdown);
+  const headingIds = new Map();
+  for (const heading of headings) {
+    const key = `${heading.level}:${heading.text}`;
+    if (!headingIds.has(key)) headingIds.set(key, []);
+    headingIds.get(key).push(heading.id);
+  }
+  const body = el('div', { className: 'doc-markdown' });
+  let index = 0;
+  let inCode = false;
+  let codeLines = [];
+  const flushParagraph = (paragraphLines) => {
+    if (paragraphLines.length === 0) return;
+    const p = el('p');
+    appendInlineMarkdown(p, paragraphLines.join(' '));
+    body.append(p);
+  };
+  let paragraph = [];
+
+  while (index < lines.length) {
+    const line = lines[index];
+    const trimmed = line.trim();
+    if (trimmed.startsWith('```')) {
+      if (inCode) {
+        body.append(el('pre', {}, [el('code', { text: codeLines.join('\n') })]));
+        codeLines = [];
+        inCode = false;
+      } else {
+        flushParagraph(paragraph);
+        paragraph = [];
+        inCode = true;
+      }
+      index += 1;
+      continue;
+    }
+    if (inCode) {
+      codeLines.push(line);
+      index += 1;
+      continue;
+    }
+    if (!trimmed) {
+      flushParagraph(paragraph);
+      paragraph = [];
+      index += 1;
+      continue;
+    }
+    const heading = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
+    if (heading) {
+      flushParagraph(paragraph);
+      paragraph = [];
+      const level = heading[1].length;
+      const text = heading[2].trim();
+      const idQueue = headingIds.get(`${level}:${text}`);
+      const h = el(`h${level}`, { id: idQueue?.shift() ?? headingAnchorId(text) });
+      appendInlineMarkdown(h, text);
+      body.append(h);
+      index += 1;
+      continue;
+    }
+    if (/^---+$/.test(trimmed)) {
+      flushParagraph(paragraph);
+      paragraph = [];
+      body.append(el('hr'));
+      index += 1;
+      continue;
+    }
+    if (line.includes('|') && lines[index + 1] && isTableDivider(lines[index + 1])) {
+      flushParagraph(paragraph);
+      paragraph = [];
+      const tableLines = [line, lines[index + 1]];
+      index += 2;
+      while (index < lines.length && lines[index].includes('|') && lines[index].trim()) {
+        tableLines.push(lines[index]);
+        index += 1;
+      }
+      body.append(renderMarkdownTable(tableLines));
+      continue;
+    }
+    const quote = /^>\s?(.*)$/.exec(line);
+    if (quote) {
+      flushParagraph(paragraph);
+      paragraph = [];
+      const quoteLines = [];
+      while (index < lines.length) {
+        const match = /^>\s?(.*)$/.exec(lines[index]);
+        if (!match) break;
+        quoteLines.push(match[1]);
+        index += 1;
+      }
+      const blockquote = el('blockquote');
+      appendInlineMarkdown(blockquote, quoteLines.join(' '));
+      body.append(blockquote);
+      continue;
+    }
+    const listMatch = /^(\s*)([-*+] |\d+\. )(.*)$/.exec(line);
+    if (listMatch) {
+      flushParagraph(paragraph);
+      paragraph = [];
+      const ordered = /\d+\. /.test(listMatch[2]);
+      const list = el(ordered ? 'ol' : 'ul');
+      while (index < lines.length) {
+        const match = /^(\s*)([-*+] |\d+\. )(.*)$/.exec(lines[index]);
+        if (!match || (/\d+\. /.test(match[2]) !== ordered)) break;
+        const item = el('li');
+        appendInlineMarkdown(item, match[3]);
+        list.append(item);
+        index += 1;
+      }
+      body.append(list);
+      continue;
+    }
+    paragraph.push(trimmed);
+    index += 1;
+  }
+  if (inCode) body.append(el('pre', {}, [el('code', { text: codeLines.join('\n') })]));
+  flushParagraph(paragraph);
+  const toc = renderMarkdownToc(headings);
+  return el('div', { className: toc ? 'doc-rendered has-toc' : 'doc-rendered' }, toc ? [toc, body] : [body]);
+}
+
+async function loadDoc(doc) {
+  if (!docsContent || !doc?.id) return;
+  selectedDocId = doc.id;
+  selectedDocPath = doc.path ?? null;
+  docsContent.replaceChildren(el('p', { className: 'muted', text: `Loading ${doc.title ?? doc.id}…` }));
+  try {
+    const data = await getJson(`/api/docs/${encodeURIComponent(doc.id)}`);
+    docsContent.replaceChildren(el('article', { className: 'doc-viewer-card' }, [
+      el('div', { className: 'doc-viewer-title', text: data.title ?? doc.title ?? doc.id }),
+      el('div', { className: 'muted doc-path', text: data.path ?? doc.path ?? '' }),
+      renderMarkdownDocument(data.content ?? '')
+    ]));
+    const buttons = docsList?.querySelectorAll('.doc-picker') ?? [];
+    for (const button of buttons) {
+      const selected = button.textContent === (doc.title ?? doc.id);
+      button.classList.toggle('is-selected', selected);
+      button.setAttribute('aria-current', selected ? 'true' : 'false');
+    }
+  } catch (error) {
+    docsContent.replaceChildren(el('p', { className: 'error', text: `Document unavailable: ${error.message}` }));
+  }
+}
+
+async function refreshDocs() {
+  if (!docsList) return;
+  if (refreshDocsButton) refreshDocsButton.disabled = true;
+  try {
+    const data = await getJson('/api/docs');
+    const documents = Array.isArray(data.documents) ? data.documents : [];
+    docsByPath = new Map(documents.map((doc) => [normalizeDocPath(doc.path), doc]).filter(([path]) => path));
+    renderDocList(documents);
+    if (docsContent) {
+      docsContent.replaceChildren(el('p', { className: 'muted', text: documents.length === 0 ? 'No document selected.' : 'Select a document to view it here.' }));
+    }
+  } catch (error) {
+    docsList.replaceChildren(el('p', { className: 'error', text: `Docs unavailable: ${error.message}` }));
+  } finally {
+    if (refreshDocsButton) refreshDocsButton.disabled = false;
+  }
+}
+
+if (refreshDocsButton) {
+  refreshDocsButton.addEventListener('click', refreshDocs);
 }
 
 function formatDate(isoString) {
@@ -180,3 +934,254 @@ async function refreshEpics() {
     epicsList.replaceChildren(el('p', { className: 'error', text: `Epics unavailable: ${error.message}` }));
   }
 }
+
+
+function updateKanbanDensityUi() {
+  if (kanbanPanel) kanbanPanel.classList.toggle('kanban-compact', kanbanCompactMode);
+  if (!kanbanCompactToggle) return;
+  kanbanCompactToggle.textContent = kanbanCompactMode ? 'Expand board' : 'Compact board';
+  kanbanCompactToggle.setAttribute('aria-expanded', String(!kanbanCompactMode));
+  kanbanCompactToggle.setAttribute('aria-label', kanbanCompactMode ? 'Expand Kanban board cards' : 'Compact Kanban board cards');
+}
+
+function toggleKanbanDensity() {
+  kanbanCompactMode = !kanbanCompactMode;
+  setStoredBoolean(KANBAN_COMPACT_STORAGE_KEY, kanbanCompactMode);
+  updateKanbanDensityUi();
+}
+
+function isKanbanLaneCollapsed(status) {
+  return Array.isArray(collapsedKanbanLanes) && collapsedKanbanLanes.includes(status);
+}
+
+function toggleKanbanLane(status, laneNode, button) {
+  const collapsed = !isKanbanLaneCollapsed(status);
+  const next = new Set(Array.isArray(collapsedKanbanLanes) ? collapsedKanbanLanes : []);
+  if (collapsed) next.add(status);
+  else next.delete(status);
+  collapsedKanbanLanes = [...next];
+  writeStoredJson(KANBAN_COLLAPSED_LANES_STORAGE_KEY, collapsedKanbanLanes);
+  laneNode.classList.toggle('is-collapsed', collapsed);
+  button.setAttribute('aria-expanded', String(!collapsed));
+  button.setAttribute('aria-label', `${collapsed ? 'Show' : 'Hide'} ${laneTitle(status)} lane cards`);
+  button.textContent = collapsed ? 'Show' : 'Hide';
+}
+
+function laneTitle(status) {
+  return String(status || 'unknown').replace(/-/g, ' ').replace(/^./, (char) => char.toUpperCase());
+}
+
+function formatShortDate(isoString) {
+  if (!isoString) return 'no date';
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) return 'no date';
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+}
+
+function setKanbanMessage(message, kind = 'muted') {
+  if (!kanbanMessage) return;
+  kanbanMessage.className = `${kind} board-message`;
+  kanbanMessage.textContent = message;
+}
+
+function mutationPayloadForDrop(card, status) {
+  if (status === card.status) return null;
+  if (!currentKanbanMutations.supported_statuses?.includes(status)) {
+    setKanbanMessage(`Moving to ${status} is not supported by the safe dashboard API.`, 'error');
+    return null;
+  }
+  if (status === 'blocked') {
+    const reason = window.prompt(`Block ${card.id}? Enter the reason:`);
+    if (!reason) return null;
+    return { status, reason };
+  }
+  if (status === 'done') {
+    const summary = window.prompt(`Complete ${card.id}? Enter the completion summary:`);
+    if (!summary) return null;
+    return { status, summary };
+  }
+  if (status === 'archived') {
+    if (!window.confirm(`Archive ${card.id}? This hides it from the default board view.`)) return null;
+    return { status, confirm: true };
+  }
+  const reason = window.prompt(`Move ${card.id} to ready? Optional reason:`, 'Promoted from dashboard');
+  return { status, reason: reason || 'Promoted from dashboard' };
+}
+
+async function moveKanbanCard(card, status) {
+  if (!currentKanbanMutations.enabled) {
+    setKanbanMessage('Board is read-only: Kanban mutations are disabled on this dashboard instance.', 'error');
+    return;
+  }
+  const payload = mutationPayloadForDrop(card, status);
+  if (!payload) return;
+
+  setKanbanMessage(`Moving ${card.id} to ${status}…`);
+  try {
+    await postJson(`/api/kanban/tasks/${card.id}/move`, payload);
+    setKanbanMessage(`Moved ${card.id} to ${status}.`);
+    await refreshKanban();
+  } catch (error) {
+    setKanbanMessage(`Move failed: ${error.message}`, 'error');
+  }
+}
+
+function kanbanCardSummary(card, parentChildCue) {
+  const parts = [
+    card.id,
+    card.title ?? 'Untitled task',
+    `assignee: ${card.assignee ?? 'unassigned'}`,
+    `status: ${card.status ?? 'unknown'}`,
+    `priority: ${card.priority ?? 0}`
+  ];
+  if (parentChildCue.length) parts.push(parentChildCue.join(', '));
+  return parts.join(' · ');
+}
+
+function renderKanbanCard(card, compactHidden = false) {
+  const parentChildCue = [];
+  if (card.parent_count) parentChildCue.push(`${card.parent_count} parent${card.parent_count === 1 ? '' : 's'}`);
+  if (card.child_count) parentChildCue.push(`${card.child_count} child${card.child_count === 1 ? '' : 'ren'}`);
+
+  const actionButtons = [
+    ['ready', 'Ready'],
+    ['blocked', 'Block'],
+    ['done', 'Complete'],
+    ['archived', 'Archive']
+  ]
+    .filter(([status]) => status !== card.status)
+    .map(([status, label]) => {
+      const button = el('button', { className: 'kanban-card-action', type: 'button', text: label });
+      if (!currentKanbanMutations.enabled) {
+        button.disabled = true;
+        button.title = 'Kanban mutations are disabled on this dashboard instance';
+      }
+      button.addEventListener('click', () => moveKanbanCard(card, status));
+      return button;
+    });
+
+  const summary = kanbanCardSummary(card, parentChildCue);
+  const node = el('article', {
+    className: compactHidden ? 'kanban-card compact-overflow-card' : 'kanban-card',
+    draggable: currentKanbanMutations.enabled ? 'true' : 'false',
+    'data-task-id': card.id,
+    'data-task-status': card.status,
+    title: summary,
+    'aria-label': summary
+  }, [
+    el('div', { className: 'kanban-card-title', text: card.title ?? 'Untitled task' }),
+    el('div', { className: 'kanban-card-meta' }, [
+      el('span', { className: 'badge neutral', text: card.assignee ?? 'unassigned' }),
+      el('span', { className: statusBadgeClass(card.status), text: card.status ?? 'unknown' }),
+      el('span', { className: 'muted', text: `P${card.priority ?? 0}` })
+    ]),
+    el('div', { className: 'kanban-card-foot muted', text: `${card.id} · ${formatShortDate(card.created_at)}${parentChildCue.length ? ` · ${parentChildCue.join(' · ')}` : ''}` }),
+    el('div', { className: 'kanban-card-actions' }, actionButtons)
+  ]);
+
+  node.addEventListener('dragstart', (event) => {
+    if (!currentKanbanMutations.enabled) {
+      event.preventDefault();
+      setKanbanMessage('Board is read-only: Kanban mutations are disabled on this dashboard instance.', 'error');
+      return;
+    }
+    currentDraggedTaskId = card.id;
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', card.id);
+  });
+  node.addEventListener('dragend', () => {
+    currentDraggedTaskId = null;
+  });
+  return node;
+}
+
+function renderKanbanBoard(payload) {
+  if (!kanbanBoard) return;
+  const lanes = Array.isArray(payload.lanes) ? payload.lanes : [];
+  currentKanbanMutations = payload.mutations ?? { enabled: false, supported_statuses: [] };
+  updateKanbanDensityUi();
+  kanbanBoard.replaceChildren();
+
+  if (lanes.length === 0) {
+    kanbanBoard.append(el('p', { className: 'muted', text: 'No Kanban lanes available.' }));
+    return;
+  }
+
+  setKanbanMessage(currentKanbanMutations.enabled
+    ? 'Drag cards to supported lanes, or use card actions for Ready, Block, Complete, and Archive. Sensitive moves ask first.'
+    : 'Read-only board: mutations are disabled unless the dashboard is explicitly configured with safe Hermes CLI access.');
+
+  const cardsById = new Map(lanes.flatMap((lane) => (lane.cards ?? []).map((card) => [card.id, card])));
+  for (const lane of lanes) {
+    const cards = Array.isArray(lane.cards) ? lane.cards : [];
+    const collapsed = isKanbanLaneCollapsed(lane.status);
+    const laneNode = el('section', {
+      className: collapsed ? 'kanban-lane is-collapsed' : 'kanban-lane',
+      'data-status': lane.status
+    });
+    const laneToggle = el('button', {
+      className: 'kanban-lane-toggle',
+      type: 'button',
+      text: collapsed ? 'Show' : 'Hide',
+      'aria-expanded': String(!collapsed),
+      'aria-label': `${collapsed ? 'Show' : 'Hide'} ${laneTitle(lane.status)} lane cards`
+    });
+    laneToggle.addEventListener('click', () => toggleKanbanLane(lane.status, laneNode, laneToggle));
+    laneNode.append(el('div', { className: 'kanban-lane-heading' }, [
+      el('div', { className: 'kanban-lane-title' }, [
+        el('h3', { text: laneTitle(lane.status) }),
+        el('span', { className: 'muted kanban-lane-summary', text: `${cards.length} card${cards.length === 1 ? '' : 's'}` })
+      ]),
+      el('div', { className: 'kanban-lane-controls' }, [
+        el('span', { className: 'badge neutral', text: String(cards.length), 'aria-label': `${cards.length} cards` }),
+        laneToggle
+      ])
+    ]));
+
+    laneNode.addEventListener('dragover', (event) => {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = currentKanbanMutations.supported_statuses?.includes(lane.status) ? 'move' : 'none';
+    });
+    laneNode.addEventListener('drop', async (event) => {
+      event.preventDefault();
+      const taskId = event.dataTransfer.getData('text/plain') || currentDraggedTaskId;
+      const card = cardsById.get(taskId);
+      if (card) await moveKanbanCard(card, lane.status);
+    });
+
+    if (cards.length === 0) {
+      laneNode.append(el('p', { className: 'muted kanban-empty', text: 'No cards' }));
+    } else {
+      laneNode.append(...cards.map((card, index) => renderKanbanCard(card, index >= KANBAN_COMPACT_CARD_LIMIT)));
+      if (cards.length > KANBAN_COMPACT_CARD_LIMIT) {
+        laneNode.append(el('p', {
+          className: 'muted kanban-overflow-note',
+          text: `${cards.length - KANBAN_COMPACT_CARD_LIMIT} more card${cards.length - KANBAN_COMPACT_CARD_LIMIT === 1 ? '' : 's'} hidden in compact mode — expand board to show all.`
+        }));
+      }
+    }
+    kanbanBoard.append(laneNode);
+  }
+}
+
+async function refreshKanban() {
+  if (!kanbanBoard) return;
+  if (refreshKanbanButton) refreshKanbanButton.disabled = true;
+  try {
+    renderKanbanBoard(await getJson('/api/kanban/board'));
+  } catch (error) {
+    kanbanBoard.replaceChildren(el('p', { className: 'error', text: `Kanban board unavailable: ${error.message}` }));
+  } finally {
+    if (refreshKanbanButton) refreshKanbanButton.disabled = false;
+  }
+}
+
+if (refreshKanbanButton) {
+  refreshKanbanButton.addEventListener('click', refreshKanban);
+}
+
+if (kanbanCompactToggle) {
+  kanbanCompactToggle.addEventListener('click', toggleKanbanDensity);
+}
+
+updateKanbanDensityUi();

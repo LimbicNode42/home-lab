@@ -11,43 +11,223 @@
       <header class="hero">
         <p class="eyebrow">Wheeler network</p>
         <h1 id="dashboard-title">Home Dashboard</h1>
-        <p class="muted">Private household dashboard for useful links and lightweight service status.</p>
+        <p class="muted">Private household dashboard for useful links, work state, generated reports, and lightweight service status.</p>
       </header>
 
-      <section class="panel">
-        <div class="panel-heading">
-          <h2>Service status</h2>
-          <button id="refresh-status" type="button">Refresh</button>
+      <nav class="dashboard-tabs" aria-label="Dashboard sections">
+        <div class="tab-list" role="tablist" aria-label="Dashboard sections">
+          <a id="tab-overview" class="dashboard-tab" role="tab" href="#overview" aria-controls="panel-overview" aria-selected="true" tabindex="0">Overview</a>
+          <a id="tab-work" class="dashboard-tab" role="tab" href="#work" aria-controls="panel-work" aria-selected="false" tabindex="-1">Work</a>
+          <a id="tab-knowledge" class="dashboard-tab" role="tab" href="#knowledge" aria-controls="panel-knowledge" aria-selected="false" tabindex="-1">Knowledge</a>
+          <a id="tab-reports" class="dashboard-tab" role="tab" href="#reports" aria-controls="panel-reports" aria-selected="false" tabindex="-1">Reports</a>
+          <a id="tab-diary" class="dashboard-tab" role="tab" href="#diary" aria-controls="panel-diary" aria-selected="false" tabindex="-1">Diary</a>
         </div>
-        <div id="status-list" class="status-grid" aria-live="polite">
-          <p class="muted">Loading status…</p>
-        </div>
+      </nav>
+
+      <section id="panel-overview" class="tab-panel" role="tabpanel" aria-labelledby="tab-overview" data-tab-panel="overview">
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>Service status</h2>
+            <button id="refresh-status" type="button">Refresh</button>
+          </div>
+          <div id="status-list" class="status-grid" aria-live="polite">
+            <p class="muted">Loading status…</p>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Links</h2>
+          <div id="sections" class="sections">
+            <p class="muted">Loading links…</p>
+          </div>
+        </section>
       </section>
 
-      <section class="panel">
-        <h2>Links</h2>
-        <div id="sections" class="sections">
-          <p class="muted">Loading links…</p>
-        </div>
+      <section id="panel-work" class="tab-panel" role="tabpanel" aria-labelledby="tab-work" data-tab-panel="work" hidden>
+        <section class="panel" id="kanban-panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Kanban Board</h2>
+              <p id="kanban-message" class="muted board-message" aria-live="polite">Loading board…</p>
+            </div>
+            <div class="panel-actions">
+              <button id="toggle-kanban-density" type="button" aria-expanded="false">Expand board</button>
+              <button id="refresh-kanban" type="button">Refresh</button>
+            </div>
+          </div>
+          <div id="kanban-board" class="kanban-board" aria-live="polite"></div>
+        </section>
       </section>
 
-      <section class="panel" id="finnick-panel">
-        <div class="panel-heading">
-          <h2>Finnick — Daily Betting Report</h2>
-          <button id="refresh-finnick" type="button">Refresh</button>
-        </div>
-        <div id="finnick-content" aria-live="polite">
-          <p class="muted">Loading report…</p>
-        </div>
+      <section id="panel-knowledge" class="tab-panel" role="tabpanel" aria-labelledby="tab-knowledge" data-tab-panel="knowledge" hidden>
+        <section class="panel" id="epics-panel">
+          <div class="panel-heading">
+            <h2>Completed Epics</h2>
+          </div>
+          <div id="epics-list" aria-live="polite">
+            <p class="muted">Loading epics…</p>
+          </div>
+        </section>
+
+        <section class="panel" id="docs-panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Documentation</h2>
+              <p class="muted board-message">Approved committed Markdown docs only. No filesystem path browsing. Very modern: a door with a lock.</p>
+            </div>
+            <button id="refresh-docs" type="button">Refresh</button>
+          </div>
+          <div class="docs-layout">
+            <ul id="docs-list" class="docs-list" aria-live="polite">
+              <li class="muted">Loading docs…</li>
+            </ul>
+            <div id="docs-content" class="doc-viewer" aria-live="polite">
+              <p class="muted">Select a document to view it here.</p>
+            </div>
+          </div>
+        </section>
       </section>
 
-      <section class="panel" id="epics-panel">
-        <div class="panel-heading">
-          <h2>Completed Epics</h2>
-        </div>
-        <div id="epics-list" aria-live="polite">
-          <p class="muted">Loading epics…</p>
-        </div>
+      <section id="panel-reports" class="tab-panel" role="tabpanel" aria-labelledby="tab-reports" data-tab-panel="reports" hidden>
+        <section class="panel" id="finnick-panel">
+          <div class="panel-heading">
+            <h2>Finnick — Daily Betting Report</h2>
+            <button id="refresh-finnick" type="button">Refresh</button>
+          </div>
+          <div id="finnick-content" aria-live="polite">
+            <p class="muted">Loading report…</p>
+          </div>
+        </section>
+
+        <section class="panel" id="investment-screener-panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Investment Screener</h2>
+              <p class="muted board-message">Latest generated value-growth screener output. Informational only, not financial advice.</p>
+            </div>
+            <button id="refresh-investment-screener" type="button">Refresh</button>
+          </div>
+          <form id="investment-screener-controls" class="investment-screener-controls" aria-label="Investment screener filters">
+            <label>
+              Market
+              <select id="investment-market-filter" name="market">
+                <option value="">All markets</option>
+                <option value="US">US</option>
+                <option value="JP">Japan</option>
+                <option value="CH">Switzerland</option>
+              </select>
+            </label>
+            <label>
+              Exchange
+              <select id="investment-exchange-filter" name="exchange" disabled>
+                <option value="">Unavailable in sanitized output</option>
+              </select>
+            </label>
+            <label>
+              Region
+              <select id="investment-region-filter" name="region" disabled>
+                <option value="">Unavailable in sanitized output</option>
+              </select>
+            </label>
+            <label>
+              Sector
+              <select id="investment-sector-filter" name="sector" disabled>
+                <option value="">Unavailable in sanitized output</option>
+              </select>
+            </label>
+            <label>
+              Industry
+              <select id="investment-industry-filter" name="industry" disabled>
+                <option value="">Unavailable in sanitized output</option>
+              </select>
+            </label>
+            <label>
+              Score focus
+              <select id="investment-metric-filter" name="metric">
+                <option value="composite">Composite score</option>
+                <option value="quality">Quality</option>
+                <option value="valuation">Valuation</option>
+                <option value="growth">Growth</option>
+                <option value="graham_safety">Graham safety</option>
+                <option value="durability">Durability</option>
+                <option value="risk_adjustments">Risk adjustments</option>
+              </select>
+            </label>
+            <label>
+              Weight preset
+              <select id="investment-weight-filter" name="weight">
+                <option value="balanced">Balanced</option>
+                <option value="quality">Quality tilt</option>
+                <option value="valuation">Valuation tilt</option>
+                <option value="growth">Growth tilt</option>
+                <option value="graham_safety">Graham safety tilt</option>
+                <option value="durability">Durability tilt</option>
+                <option value="risk_adjustments">Risk adjustments tilt</option>
+              </select>
+            </label>
+            <label>
+              Suggestions
+              <select id="investment-topn-filter" name="topN">
+                <option value="6">Top 6</option>
+                <option value="3">Top 3</option>
+                <option value="10">Top 10</option>
+                <option value="25">Top 25</option>
+              </select>
+            </label>
+            <button id="reset-investment-screener-filters" type="button">Reset filters</button>
+          </form>
+          <p class="muted investment-control-note">Market, score focus, weight preset, and suggestion count are applied to already-sanitized ranked data. Exchange, region, sector, and industry are shown but disabled until the screener exports those fields safely.</p>
+          <div id="investment-screener-content" class="investment-screener-content" aria-live="polite">
+            <p class="muted">Loading investment screener output…</p>
+          </div>
+        </section>
+      </section>
+
+      <section id="panel-diary" class="tab-panel" role="tabpanel" aria-labelledby="tab-diary" data-tab-panel="diary" hidden>
+        <section class="panel" id="diary-panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Diary</h2>
+              <p class="muted board-message">Diary entries can be created and viewed here. Editing and deleting are not part of this MVP.</p>
+            </div>
+            <button id="refresh-diary" type="button">Refresh</button>
+          </div>
+
+          <form id="diary-entry-form" class="personal-data-form" aria-label="Create diary entry">
+            <label>
+              Entry date
+              <input id="diary-entry-date" name="entry_date" type="date" autocomplete="off">
+            </label>
+            <label>
+              Title <span class="muted">optional</span>
+              <input id="diary-entry-title" name="title" type="text" maxlength="160" autocomplete="off">
+            </label>
+            <label>
+              Mood <span class="muted">optional</span>
+              <input id="diary-entry-mood" name="mood" type="text" maxlength="64" autocomplete="off">
+            </label>
+            <label class="form-wide">
+              Entry
+              <textarea id="diary-entry-body" name="body" maxlength="20000" required rows="8"></textarea>
+            </label>
+            <div class="form-actions form-wide">
+              <button type="submit">Save diary entry</button>
+              <p id="diary-form-message" class="muted" aria-live="polite"></p>
+            </div>
+          </form>
+
+          <div class="personal-data-layout">
+            <div>
+              <h3>Recent entries</h3>
+              <div id="diary-entry-list" class="personal-entry-list" aria-live="polite">
+                <p class="muted">Loading diary entries…</p>
+              </div>
+            </div>
+            <article id="diary-entry-detail" class="personal-entry-detail" aria-live="polite">
+              <p class="muted">Select an entry to view it. The goblin will not pretend edit/delete exists.</p>
+            </article>
+          </div>
+        </section>
       </section>
     </main>
     <script type="module" src="/app.js"></script>

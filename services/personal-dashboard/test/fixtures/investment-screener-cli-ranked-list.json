@@ -1,0 +1,108 @@
+[
+  {
+    "rank": 1,
+    "ticker": "BRK-B",
+    "name": "Berkshire Hathaway",
+    "market": "US",
+    "currency": "USD",
+    "excluded": false,
+    "exclusion_reasons": [],
+    "composite_score": 90.57,
+    "sub_scores": {
+      "quality": 100,
+      "valuation": 100,
+      "growth": 100,
+      "graham_safety": 100,
+      "durability": 100,
+      "risk_adjustments": 5.7
+    },
+    "score_caps": {},
+    "risk_flags": [],
+    "missing_penalty_points": 0,
+    "caveats": [],
+    "provenance_summary": {
+      "sources": 1,
+      "data_as_of": "2024-09-30"
+    }
+  },
+  {
+    "rank": 2,
+    "ticker": "MSFT",
+    "name": "Microsoft Corp.",
+    "market": "US",
+    "currency": "USD",
+    "excluded": false,
+    "exclusion_reasons": [],
+    "composite_score": 57.98,
+    "sub_scores": {
+      "quality": 100,
+      "valuation": 0,
+      "growth": 50,
+      "graham_safety": 100,
+      "durability": 100,
+      "risk_adjustments": 4.84
+    },
+    "score_caps": {},
+    "risk_flags": [],
+    "missing_penalty_points": 0,
+    "caveats": [],
+    "provenance_summary": {}
+  },
+  {
+    "rank": 3,
+    "ticker": "7203.T",
+    "name": "Toyota Motor Corp.",
+    "market": "JP",
+    "currency": "JPY",
+    "excluded": false,
+    "exclusion_reasons": [],
+    "composite_score": 55,
+    "sub_scores": {
+      "quality": 80,
+      "valuation": 100,
+      "growth": 100,
+      "graham_safety": 25,
+      "durability": 100,
+      "risk_adjustments": 0
+    },
+    "score_caps": {
+      "excessive_leverage": 55
+    },
+    "risk_flags": ["excessive_leverage", "cross_market_fx"],
+    "missing_penalty_points": 0,
+    "caveats": ["cross-market/FX caveat: currency not normalised"]
+  },
+  {
+    "rank": 4,
+    "ticker": "NESN.SW",
+    "name": "Nestle SA",
+    "market": "CH",
+    "currency": "CHF",
+    "excluded": false,
+    "exclusion_reasons": [],
+    "composite_score": 54.37,
+    "sub_scores": {
+      "quality": 70,
+      "valuation": 100,
+      "growth": 100,
+      "graham_safety": 25,
+      "durability": 100,
+      "risk_adjustments": 0
+    },
+    "score_caps": {
+      "cross_market_fx": 55
+    },
+    "risk_flags": ["cross_market_fx"],
+    "missing_penalty_points": 0,
+    "caveats": ["cross-market/FX caveat: currency not normalised"]
+  },
+  {
+    "rank": 999,
+    "ticker": "NOPE",
+    "name": "Excluded Example",
+    "market": "US",
+    "currency": "USD",
+    "excluded": true,
+    "exclusion_reasons": ["missing price/share count"]
+  }
+]

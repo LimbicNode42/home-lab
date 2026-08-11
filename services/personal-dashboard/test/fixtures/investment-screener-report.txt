@@ -1,0 +1,13 @@
+Investment Screener — Value/Growth Watchlist
+Generated: 2026-08-09T08:00:00Z
+Data as of: 2026-08-08
+
+This is an informational screener output only; not financial advice.
+
+Top candidates:
+1. BRK.B — Berkshire Hathaway Inc. — score 91.4
+2. 7203.T — Toyota Motor Corporation — score 84.2
+
+Notes:
+- Fixture data is intentionally stale and safe for dashboard rendering.
+- Review full assumptions before making any actual investment decision.
