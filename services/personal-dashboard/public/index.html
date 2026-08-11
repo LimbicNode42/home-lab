@@ -21,6 +21,7 @@
           <a id="tab-knowledge" class="dashboard-tab" role="tab" href="#knowledge" aria-controls="panel-knowledge" aria-selected="false" tabindex="-1">Knowledge</a>
           <a id="tab-reports" class="dashboard-tab" role="tab" href="#reports" aria-controls="panel-reports" aria-selected="false" tabindex="-1">Reports</a>
           <a id="tab-diary" class="dashboard-tab" role="tab" href="#diary" aria-controls="panel-diary" aria-selected="false" tabindex="-1">Diary</a>
+          <a id="tab-goals" class="dashboard-tab" role="tab" href="#goals" aria-controls="panel-goals" aria-selected="false" tabindex="-1">Goals</a>
         </div>
       </nav>
 
@@ -225,6 +226,71 @@
             </div>
             <article id="diary-entry-detail" class="personal-entry-detail" aria-live="polite">
               <p class="muted">Select an entry to view it. The goblin will not pretend edit/delete exists.</p>
+            </article>
+          </div>
+        </section>
+      </section>
+
+      <section id="panel-goals" class="tab-panel" role="tabpanel" aria-labelledby="tab-goals" data-tab-panel="goals" hidden>
+        <section class="panel" id="goals-panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Goals</h2>
+              <p class="muted board-message">Goals can be created, viewed, and moved between active, paused, completed, and archived states.</p>
+            </div>
+            <button id="refresh-goals" type="button">Refresh</button>
+          </div>
+
+          <form id="goal-form" class="personal-data-form" aria-label="Create or update goal">
+            <label>
+              Title
+              <input id="goal-title" name="title" type="text" maxlength="160" autocomplete="off" required>
+            </label>
+            <label>
+              Status
+              <select id="goal-status" name="status">
+                <option value="active">Active</option>
+                <option value="paused">Paused</option>
+                <option value="completed">Completed</option>
+                <option value="archived">Archived</option>
+              </select>
+            </label>
+            <label>
+              Target date <span class="muted">optional</span>
+              <input id="goal-target-date" name="target_date" type="date" autocomplete="off">
+            </label>
+            <label class="form-wide">
+              Description <span class="muted">optional</span>
+              <textarea id="goal-description" name="description" maxlength="5000" rows="5"></textarea>
+            </label>
+            <div class="form-actions form-wide">
+              <button type="submit">Save goal</button>
+              <button id="new-goal" type="button">New goal</button>
+              <p id="goal-form-message" class="muted" aria-live="polite"></p>
+            </div>
+          </form>
+
+          <div class="personal-data-layout">
+            <div>
+              <div class="panel-heading compact-heading">
+                <h3>Goals</h3>
+                <label>
+                  Status
+                  <select id="goal-status-filter" name="status_filter">
+                    <option value="all">All</option>
+                    <option value="active">Active</option>
+                    <option value="paused">Paused</option>
+                    <option value="completed">Completed</option>
+                    <option value="archived">Archived</option>
+                  </select>
+                </label>
+              </div>
+              <div id="goals-list" class="personal-entry-list" aria-live="polite">
+                <p class="muted">Loading goals…</p>
+              </div>
+            </div>
+            <article id="goal-detail" class="personal-entry-detail" aria-live="polite">
+              <p class="muted">Select a goal to view it.</p>
             </article>
           </div>
         </section>

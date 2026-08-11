@@ -20,8 +20,9 @@ test('diary frontend uses bounded fields and authenticated diary API paths only'
   assert.match(indexSource, /id="diary-entry-title"[^>]+maxlength="160"/);
   assert.match(indexSource, /id="diary-entry-body"[^>]+maxlength="20000"/);
   assert.match(indexSource, /id="diary-entry-mood"[^>]+maxlength="64"/);
-  assert.match(appSource, /const TAB_IDS = \['overview', 'work', 'knowledge', 'reports', 'diary'\]/);
+  assert.match(appSource, /const TAB_IDS = \['overview', 'work', 'knowledge', 'reports', 'diary', 'goals'\]/);
   assert.match(appSource, /tabId === 'diary'[\s\S]*refreshDiaryEntries\(\)/);
+  assert.match(appSource, /tabId === 'goals'[\s\S]*refreshGoals\(\)/);
   assert.match(diarySource, /postJson\('\/api\/diary\/entries'/);
   assert.match(diarySource, /getJson\('\/api\/diary\/entries\?limit=20&offset=0'/);
   assert.match(diarySource, /getJson\(`\/api\/diary\/entries\/\$\{encodeURIComponent\(entry\.id\)\}`\)/);

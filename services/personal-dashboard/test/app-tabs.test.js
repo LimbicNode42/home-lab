@@ -6,27 +6,29 @@ const indexSource = await readFile(new URL('../public/index.html', import.meta.u
 const appSource = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
 const stylesSource = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
 
-test('dashboard shell exposes five accessible hash-backed tabs', () => {
+test('dashboard shell exposes six accessible hash-backed tabs', () => {
   assert.match(indexSource, /class="tab-list" role="tablist" aria-label="Dashboard sections"/);
-  for (const id of ['overview', 'work', 'knowledge', 'reports', 'diary']) {
+  for (const id of ['overview', 'work', 'knowledge', 'reports', 'diary', 'goals']) {
     assert.match(indexSource, new RegExp(`id="tab-${id}"[^>]+role="tab"[^>]+href="#${id}"[^>]+aria-controls="panel-${id}"`));
     assert.match(indexSource, new RegExp(`id="panel-${id}"[^>]+class="tab-panel"[^>]+role="tabpanel"[^>]+aria-labelledby="tab-${id}"`));
   }
 });
 
-test('dashboard panels are grouped into overview, work, knowledge, reports, and diary homes', () => {
+test('dashboard panels are grouped into overview, work, knowledge, reports, diary, and goals homes', () => {
   assert.match(indexSource, /id="panel-overview"[\s\S]*id="status-list"[\s\S]*id="sections"[\s\S]*id="panel-work"/);
   assert.match(indexSource, /id="panel-work"[\s\S]*id="kanban-panel"[\s\S]*id="panel-knowledge"/);
   assert.match(indexSource, /id="panel-knowledge"[\s\S]*id="epics-panel"[\s\S]*id="docs-panel"[\s\S]*id="panel-reports"/);
-  assert.match(indexSource, /id="panel-reports"[\s\S]*id="finnick-panel"[\s\S]*id="investment-screener-panel"/);
+  assert.match(indexSource, /id="panel-reports"[\s\S]*id="finnick-panel"[\s\S]*id="investment-screener-panel"[\s\S]*id="panel-diary"/);
+  assert.match(indexSource, /id="panel-diary"[\s\S]*id="diary-panel"[\s\S]*id="panel-goals"/);
+  assert.match(indexSource, /id="panel-goals"[\s\S]*id="goals-panel"/);
 });
 
 test('dashboard tabs select data lazily with hash, back/forward, and keyboard support', () => {
-  assert.match(appSource, /const TAB_IDS = \['overview', 'work', 'knowledge', 'reports', 'diary'\]/);
+  assert.match(appSource, /const TAB_IDS = \['overview', 'work', 'knowledge', 'reports', 'diary', 'goals'\]/);
   assert.match(appSource, /const DEFAULT_TAB_ID = 'overview'/);
   assert.match(appSource, /function tabIdFromHash\(hash = window\.location\.hash\)/);
   assert.match(appSource, /window\.history\.pushState\(null, '', `#\$\{nextTabId\}`\)/);
-  assert.match(appSource, /window\.addEventListener\('hashchange', \(\) => \{[\s\S]*const tabId = tabIdFromHash\(\);[\s\S]*if \(tabId\) selectTab\(tabId, \{ updateHash: false \}\);[\s\S]*\}\)/);
+  assert.match(appSource, /window\.addEventListener\('hashchange', async \(\) => \{[\s\S]*const tabId = tabIdFromHash\(\);[\s\S]*if \(tabId\) await selectTab\(tabId, \{ updateHash: false \}\);[\s\S]*\}\)/);
   assert.match(appSource, /event\.key === 'ArrowRight'/);
   assert.match(appSource, /event\.key === 'ArrowLeft'/);
   assert.match(appSource, /event\.key === 'Home'/);
@@ -40,6 +42,7 @@ test('dashboard tabs load the expected existing read-only endpoints without new 
   assert.match(appSource, /tabId === 'knowledge'[\s\S]*refreshEpics\(\)[\s\S]*refreshDocs\(\)/);
   assert.match(appSource, /tabId === 'reports'[\s\S]*refreshFinnick\(\)[\s\S]*refreshInvestmentScreener\(\)/);
   assert.match(appSource, /tabId === 'diary'[\s\S]*refreshDiaryEntries\(\)/);
+  assert.match(appSource, /tabId === 'goals'[\s\S]*refreshGoals\(\)/);
   assert.doesNotMatch(appSource, /\/api\/dashboard\/summary/);
 });
 

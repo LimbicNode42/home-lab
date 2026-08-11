@@ -198,6 +198,7 @@ test('relative markdown doc links resolve to approved in-app document ids', asyn
   const docsList = nodesById.get('docs-list');
   const firstDocButton = docsList.querySelector('button');
   await firstDocButton.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
 
   const content = nodesById.get('docs-content');
   const docLink = content.querySelector('a[href="/api/docs/investment-screener-cli-generator"]');
