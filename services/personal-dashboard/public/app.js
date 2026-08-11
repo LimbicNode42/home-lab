@@ -997,7 +997,7 @@ async function refreshDocs() {
     const documents = Array.isArray(data.documents) ? data.documents : [];
     docsByPath = new Map(documents.map((doc) => [normalizeDocPath(doc.path), doc]).filter(([path]) => path));
     renderDocList(documents);
-    if (docsContent) {
+    if (docsContent && !selectedDocId) {
       docsContent.replaceChildren(el('p', { className: 'muted', text: documents.length === 0 ? 'No document selected.' : 'Select a document to view it here.' }));
     }
   } catch (error) {
