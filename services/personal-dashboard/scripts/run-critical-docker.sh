@@ -14,6 +14,7 @@ INVESTMENT_SCREENER_REPORT_HOST_PATH=${INVESTMENT_SCREENER_REPORT_HOST_PATH:-/mn
 INVESTMENT_SCREENER_RANKED_HOST_PATH=${INVESTMENT_SCREENER_RANKED_HOST_PATH:-/mnt/nas/services/personal-dashboard/investment-screener/latest_ranked.json}
 KANBAN_DB_HOST_PATH=${KANBAN_DB_HOST_PATH:-/mnt/nas/services/personal-dashboard/kanban/kanban.db}
 PERSONAL_DASHBOARD_DB_HOST_PATH=${PERSONAL_DASHBOARD_DB_HOST_PATH:-/mnt/nas/services/personal-dashboard/data/personal-dashboard.sqlite3}
+PERSONAL_DASHBOARD_DB_HOST_DIR=$(dirname "$PERSONAL_DASHBOARD_DB_HOST_PATH")
 
 # The kanban DB bind source must be a readable, read-only snapshot/export for the
 # node user inside the container. Do not bind /root/.hermes/kanban.db directly:
@@ -22,6 +23,9 @@ PERSONAL_DASHBOARD_DB_HOST_PATH=${PERSONAL_DASHBOARD_DB_HOST_PATH:-/mnt/nas/serv
 # PERSONAL_DASHBOARD_DB_HOST_PATH is the writable host-side SQLite file for the
 # private Diary/Goals store. Create the parent directory and an empty file before
 # first deploy so Docker does not turn a missing source into a directory bind.
+# The fallback mounts the containing directory to /app/data because SQLite WAL
+# mode creates sidecar files next to the database; a file bind alone opens but
+# fails writes as a readonly database.
 # Include this path in personal-data backups (it is not under Git).
 
 cd "$APP_DIR"
@@ -83,5 +87,5 @@ docker run -d \
   --mount "type=bind,source=$INVESTMENT_SCREENER_REPORT_HOST_PATH,target=/app/investment-screener/latest_report.txt,readonly" \
   --mount "type=bind,source=$INVESTMENT_SCREENER_RANKED_HOST_PATH,target=/app/investment-screener/latest_ranked.json,readonly" \
   --mount "type=bind,source=$KANBAN_DB_HOST_PATH,target=/app/kanban/kanban.db,readonly" \
-  --mount "type=bind,source=$PERSONAL_DASHBOARD_DB_HOST_PATH,target=/app/data/personal-dashboard.sqlite3" \
+  --mount "type=bind,source=$PERSONAL_DASHBOARD_DB_HOST_DIR,target=/app/data" \
   "$IMAGE"
