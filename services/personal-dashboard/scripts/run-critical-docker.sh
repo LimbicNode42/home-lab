@@ -13,10 +13,16 @@ FINNICK_REPORT_HOST_PATH=${FINNICK_REPORT_HOST_PATH:-/mnt/nas/services/personal-
 INVESTMENT_SCREENER_REPORT_HOST_PATH=${INVESTMENT_SCREENER_REPORT_HOST_PATH:-/mnt/nas/services/personal-dashboard/investment-screener/latest_report.txt}
 INVESTMENT_SCREENER_RANKED_HOST_PATH=${INVESTMENT_SCREENER_RANKED_HOST_PATH:-/mnt/nas/services/personal-dashboard/investment-screener/latest_ranked.json}
 KANBAN_DB_HOST_PATH=${KANBAN_DB_HOST_PATH:-/mnt/nas/services/personal-dashboard/kanban/kanban.db}
+PERSONAL_DASHBOARD_DB_HOST_PATH=${PERSONAL_DASHBOARD_DB_HOST_PATH:-/mnt/nas/services/personal-dashboard/data/personal-dashboard.sqlite3}
 
 # The kanban DB bind source must be a readable, read-only snapshot/export for the
 # node user inside the container. Do not bind /root/.hermes/kanban.db directly:
 # /root/.hermes is 0700 and the DB is commonly 0600 root:root.
+#
+# PERSONAL_DASHBOARD_DB_HOST_PATH is the writable host-side SQLite file for the
+# private Diary/Goals store. Create the parent directory and an empty file before
+# first deploy so Docker does not turn a missing source into a directory bind.
+# Include this path in personal-data backups (it is not under Git).
 
 cd "$APP_DIR"
 
@@ -39,6 +45,12 @@ fi
 if [ ! -f "$KANBAN_DB_HOST_PATH" ]; then
   printf '%s\n' "Kanban DB bind source is missing or not a regular file: $KANBAN_DB_HOST_PATH" >&2
   printf '%s\n' "Refusing to recreate $CONTAINER; the dashboard must remain read-only against an explicit DB file." >&2
+  exit 1
+fi
+if [ ! -f "$PERSONAL_DASHBOARD_DB_HOST_PATH" ]; then
+  printf '%s\n' "Personal dashboard DB bind source is missing or not a regular file: $PERSONAL_DASHBOARD_DB_HOST_PATH" >&2
+  printf '%s\n' "Create it first: mkdir -p \$(dirname \"$PERSONAL_DASHBOARD_DB_HOST_PATH\") && touch \"$PERSONAL_DASHBOARD_DB_HOST_PATH\"" >&2
+  printf '%s\n' "Refusing to recreate $CONTAINER; this avoids Docker turning a missing file bind source into a directory." >&2
   exit 1
 fi
 
@@ -64,10 +76,12 @@ docker run -d \
   -e DASHBOARD_STATUS_CACHE_TTL_MS=${DASHBOARD_STATUS_CACHE_TTL_MS:-30000} \
   -e DASHBOARD_STATUS_PROBE_TIMEOUT_MS=${DASHBOARD_STATUS_PROBE_TIMEOUT_MS:-2500} \
   -e KANBAN_DB_PATH=/app/kanban/kanban.db \
+  -e PERSONAL_DASHBOARD_DB_FILE=/app/data/personal-dashboard.sqlite3 \
   -e REPO_DOCS_ROOT=/app/repo-docs \
   --mount "type=bind,source=$APP_DIR/config/dashboard.public.json,target=/app/config/dashboard.public.json,readonly" \
   --mount "type=bind,source=$FINNICK_REPORT_HOST_PATH,target=/app/finnick/latest_report.txt,readonly" \
   --mount "type=bind,source=$INVESTMENT_SCREENER_REPORT_HOST_PATH,target=/app/investment-screener/latest_report.txt,readonly" \
   --mount "type=bind,source=$INVESTMENT_SCREENER_RANKED_HOST_PATH,target=/app/investment-screener/latest_ranked.json,readonly" \
   --mount "type=bind,source=$KANBAN_DB_HOST_PATH,target=/app/kanban/kanban.db,readonly" \
+  --mount "type=bind,source=$PERSONAL_DASHBOARD_DB_HOST_PATH,target=/app/data/personal-dashboard.sqlite3" \
   "$IMAGE"
