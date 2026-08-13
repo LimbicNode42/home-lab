@@ -422,12 +422,27 @@ Manual UI regression: open `/#reports`, confirm the Investment Screener panel lo
 
 Do not deploy, restart the live dashboard, recreate the container, sync Traefik, or publish new hostnames without Ben approving the exact apply commands.
 
-When approval is granted, Compose and `scripts/run-critical-docker.sh` expect two host-side files before container recreate:
+When approval is granted, Compose and `scripts/run-critical-docker.sh` expect these host-side files to exist before container recreate. The script will fail fast if any source is missing or not a regular file.
 
+Read-only data sources (external-writer-owned):
+
+- `FINNICK_REPORT_HOST_PATH` → `/app/finnick/latest_report.txt`
 - `INVESTMENT_SCREENER_REPORT_HOST_PATH` → `/app/investment-screener/latest_report.txt`
 - `INVESTMENT_SCREENER_RANKED_HOST_PATH` → `/app/investment-screener/latest_ranked.json`
+- `KANBAN_DB_HOST_PATH` → `/app/kanban/kanban.db` (readable snapshot; do not bind the Hermes runtime DB directly)
 
-The current defaults point at `/mnt/nas/services/personal-dashboard/investment-screener/`. Create/copy sanitized exports there atomically before deployment; do not bind Hermes artifact directories, task DBs, stderr logs, or unsanitized workspaces directly. No live deploy or restart was performed as part of this documentation update.
+Writable personal-data store (must be created before first deploy):
+
+- `PERSONAL_DASHBOARD_DB_HOST_PATH` → `/app/data/personal-dashboard.sqlite3`
+
+Create the personal-data file before first deploy so Docker does not turn the missing source into a directory bind:
+
+```bash
+mkdir -p /mnt/nas/services/personal-dashboard/data
+touch /mnt/nas/services/personal-dashboard/data/personal-dashboard.sqlite3
+```
+
+Include `PERSONAL_DASHBOARD_DB_HOST_PATH` in personal-data backups. It is not under Git.
 
 ## Documentation panel
 
