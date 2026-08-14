@@ -106,8 +106,8 @@ Environment variables:
 | `INVESTMENT_SCREENER_REPORT_FILE` | unset | Absolute path inside the container to the latest sanitized investment screener text report. Set to `/app/investment-screener/latest_report.txt` in the deployment candidate. |
 | `INVESTMENT_SCREENER_RANKED_FILE` | unset | Absolute path inside the container to the latest sanitized ranked investment screener JSON export. Set to `/app/investment-screener/latest_ranked.json` in the deployment candidate. |
 | `INVESTMENT_SCREENER_HOST_DIR` | operator-provided host directory | Host-side export directory copied into the runtime cache; must contain `latest_report.txt` and `latest_ranked.json` before container recreate. |
-| `PERSONAL_DASHBOARD_DB_FILE` | unset | Absolute path inside the container for the private Diary/Goals SQLite database. Compose sets `/app/data/personal-dashboard.sqlite3`; if unset, diary/goal APIs return 503 without creating data in surprise locations. |
-| `PERSONAL_DASHBOARD_DB_HOST_DIR` | operator-provided host directory | Host-side SQLite directory bind source for Compose / `run-critical-docker.sh`; create the directory and `personal-dashboard.sqlite3` outside Git before container recreate, and include it in personal-data backups. |
+| `PERSONAL_DASHBOARD_DATABASE_URL` | unset | Private Diary/Goals Postgres connection string. Render from Vaultwarden; if unset, diary/goal APIs return 503 without creating data in surprise locations. |
+| `PGSSLMODE` | `require` in Compose / fallback script | TLS mode for the shared critical Postgres service. Keep cert/key material out of this repo. |
 
 ## Local development
 
@@ -126,8 +126,8 @@ The dashboard is organised into six hash-backed tabs. `/` defaults to Overview; 
 - **Work**: the Kanban board, still read-only unless the server explicitly enables the mutation bridge.
 - **Knowledge**: completed epics first, then the approved documentation viewer.
 - **Reports**: Finnick daily betting output and investment screener output.
-- **Diary**: private diary entries backed by the local SQLite personal-data store.
-- **Goals**: private goal tracking backed by the same SQLite personal-data store, with stable goal ids and status/timestamp fields for later diary comparison work. There is no LLM assessment/scoring in the MVP.
+- **Diary**: private diary entries backed by the shared critical Postgres service.
+- **Goals**: private goal tracking backed by the same Postgres personal-data store, with stable goal ids and status/timestamp fields for later diary comparison work. There is no LLM assessment/scoring in the MVP.
 
 Tabs support click, Back/Forward hash changes, and ArrowLeft/ArrowRight/Home/End keyboard navigation. The mobile layout keeps the tab strip horizontal and scrollable rather than turning into a tiny accordion hydra.
 
@@ -153,7 +153,7 @@ For the critical deployment candidate, render the real non-secret `.env` locally
 
 ## Runtime artifact mount model
 
-See `docs/runbook.md` for the stale NAS/NFS bind failure mode and recovery steps. In short: externally written report/config/Kanban artifacts are copied into a host-local runtime cache and only that cache is mounted read-only into the container. Direct NAS/NFS binds are avoided because Docker can preserve stale handles across atomic writer replacement or NAS remounts even while the host path reads cleanly. The app still reads the same explicit in-container file paths, so auth behavior and API contracts do not change. The writable Diary/Goals SQLite store remains a separate read-write directory bind at `/app/data`, because SQLite WAL mode needs sidecar files next to the DB.
+See `docs/runbook.md` for the stale NAS/NFS bind failure mode and recovery steps. In short: externally written report/config/Kanban artifacts are copied into a host-local runtime cache and only that cache is mounted read-only into the container. Direct NAS/NFS binds are avoided because Docker can preserve stale handles across atomic writer replacement or NAS remounts even while the host path reads cleanly. The app still reads the same explicit in-container file paths, so auth behavior and API contracts do not change. Diary/Goals now uses the shared critical Postgres service via `PERSONAL_DASHBOARD_DATABASE_URL`; there is no writable SQLite `/app/data` bind in the dashboard container.
 
 ## Apply sequence
 
@@ -435,18 +435,16 @@ Read-only data sources (external-writer-owned):
 - `INVESTMENT_SCREENER_HOST_DIR` → runtime-cache `investment-screener/` → `/app/investment-screener` (app reads `latest_report.txt` and `latest_ranked.json`)
 - `KANBAN_DB_HOST_DIR` → runtime-cache `kanban/` → `/app/kanban` (app reads `kanban.db`; use a readable snapshot, not the Hermes runtime DB directly)
 
-Writable personal-data store (must be created before first deploy):
+Persistent personal-data store (Postgres; render secrets before first deploy):
 
-- `PERSONAL_DASHBOARD_DB_HOST_DIR` → `/app/data` (writable; app reads/writes `personal-dashboard.sqlite3`)
+- Shared service: `services/postgres` on `critical` (`192.168.0.50:5432`), TLS enabled, data at `/mnt/nas/services/postgres`.
+- Secret source: Vaultwarden folder `homelab`, item `personal-dashboard/database`, field `database_url` → `PERSONAL_DASHBOARD_DATABASE_URL`.
+- Use a dedicated database/user for the dashboard; do not reuse or commit the shared Postgres superuser password.
+- The app creates its own `goals`, `diary_entries`, and `diary_entry_goals` tables on first connection. Creating the database/user and rendering the connection URL are deploy prerequisites, not repo state.
+- Include the dedicated dashboard database in the Postgres backup/restore plan; do not store dumps or rendered connection strings in Git or Kanban comments.
+- If the old SQLite Diary/Goals file exists on critical, perform an explicit reviewed backfill into Postgres before declaring the Postgres cutover complete. Do not mount the SQLite file back into the running container as a fallback.
 
-Create the personal-data file before first deploy so Docker does not turn the missing source into a directory bind:
-
-```bash
-mkdir -p /mnt/nas/services/personal-dashboard/data
-touch /mnt/nas/services/personal-dashboard/data/personal-dashboard.sqlite3
-```
-
-Include `PERSONAL_DASHBOARD_DB_HOST_DIR` in personal-data backups. It is not under Git.
+The dashboard's `KANBAN_DB_HOST_DIR` remains a read-only SQLite snapshot source because it mirrors the Hermes Kanban board; that is not the Diary/Goals writable store.
 
 ## Documentation panel
 

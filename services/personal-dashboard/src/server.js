@@ -8,7 +8,7 @@ import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 import { loadConfig, toPublicConfig } from './config.js';
-import { createPersonalDataStore } from './personal-data-store.js';
+import { createPostgresPersonalDataStore } from './personal-data-store.js';
 import { StatusService } from './status.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -251,16 +251,18 @@ function parseDiaryListParams(searchParams) {
   return { limit: parsedLimit, offset: parsedOffset };
 }
 
-function initPersonalDataStore(dbFile) {
-  if (!dbFile) return { store: null, unavailable: false };
-  try {
-    return { store: createPersonalDataStore({ dbFile }), unavailable: false };
-  } catch (err) {
-    if (typeof console?.warn === 'function') {
-      console.warn('Personal dashboard data store unavailable', { code: err?.code, name: err?.name });
+async function initPersonalDataStore({ postgresConnectionString, postgresPool, postgresSsl } = {}) {
+  if (postgresConnectionString || postgresPool) {
+    try {
+      return { store: await createPostgresPersonalDataStore({ connectionString: postgresConnectionString, pool: postgresPool, ssl: postgresSsl }), unavailable: false, configured: true };
+    } catch (err) {
+      if (typeof console?.warn === 'function') {
+        console.warn('Personal dashboard Postgres data store unavailable', { code: err?.code, name: err?.name });
+      }
+      return { store: null, unavailable: true, configured: true };
     }
-    return { store: null, unavailable: true };
   }
+  return { store: null, unavailable: false, configured: false };
 }
 
 function isoFromUnixSeconds(value) {
@@ -1234,12 +1236,19 @@ export async function createApp(options = {}) {
     : null;
   const epicDocsIndexPath = options.epicDocsIndexPath ?? process.env.EPIC_DOCS_INDEX_PATH ?? DEFAULT_EPIC_DOCS_INDEX;
   const repoDocsRoot = options.repoDocsRoot ?? process.env.REPO_DOCS_ROOT ?? DEFAULT_REPO_DOCS_ROOT;
-  const personalDataDbFile = Object.prototype.hasOwnProperty.call(options, 'personalDataDbFile')
-    ? options.personalDataDbFile
-    : (process.env.PERSONAL_DASHBOARD_DB_FILE ?? null);
+  const personalDataDatabaseUrl = Object.prototype.hasOwnProperty.call(options, 'personalDataDatabaseUrl')
+    ? options.personalDataDatabaseUrl
+    : (process.env.PERSONAL_DASHBOARD_DATABASE_URL ?? null);
+  const personalDataPostgresPool = Object.prototype.hasOwnProperty.call(options, 'personalDataPostgresPool')
+    ? options.personalDataPostgresPool
+    : null;
   assertSafeAuth({ authMode, nodeEnv, allowDisabledAuth });
 
-  const personalData = initPersonalDataStore(personalDataDbFile);
+  const personalData = await initPersonalDataStore({
+    postgresConnectionString: personalDataDatabaseUrl,
+    postgresPool: personalDataPostgresPool,
+    postgresSsl: process.env.PGSSLMODE === 'disable' ? false : undefined
+  });
 
   const statusService = new StatusService({
     checks: config.statusChecks,
@@ -1298,7 +1307,7 @@ export async function createApp(options = {}) {
 
       const diaryEntryMatch = /^\/api\/diary\/entries\/([^/]+)$/.exec(url.pathname);
       if (url.pathname === '/api/diary/entries' || diaryEntryMatch) {
-        if (!personalDataDbFile) {
+        if (!personalData.configured) {
           return json(response, 503, personalDataNotConfiguredPayload());
         }
         if (personalData.unavailable || !personalData.store) {
@@ -1308,7 +1317,7 @@ export async function createApp(options = {}) {
         if (request.method === 'GET' && url.pathname === '/api/diary/entries') {
           try {
             const params = parseDiaryListParams(url.searchParams);
-            return json(response, 200, { entries: personalData.store.listDiaryEntries(params), ...params });
+            return json(response, 200, { entries: await personalData.store.listDiaryEntries(params), ...params });
           } catch (err) {
             const result = safePublicDiaryError(err);
             return json(response, result.statusCode, result.payload);
@@ -1318,7 +1327,7 @@ export async function createApp(options = {}) {
         if (request.method === 'POST' && url.pathname === '/api/diary/entries') {
           try {
             const body = await readJsonBody(request, MAX_DIARY_BODY_BYTES);
-            const entry = personalData.store.createDiaryEntry(body);
+            const entry = await personalData.store.createDiaryEntry(body);
             return json(response, 201, { entry });
           } catch (err) {
             const result = safePublicDiaryError(err);
@@ -1328,7 +1337,7 @@ export async function createApp(options = {}) {
 
         if (request.method === 'GET' && diaryEntryMatch) {
           try {
-            const entry = personalData.store.getDiaryEntry(decodeURIComponent(diaryEntryMatch[1]));
+            const entry = await personalData.store.getDiaryEntry(decodeURIComponent(diaryEntryMatch[1]));
             if (!entry) return json(response, 404, { error: 'diary_entry_not_found', message: 'Diary entry was not found' });
             return json(response, 200, { entry });
           } catch (err) {
@@ -1343,7 +1352,7 @@ export async function createApp(options = {}) {
 
       const goalMatch = /^\/api\/goals\/([^/]+)$/.exec(url.pathname);
       if (url.pathname === '/api/goals' || goalMatch) {
-        if (!personalDataDbFile) {
+        if (!personalData.configured) {
           return json(response, 503, personalDataNotConfiguredPayload());
         }
         if (personalData.unavailable || !personalData.store) {
@@ -1353,7 +1362,7 @@ export async function createApp(options = {}) {
         if (request.method === 'GET' && url.pathname === '/api/goals') {
           try {
             const params = parseGoalListParams(url.searchParams);
-            return json(response, 200, { goals: personalData.store.listGoals(params), ...params });
+            return json(response, 200, { goals: await personalData.store.listGoals(params), ...params });
           } catch (err) {
             const result = safePublicGoalError(err);
             return json(response, result.statusCode, result.payload);
@@ -1363,7 +1372,7 @@ export async function createApp(options = {}) {
         if (request.method === 'POST' && url.pathname === '/api/goals') {
           try {
             const body = await readJsonBody(request, MAX_GOAL_BODY_BYTES);
-            const goal = personalData.store.createGoal(body);
+            const goal = await personalData.store.createGoal(body);
             return json(response, 201, { goal });
           } catch (err) {
             const result = safePublicGoalError(err);
@@ -1373,7 +1382,7 @@ export async function createApp(options = {}) {
 
         if (request.method === 'GET' && goalMatch) {
           try {
-            const goal = personalData.store.getGoal(decodeURIComponent(goalMatch[1]));
+            const goal = await personalData.store.getGoal(decodeURIComponent(goalMatch[1]));
             if (!goal) return json(response, 404, { error: 'goal_not_found', message: 'Goal was not found' });
             return json(response, 200, { goal });
           } catch (err) {
@@ -1385,7 +1394,7 @@ export async function createApp(options = {}) {
         if (request.method === 'PATCH' && goalMatch) {
           try {
             const body = await readJsonBody(request, MAX_GOAL_BODY_BYTES);
-            const goal = personalData.store.updateGoal(decodeURIComponent(goalMatch[1]), body);
+            const goal = await personalData.store.updateGoal(decodeURIComponent(goalMatch[1]), body);
             if (!goal) return json(response, 404, { error: 'goal_not_found', message: 'Goal was not found' });
             return json(response, 200, { goal });
           } catch (err) {
