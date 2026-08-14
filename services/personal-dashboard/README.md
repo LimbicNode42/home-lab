@@ -100,14 +100,13 @@ Environment variables:
 | `DASHBOARD_ALLOW_DISABLED_AUTH` | unset | Must be `true` to allow disabled auth in production. Avoid this outside a private dev tunnel. |
 | `DASHBOARD_STATUS_CACHE_TTL_MS` | `30000` | Status result cache TTL. |
 | `DASHBOARD_STATUS_PROBE_TIMEOUT_MS` | `2500` | Per-probe timeout. |
-| `FINNICK_REPORT_FILE` | unset | Absolute path inside the container to the Finnick report file. Set to `/app/finnick/latest_report.txt` in the critical deployment (bind-mounted from the host). If unset, `GET /api/finnick/report` returns 503. |
-| `FINNICK_REPORT_HOST_PATH` | operator-provided host path | Host-side source path for the bind-mount. Used only by `run-critical-docker.sh`; not read by the app itself. Keep the concrete local path out of runtime-served docs. |
+| `FINNICK_REPORT_FILE` | unset | Absolute path inside the container to the Finnick report file. Set to `/app/finnick/latest_report.txt` in the critical deployment (read from a read-only directory bind). If unset, `GET /api/finnick/report` returns 503. |
+| `FINNICK_REPORT_HOST_DIR` | operator-provided host directory | Host-side source directory mounted read-only to `/app/finnick`. Used by Compose / `run-critical-docker.sh`; not read by the app itself. Keep the concrete local path out of runtime-served docs. |
 | `INVESTMENT_SCREENER_REPORT_FILE` | unset | Absolute path inside the container to the latest sanitized investment screener text report. Set to `/app/investment-screener/latest_report.txt` in the deployment candidate. |
 | `INVESTMENT_SCREENER_RANKED_FILE` | unset | Absolute path inside the container to the latest sanitized ranked investment screener JSON export. Set to `/app/investment-screener/latest_ranked.json` in the deployment candidate. |
-| `INVESTMENT_SCREENER_REPORT_HOST_PATH` | operator-provided host path | Host-side report bind source used by Compose / `run-critical-docker.sh`; must be a regular file before container recreate. |
-| `INVESTMENT_SCREENER_RANKED_HOST_PATH` | operator-provided host path | Host-side ranked JSON bind source used by Compose / `run-critical-docker.sh`; must be a regular file before container recreate. |
+| `INVESTMENT_SCREENER_HOST_DIR` | operator-provided host directory | Host-side export directory mounted read-only to `/app/investment-screener`; must contain `latest_report.txt` and `latest_ranked.json` before container recreate. |
 | `PERSONAL_DASHBOARD_DB_FILE` | unset | Absolute path inside the container for the private Diary/Goals SQLite database. Compose sets `/app/data/personal-dashboard.sqlite3`; if unset, diary/goal APIs return 503 without creating data in surprise locations. |
-| `PERSONAL_DASHBOARD_DB_HOST_PATH` | operator-provided host path | Host-side SQLite file bind source for Compose; create the parent directory and file outside Git before container recreate, and include it in personal-data backups. |
+| `PERSONAL_DASHBOARD_DB_HOST_DIR` | operator-provided host directory | Host-side SQLite directory bind source for Compose / `run-critical-docker.sh`; create the directory and `personal-dashboard.sqlite3` outside Git before container recreate, and include it in personal-data backups. |
 
 ## Local development
 
@@ -149,6 +148,11 @@ curl http://127.0.0.1:4322/healthz
 ```
 
 For the critical deployment candidate, render the real non-secret `.env` locally from `.env.example`, render `config/dashboard.public.json`, and keep both out of Git where applicable.
+
+
+## Runtime artifact mount model
+
+See `docs/runbook.md` for the stale NAS/NFS file-bind failure mode and recovery steps. In short: externally written report/config/Kanban artifacts are mounted by bounded read-only directories rather than individual files, because atomic replacement on NAS can leave Docker file binds holding stale handles inside the container. The app still reads the same explicit in-container file paths, so live data locations and auth behavior do not change. The writable Diary/Goals SQLite store remains a separate `/app/data` directory bind only.
 
 ## Apply sequence
 
@@ -198,7 +202,7 @@ Error states surfaced to the user:
 | --- | --- | --- |
 | API route | `src/server.js` → `GET /api/finnick/report` | Reads the report file from `FINNICK_REPORT_FILE`, returns `{ content: "..." }` or an error object |
 | Frontend panel | `public/index.html` `#finnick-panel`, `public/app.js` `refreshFinnick()` | Fetches the API on load and on Refresh click, renders `<pre class="finnick-report">` |
-| Deploy script | `scripts/run-critical-docker.sh` | Bind-mounts the host report file read-only into the container at `/app/finnick/latest_report.txt` |
+| Deploy script | `scripts/run-critical-docker.sh` | Bind-mounts the host Finnick directory read-only into the container at `/app/finnick`; the app reads `/app/finnick/latest_report.txt` |
 | Report source | Kobold cron writes the latest report on `critical` at 08:00 AEST | The rendered host path is operator-local and must stay out of runtime-served docs. |
 
 **`createApp()` option / env var:**
@@ -207,7 +211,7 @@ Error states surfaced to the user:
 FINNICK_REPORT_FILE=/app/finnick/latest_report.txt
 ```
 
-The container environment uses `FINNICK_REPORT_FILE=/app/finnick/latest_report.txt` (the bind-mount target path). The host-side source path is controlled by `FINNICK_REPORT_HOST_PATH` in `.env.example` / `run-critical-docker.sh`.
+The container environment uses `FINNICK_REPORT_FILE=/app/finnick/latest_report.txt`. The host-side source directory is controlled by `FINNICK_REPORT_HOST_DIR` in `.env.example` / `run-critical-docker.sh`.
 
 Explicit `null` passed to `createApp({ finnickReportFile: null })` overrides any env var — used by tests to force the unconfigured state without polluting the process environment.
 
@@ -247,7 +251,7 @@ curl -s http://172.17.0.1:4322/api/finnick/report \
 sh /mnt/nas/services/personal-dashboard/scripts/run-critical-docker.sh
 ```
 
-This rebuilds the image and recreates the container with the bind-mount intact. The report file on the host is untouched.
+This rebuilds the image and recreates the container with the read-only report directory bind intact. The report file on the host is untouched.
 
 ## Investment screener panel
 
@@ -422,18 +426,17 @@ Manual UI regression: open `/#reports`, confirm the Investment Screener panel lo
 
 Do not deploy, restart the live dashboard, recreate the container, sync Traefik, or publish new hostnames without Ben approving the exact apply commands.
 
-When approval is granted, Compose and `scripts/run-critical-docker.sh` expect these host-side files to exist before container recreate. The script will fail fast if any source is missing or not a regular file.
+When approval is granted, Compose and `scripts/run-critical-docker.sh` expect these bounded host-side directories and their expected files to exist before container recreate. The script will fail fast if any expected file is missing or not a regular file.
 
 Read-only data sources (external-writer-owned):
 
-- `FINNICK_REPORT_HOST_PATH` → `/app/finnick/latest_report.txt`
-- `INVESTMENT_SCREENER_REPORT_HOST_PATH` → `/app/investment-screener/latest_report.txt`
-- `INVESTMENT_SCREENER_RANKED_HOST_PATH` → `/app/investment-screener/latest_ranked.json`
-- `KANBAN_DB_HOST_PATH` → `/app/kanban/kanban.db` (readable snapshot; do not bind the Hermes runtime DB directly)
+- `FINNICK_REPORT_HOST_DIR` → `/app/finnick` (app reads `latest_report.txt`)
+- `INVESTMENT_SCREENER_HOST_DIR` → `/app/investment-screener` (app reads `latest_report.txt` and `latest_ranked.json`)
+- `KANBAN_DB_HOST_DIR` → `/app/kanban` (app reads `kanban.db`; use a readable snapshot, not the Hermes runtime DB directly)
 
 Writable personal-data store (must be created before first deploy):
 
-- `PERSONAL_DASHBOARD_DB_HOST_PATH` → `/app/data/personal-dashboard.sqlite3`
+- `PERSONAL_DASHBOARD_DB_HOST_DIR` → `/app/data` (writable; app reads/writes `personal-dashboard.sqlite3`)
 
 Create the personal-data file before first deploy so Docker does not turn the missing source into a directory bind:
 
@@ -442,7 +445,7 @@ mkdir -p /mnt/nas/services/personal-dashboard/data
 touch /mnt/nas/services/personal-dashboard/data/personal-dashboard.sqlite3
 ```
 
-Include `PERSONAL_DASHBOARD_DB_HOST_PATH` in personal-data backups. It is not under Git.
+Include `PERSONAL_DASHBOARD_DB_HOST_DIR` in personal-data backups. It is not under Git.
 
 ## Documentation panel
 
@@ -480,7 +483,7 @@ Completed epics continue to expose outbound GitHub blob links for relevant scrib
 
 The dashboard container reads its mounted Kanban SQLite database via Node's built-in `node:sqlite` module, not the `sqlite3` CLI. This avoids the prior subprocess permission failure path in the `node:22-alpine` runtime and keeps the Docker image free of an extra SQLite subprocess dependency.
 
-The host-side bind source is `KANBAN_DB_HOST_PATH`, defaulting to the dashboard's operator-managed read-only Kanban snapshot path in Compose and `scripts/run-critical-docker.sh`. Use a readable snapshot/export there. Do not bind the Hermes runtime DB directly: it is commonly root-owned under a private home directory, while the container runs as `USER node`.
+The host-side bind source is `KANBAN_DB_HOST_DIR`, defaulting to the dashboard's operator-managed read-only Kanban snapshot directory in Compose and `scripts/run-critical-docker.sh`. Use a readable snapshot/export at `kanban.db` in that directory. Do not bind the Hermes runtime DB directly: it is commonly root-owned under a private home directory, while the container runs as `USER node`.
 
 If the DB path is missing, not a file, unreadable, or fails a query, Kanban-backed APIs return a sanitized `503 { "error": "kanban_db_unavailable", ... }` instead of silently returning empty epics/cards. The response intentionally omits host paths and SQLite diagnostics; check server logs for the grimy details.
 

@@ -77,14 +77,14 @@ Recommended paths:
 
 - Container path: `/app/data/personal-dashboard.sqlite3`
 - Env var / createApp option: `PERSONAL_DASHBOARD_DB_FILE`
-- Host default for Compose: `${PERSONAL_DASHBOARD_DB_HOST_PATH:-/mnt/nas/services/personal-dashboard/data/personal-dashboard.sqlite3}`
+- Host default for Compose: `${PERSONAL_DASHBOARD_DB_HOST_DIR:-/mnt/nas/services/personal-dashboard/data}` mounted at `/app/data`; the app reads `/app/data/personal-dashboard.sqlite3`.
 
 Compose mount should be read-write for this database only:
 
 ```yaml
 - type: bind
-  source: ${PERSONAL_DASHBOARD_DB_HOST_PATH:-/mnt/nas/services/personal-dashboard/data/personal-dashboard.sqlite3}
-  target: /app/data/personal-dashboard.sqlite3
+  source: ${PERSONAL_DASHBOARD_DB_HOST_DIR:-/mnt/nas/services/personal-dashboard/data}
+  target: /app/data
   read_only: false
   bind:
     create_host_path: false
@@ -92,7 +92,7 @@ Compose mount should be read-write for this database only:
 
 Operational notes:
 
-- The host directory/file must be created by the operator before container recreate; do not let Docker accidentally create a directory at the DB file path.
+- The host data directory and `personal-dashboard.sqlite3` file must be created by the operator before container recreate; SQLite WAL/SHM sidecars live in the same directory.
 - Git must contain only schema/migration code, docs, runbooks, and obviously fake test fixtures.
 - Do not commit a real `.sqlite3`, WAL, SHM, dump, diary entry, goal text, or generated personal-data export.
 - Add ignore rules if needed: `services/personal-dashboard/data/`, `*.sqlite3`, `*.sqlite3-wal`, `*.sqlite3-shm`, `*.db` unless already covered at repo level.
@@ -325,7 +325,7 @@ Server/storage:
   - Add `PERSONAL_DASHBOARD_DB_FILE: /app/data/personal-dashboard.sqlite3`.
   - Add the read-write bind mount for the host DB file.
 - Modify `services/personal-dashboard/.env.example`
-  - Document `PERSONAL_DASHBOARD_DB_HOST_PATH` with a sensitive-data warning.
+  - Document `PERSONAL_DASHBOARD_DB_HOST_DIR` with a sensitive-data warning.
 - Modify `.gitignore` or service-level ignore if runtime SQLite files are not already ignored.
 
 Frontend:

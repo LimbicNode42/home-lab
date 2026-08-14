@@ -29,38 +29,32 @@ services:
       REPO_DOCS_ROOT: /app/repo-docs
     volumes:
       - type: bind
-        source: ./config/dashboard.public.json
-        target: /app/config/dashboard.public.json
+        source: ./config
+        target: /app/config
         read_only: true
         bind:
           create_host_path: false
       - type: bind
-        source: ${FINNICK_REPORT_HOST_PATH:-/mnt/nas/services/personal-dashboard/finnick/latest_report.txt}
-        target: /app/finnick/latest_report.txt
+        source: ${FINNICK_REPORT_HOST_DIR:-/mnt/nas/services/personal-dashboard/finnick}
+        target: /app/finnick
         read_only: true
         bind:
           create_host_path: false
       - type: bind
-        source: ${INVESTMENT_SCREENER_REPORT_HOST_PATH:-/mnt/nas/services/personal-dashboard/investment-screener/latest_report.txt}
-        target: /app/investment-screener/latest_report.txt
+        source: ${INVESTMENT_SCREENER_HOST_DIR:-/mnt/nas/services/personal-dashboard/investment-screener}
+        target: /app/investment-screener
         read_only: true
         bind:
           create_host_path: false
       - type: bind
-        source: ${INVESTMENT_SCREENER_RANKED_HOST_PATH:-/mnt/nas/services/personal-dashboard/investment-screener/latest_ranked.json}
-        target: /app/investment-screener/latest_ranked.json
+        source: ${KANBAN_DB_HOST_DIR:-/mnt/nas/services/personal-dashboard/kanban}
+        target: /app/kanban
         read_only: true
         bind:
           create_host_path: false
       - type: bind
-        source: ${KANBAN_DB_HOST_PATH:-/mnt/nas/services/personal-dashboard/kanban/kanban.db}
-        target: /app/kanban/kanban.db
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: ${PERSONAL_DASHBOARD_DB_HOST_PATH:-/mnt/nas/services/personal-dashboard/data/personal-dashboard.sqlite3}
-        target: /app/data/personal-dashboard.sqlite3
+        source: ${PERSONAL_DASHBOARD_DB_HOST_DIR:-/mnt/nas/services/personal-dashboard/data}
+        target: /app/data
         read_only: false
         bind:
           create_host_path: false
