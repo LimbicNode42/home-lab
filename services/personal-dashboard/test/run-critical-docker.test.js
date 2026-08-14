@@ -2,13 +2,9 @@
  * Static validation for scripts/run-critical-docker.sh.
  *
  * These tests parse the shell script as text to verify it stays in sync with
- * docker-compose.yml for every data-source bind mount. They exist because the
- * fallback is documented as the canonical deployment path on critical (which
- * lacks the Docker Compose plugin), so regressions here would silently break
- * live features on next deploy.
- *
- * Each group follows the TDD pattern: write the expectation for what must be
- * present, which catches missing lines that compile-clean shell won't catch.
+ * docker-compose.yml for every data-source bind mount and secret-shaped runtime
+ * input. The fallback is documented as the canonical deployment path on critical
+ * while Docker Compose is unavailable there.
  */
 
 import test from 'node:test';
@@ -34,99 +30,29 @@ async function loadCompose() {
   return readFile(COMPOSE_PATH, 'utf8');
 }
 
-// ---------------------------------------------------------------------------
-// PERSONAL_DASHBOARD_DB_HOST_PATH variable declaration
-// ---------------------------------------------------------------------------
-
-test('run-critical-docker.sh declares PERSONAL_DASHBOARD_DB_HOST_DIR and derived DB path', async () => {
+test('run-critical-docker.sh requires PERSONAL_DASHBOARD_DATABASE_URL before docker run', async () => {
   const script = await loadScript();
   assert.match(
     script,
-    /PERSONAL_DASHBOARD_DB_HOST_DIR=\$\{PERSONAL_DASHBOARD_DB_HOST_DIR:-[^}]+\}/,
-    'PERSONAL_DASHBOARD_DB_HOST_DIR must be declared with a default value'
-  );
-  assert.match(
-    script,
-    /PERSONAL_DASHBOARD_DB_HOST_PATH=\$PERSONAL_DASHBOARD_DB_HOST_DIR\/personal-dashboard\.sqlite3/,
-    'PERSONAL_DASHBOARD_DB_HOST_PATH must be derived from the mounted data directory'
+    /PERSONAL_DASHBOARD_DATABASE_URL:\?Render PERSONAL_DASHBOARD_DATABASE_URL from Vaultwarden/,
+    'fallback script must fail fast until the Postgres connection URL is rendered from Vaultwarden'
   );
 });
 
-// ---------------------------------------------------------------------------
-// Host-path prerequisite guard — must be a regular file, not just present
-// ---------------------------------------------------------------------------
-
-test('run-critical-docker.sh guards PERSONAL_DASHBOARD_DB_HOST_PATH with [ -f ] before docker run', async () => {
+test('run-critical-docker.sh passes Postgres env vars to docker run without embedding secret values', async () => {
   const script = await loadScript();
-  // Must check the variable is a regular file (not a dir) to avoid Docker
-  // silently creating a directory bind when the file does not yet exist.
-  assert.match(
-    script,
-    /!\s*-f\s*['"$]?\$\{?PERSONAL_DASHBOARD_DB_HOST_PATH\}?['"$]?/,
-    '[ ! -f "$PERSONAL_DASHBOARD_DB_HOST_PATH" ] guard is required'
-  );
+  assert.match(script, /-e\s+PERSONAL_DASHBOARD_DATABASE_URL\s*\\/, 'docker run must pass the caller-provided database URL env var by name');
+  assert.match(script, /-e\s+PGSSLMODE=\$\{PGSSLMODE:-require\}/, 'docker run must default PGSSLMODE=require for the shared TLS Postgres service');
+  assert.doesNotMatch(script, /postgres(?:ql)?:\/\//i, 'script must not embed a database URL');
 });
 
-// ---------------------------------------------------------------------------
-// PERSONAL_DASHBOARD_DB_FILE env var must be forwarded to the container
-// ---------------------------------------------------------------------------
-
-test('run-critical-docker.sh passes PERSONAL_DASHBOARD_DB_FILE env to docker run', async () => {
+test('run-critical-docker.sh no longer bind-mounts a writable SQLite personal data directory', async () => {
   const script = await loadScript();
-  // Must set PERSONAL_DASHBOARD_DB_FILE=/app/data/personal-dashboard.sqlite3
-  // (the container-internal path, matching docker-compose.yml)
-  assert.match(
-    script,
-    /-e\s+PERSONAL_DASHBOARD_DB_FILE=\/app\/data\/personal-dashboard\.sqlite3/,
-    '-e PERSONAL_DASHBOARD_DB_FILE=/app/data/personal-dashboard.sqlite3 is required in docker run'
-  );
+  assert.doesNotMatch(script, /PERSONAL_DASHBOARD_DB_HOST_PATH/, 'fallback script should not configure the old SQLite DB file path');
+  assert.doesNotMatch(script, /PERSONAL_DASHBOARD_DB_HOST_DIR/, 'fallback script should not configure the old SQLite DB directory path');
+  assert.doesNotMatch(script, /target=\/app\/data/, 'fallback script should not mount a writable /app/data SQLite directory');
+  assert.doesNotMatch(script, /PERSONAL_DASHBOARD_DB_FILE/, 'fallback script should not pass the old SQLite DB file env var');
 });
-
-// ---------------------------------------------------------------------------
-// Writable bind mount for the personal SQLite DB
-// ---------------------------------------------------------------------------
-
-test('run-critical-docker.sh bind-mounts the personal SQLite DB directory to /app/data', async () => {
-  const script = await loadScript();
-  // SQLite WAL mode needs to create sidecar files next to the database, so the
-  // critical fallback must mount the host directory, not only the DB file.
-  assert.match(
-    script,
-    /--mount.*source=\$PERSONAL_DASHBOARD_DB_HOST_DIR.*target=\/app\/data/s,
-    '--mount source=$PERSONAL_DASHBOARD_DB_HOST_DIR,target=/app/data is required'
-  );
-  assert.doesNotMatch(
-    script,
-    /target=\/app\/data\/personal-dashboard\.sqlite3/,
-    'Do not file-bind SQLite to /app/data/personal-dashboard.sqlite3; WAL needs a writable containing directory'
-  );
-});
-
-test('run-critical-docker.sh does NOT mark the personal data directory bind mount as readonly', async () => {
-  const script = await loadScript();
-  // Diary/Goals write to this DB and SQLite may create WAL/SHM sidecars, so the
-  // mount must be writable.
-  const mountLineMatch = script.match(
-    /--mount[^\n]*target=\/app\/data[^\n]*/g
-  );
-  assert.ok(
-    mountLineMatch && mountLineMatch.length > 0,
-    'Expected at least one --mount line targeting /app/data'
-  );
-  for (const line of mountLineMatch) {
-    assert.ok(
-      !line.includes(',readonly') && !line.includes('readonly=true'),
-      `personal data directory bind mount must not be readonly; found: ${line}`
-    );
-  }
-});
-
-// ---------------------------------------------------------------------------
-// Read-only NAS artifacts must be copied into a host-local runtime cache before
-// container start. Mounting NAS/NFS paths directly into Docker can preserve stale
-// NFS handles across writer replacement/remount events even when the host path is
-// readable again.
-// ---------------------------------------------------------------------------
 
 test('run-critical-docker.sh syncs NAS artifacts into a host-local runtime cache before docker run', async () => {
   const script = await loadScript();
@@ -181,7 +107,7 @@ test('run-critical-docker.sh does not bind individual read-only artifact files',
   }
 });
 
-test('docker-compose.yml mounts host-local runtime cache for read-only artifacts and writable personal data dir', async () => {
+test('docker-compose.yml mounts host-local runtime cache for read-only artifacts and configures Postgres with no SQLite bind', async () => {
   const compose = await loadCompose();
 
   for (const source of [
@@ -225,11 +151,11 @@ test('docker-compose.yml mounts host-local runtime cache for read-only artifacts
     );
   }
 
-  assert.match(
-    compose,
-    /source: \$\{PERSONAL_DASHBOARD_DB_HOST_DIR:-\/mnt\/nas\/services\/personal-dashboard\/data\}[\s\S]*?target: \/app\/data[\s\S]*?read_only: false/,
-    'Compose must bind the writable personal-data directory to /app/data'
-  );
+  assert.match(compose, /PERSONAL_DASHBOARD_DATABASE_URL:\s*\$\{PERSONAL_DASHBOARD_DATABASE_URL:-\}/, 'Compose must pass the Postgres database URL from the rendered environment');
+  assert.match(compose, /PGSSLMODE:\s*\$\{PGSSLMODE:-require\}/, 'Compose must default PGSSLMODE=require');
+  assert.doesNotMatch(compose, /PERSONAL_DASHBOARD_DB_HOST_DIR/, 'Compose should not configure the old SQLite directory bind');
+  assert.doesNotMatch(compose, /target:\s*\/app\/data/, 'Compose should not mount a writable /app/data SQLite directory');
+  assert.doesNotMatch(compose, /PERSONAL_DASHBOARD_DB_FILE/, 'Compose should not pass the old SQLite DB file env var');
 });
 
 test('sync-runtime-snapshots.sh copies expected source files into host-local cache layout', async () => {

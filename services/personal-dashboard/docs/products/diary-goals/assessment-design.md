@@ -4,7 +4,7 @@ Status: future design only. This document does not implement assessment code, do
 
 ## Purpose
 
-The Diary and Goals MVP stores private diary entries and goals durably in the dashboard-owned SQLite database. A later assessment feature can help Ben reflect on whether day-to-day diary patterns line up with stated goals.
+The Diary and Goals MVP stores private diary entries and goals durably in the dashboard-owned schema on the shared critical Postgres service. A later assessment feature can help Ben reflect on whether day-to-day diary patterns line up with stated goals.
 
 The feature should behave like a private coaching aid, not a machine-goblin pulpit. It can surface evidence, patterns, and possible next actions; it must not pretend to issue moral verdicts.
 
@@ -21,7 +21,7 @@ Relevant MVP constraints from `docs/diary-goals-mvp-plan.md`:
 - Diary/goal APIs require auth.
 - Real diary and goal content must not be committed to Git, Kanban comments, issue trackers, logs, or test fixtures.
 - Assessment, scoring, embeddings, prompts, model output storage, export, and destructive operations are intentionally out of MVP scope.
-- Local runtime SQLite storage is preferred; missing storage should fail closed rather than creating surprise in-repo data.
+- Shared critical Postgres storage is preferred; missing storage should fail closed rather than creating surprise in-repo data or falling back to SQLite.
 
 ## Useful assessment questions
 
@@ -64,7 +64,7 @@ Assessment must be a separate artifact layer over the raw diary/goals store. Raw
    - a date range;
    - one goal;
    - all active goals over a recent range.
-2. Server reads the selected diary entries, goals, and existing `diary_entry_goals` links from the local SQLite store.
+2. Server reads the selected diary entries, goals, and existing `diary_entry_goals` links from the Postgres personal-data store.
 3. Assessment engine produces derived output:
    - summary by goal;
    - evidence references;
@@ -142,7 +142,7 @@ Diary content is sensitive personal data. Treat it as more sensitive than ordina
 - No external LLM/API calls unless Ben explicitly approves and configures a provider for this feature.
 - No background automatic nagging, scheduled assessment, or push notifications in the first implementation.
 - No raw diary/goal content in Git, logs, Kanban comments, exceptions, metrics, browser console output, telemetry, prompts, or test fixtures.
-- API responses must not expose DB paths, local filesystem paths, stack traces, SQLite errors, provider errors, prompt text, or raw model diagnostics.
+- API responses must not expose DB paths, local filesystem paths, stack traces, Postgres errors, provider errors, prompt text, or raw model diagnostics.
 
 ### External model gate
 

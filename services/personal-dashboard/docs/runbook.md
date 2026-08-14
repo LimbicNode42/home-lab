@@ -21,7 +21,7 @@ Prevention: copy the NAS/repo-backed read-only artifacts into a host-local runti
 
 Keep `PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR` on local storage, not under `/mnt/nas`. The app still reads the same explicit in-container file paths; only the host bind source changes.
 
-The private Diary/Goals SQLite store is different: mount its containing `data` directory read-write at `/app/data` so SQLite can create WAL/SHM sidecars. Do not widen this to broader NAS directories. The dashboard container still must not receive secrets, Docker socket access, SSH keys, the Hermes runtime DB, or writable access to report/config/Kanban sources. Tiny blast radii, not a NAS buffet.
+The private Diary/Goals store is different: it now lives in the shared critical Postgres service and is reached only through `PERSONAL_DASHBOARD_DATABASE_URL` plus `PGSSLMODE`; do not add a writable SQLite `/app/data` bind back to the dashboard container. The dashboard container still must not receive Docker socket access, SSH keys, the Hermes runtime DB, or writable access to report/config/Kanban sources. Tiny blast radii, not a NAS buffet.
 
 ## Recovery when stale handles recur
 

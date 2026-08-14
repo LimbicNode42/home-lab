@@ -4,9 +4,9 @@
 
 Goal: add durable, authenticated Diary and Goals tabs to the personal dashboard without committing Ben's personal entries/goals to Git.
 
-Architecture: keep the current dependency-light Node.js server plus static frontend. Add a dashboard-owned SQLite runtime database mounted outside Git, server-side migrations/init on startup, authenticated JSON APIs, and plain HTML/CSS/JS tab panels. Preserve a future link between diary entries and goals through a join table, but do not implement LLM assessment or prompts yet.
+Architecture: keep the current dependency-light Node.js server plus static frontend. Add a dashboard-owned Postgres-backed runtime store, server-side schema initialization on startup, authenticated JSON APIs, and plain HTML/CSS/JS tab panels. Preserve a future link between diary entries and goals through a join table, but do not implement LLM assessment or prompts yet.
 
-Tech stack: Node.js >=22, `node:sqlite` `DatabaseSync`, plain HTML/CSS/JavaScript, existing `node:test` suite.
+Tech stack: Node.js >=22, Postgres via `pg`, plain HTML/CSS/JavaScript, existing `node:test` suite. The separate Kanban panel may still read a read-only SQLite snapshot; Diary/Goals do not use SQLite.
 
 ---
 
@@ -71,48 +71,35 @@ Future goal assessment:
 
 ## Storage approach
 
-Use a dashboard-owned SQLite database stored in runtime data, outside Git.
+Use the shared critical Postgres service for the dashboard-owned Diary/Goals database. Do not use SQLite for this writable personal-data store.
 
-Recommended paths:
+Recommended configuration:
 
-- Container path: `/app/data/personal-dashboard.sqlite3`
-- Env var / createApp option: `PERSONAL_DASHBOARD_DB_FILE`
-- Host default for Compose: `${PERSONAL_DASHBOARD_DB_HOST_DIR:-/mnt/nas/services/personal-dashboard/data}` mounted at `/app/data`; the app reads `/app/data/personal-dashboard.sqlite3`.
-
-Compose mount should be read-write for this database only:
-
-```yaml
-- type: bind
-  source: ${PERSONAL_DASHBOARD_DB_HOST_DIR:-/mnt/nas/services/personal-dashboard/data}
-  target: /app/data
-  read_only: false
-  bind:
-    create_host_path: false
-```
+- Runtime database: shared critical Postgres service (`192.168.0.50:5432`)
+- Env var / createApp option: `PERSONAL_DASHBOARD_DATABASE_URL` / `options.personalDataDatabaseUrl`
+- Secret source: Vaultwarden folder `homelab`, item `personal-dashboard/database`, field `database_url`
+- TLS mode: `PGSSLMODE=require` unless the shared service is deliberately configured otherwise
 
 Operational notes:
 
-- The host data directory and `personal-dashboard.sqlite3` file must be created by the operator before container recreate; SQLite WAL/SHM sidecars live in the same directory.
-- Git must contain only schema/migration code, docs, runbooks, and obviously fake test fixtures.
-- Do not commit a real `.sqlite3`, WAL, SHM, dump, diary entry, goal text, or generated personal-data export.
-- Add ignore rules if needed: `services/personal-dashboard/data/`, `*.sqlite3`, `*.sqlite3-wal`, `*.sqlite3-shm`, `*.db` unless already covered at repo level.
+- Create the dedicated dashboard database/user as a deploy prerequisite, outside Git.
+- Render `PERSONAL_DASHBOARD_DATABASE_URL` locally from Vaultwarden; never commit rendered connection strings.
+- Git must contain only schema/migration code, docs, runbooks, env maps, and obviously fake test fixtures.
+- Do not commit real database dumps, diary entries, goal text, generated personal-data exports, or secret-bearing `.env` files.
+- The read-only Kanban panel may continue to consume an operator-managed SQLite snapshot because that mirrors Hermes Kanban state; it is not the Diary/Goals writable store.
 
 Migration/init path:
 
 - Create `src/personal-data-store.js` as the storage boundary.
-- On `createPersonalDataStore({ dbFile })`, open `DatabaseSync(dbFile)` and run idempotent migrations in a transaction.
-- Use `PRAGMA user_version` to track schema version.
-- Set pragmatic SQLite safety defaults on each open:
-  - `PRAGMA foreign_keys = ON`
-  - `PRAGMA journal_mode = WAL`
-  - `PRAGMA busy_timeout = 5000`
-- If `PERSONAL_DASHBOARD_DB_FILE` is not set, diary/goals APIs should return `503 { "error": "personal_data_not_configured", "message": "Personal dashboard data store is not configured" }` and UI should show a configuration message. Do not fall back to an in-repo path.
+- On `createPostgresPersonalDataStore({ connectionString })`, connect through `pg` and run idempotent `CREATE TABLE IF NOT EXISTS` schema initialization.
+- Use parameterized SQL for every user value.
+- If `PERSONAL_DASHBOARD_DATABASE_URL` is not set, diary/goals APIs should return `503 { "error": "personal_data_not_configured", "message": "Personal dashboard data store is not configured" }` and UI should show a configuration message. Do not fall back to SQLite or an in-repo path.
 
 Backup/restore note:
 
-- The DB belongs in the NAS-backed dashboard runtime data path and should be included in the homelab backup coverage matrix.
-- Backup with SQLite-safe methods: stop writer briefly, or run `sqlite3 /path/personal-dashboard.sqlite3 '.backup /backup/path/personal-dashboard-YYYYMMDD.sqlite3'` from the host/runtime environment.
-- Restore by stopping/recreating the dashboard container against the restored DB file. Do not restore over a running writer.
+- The DB belongs in the shared critical Postgres service and should be included in the homelab backup coverage matrix.
+- Backup with Postgres-native dumps/snapshots using the dedicated dashboard database/user; do not expose raw connection URLs in command transcripts.
+- Restore by stopping/recreating the dashboard container against the restored Postgres database after an explicit reviewed restore plan.
 - Treat backups as sensitive personal data; do not attach them to Kanban comments, GitHub issues, or logs.
 
 ## Data model
@@ -293,7 +280,7 @@ Out of scope for MVP:
 
 - All diary/goal APIs require auth even if other panels stay read-only.
 - No browser-supplied filesystem path, DB path, migration path, or backup path.
-- No raw local paths, DB paths, SQLite errors, stack traces, stderr, or environment variable values in API responses.
+- No raw local paths, DB paths, Postgres errors, stack traces, stderr, or environment variable values in API responses.
 - API errors should use stable public codes/messages, for example:
   - `personal_data_not_configured`
   - `invalid_request_body`
@@ -312,21 +299,22 @@ Out of scope for MVP:
 Server/storage:
 
 - Create `services/personal-dashboard/src/personal-data-store.js`
-  - Own SQLite open/init/migrations.
-  - Export functions such as `createPersonalDataStore`, `listGoals`, `getGoal`, `createGoal`, `updateGoal`, `listDiaryEntries`, `getDiaryEntry`, `createDiaryEntry`.
+  - Own Postgres schema initialization and data access.
+  - Export functions such as `createPostgresPersonalDataStore`, `listGoals`, `getGoal`, `createGoal`, `updateGoal`, `listDiaryEntries`, `getDiaryEntry`, `createDiaryEntry`.
   - Keep all SQL parameterized; no string-concatenated user values.
 - Modify `services/personal-dashboard/src/server.js`
-  - Resolve `PERSONAL_DASHBOARD_DB_FILE` / `options.personalDataDbFile`.
+  - Resolve `PERSONAL_DASHBOARD_DATABASE_URL` / `options.personalDataDatabaseUrl`, with injectable Postgres pools in tests.
   - Instantiate the store once in `createApp` when configured.
   - Add route handling for `/api/goals`, `/api/goals/:id`, `/api/diary/entries`, `/api/diary/entries/:id`.
   - Reuse/extend JSON body parsing with per-endpoint byte limits.
   - Return sanitized errors only.
 - Modify `services/personal-dashboard/docker-compose.yml`
-  - Add `PERSONAL_DASHBOARD_DB_FILE: /app/data/personal-dashboard.sqlite3`.
-  - Add the read-write bind mount for the host DB file.
+  - Add `PERSONAL_DASHBOARD_DATABASE_URL` and `PGSSLMODE`.
+  - Preserve read-only runtime-cache directory binds for config/report/Kanban artifacts.
+  - Do not add a read-write SQLite bind mount for Diary/Goals.
 - Modify `services/personal-dashboard/.env.example`
-  - Document `PERSONAL_DASHBOARD_DB_HOST_DIR` with a sensitive-data warning.
-- Modify `.gitignore` or service-level ignore if runtime SQLite files are not already ignored.
+  - Document `PERSONAL_DASHBOARD_DATABASE_URL`, `PGSSLMODE`, and the Vaultwarden render map with sensitive-data warnings.
+- Keep rendered `.env` files, dumps, and personal-data exports ignored/out of Git.
 
 Frontend:
 
@@ -350,8 +338,8 @@ Documentation:
 
 - Modify `services/personal-dashboard/README.md`
   - Add Diary/Goals APIs to the included JSON APIs list.
-  - Document `PERSONAL_DASHBOARD_DB_FILE` and host bind path.
-  - Add backup/restore note and no-Git personal-data warning.
+  - Document `PERSONAL_DASHBOARD_DATABASE_URL`, Vaultwarden item mapping, and Postgres backup/restore handling.
+  - Add no-Git personal-data/secret warning.
 - Optionally create `services/personal-dashboard/docs/products/diary-goals/README.md` after implementation for user-facing usage docs.
 
 ## Tests to add
@@ -361,9 +349,9 @@ Server tests in `services/personal-dashboard/test/server.test.js` or a new `test
 1. Auth gate:
    - Add `/api/goals`, `/api/goals/g_fake`, `/api/diary/entries`, `/api/diary/entries/d_fake` to the existing reverse-proxy auth regression list.
 2. Not configured:
-   - With `personalDataDbFile: null`, `GET /api/goals` and `GET /api/diary/entries` return `503 personal_data_not_configured` after auth.
+   - With no `personalDataDatabaseUrl` / Postgres pool, `GET /api/goals` and `GET /api/diary/entries` return `503 personal_data_not_configured` after auth.
 3. Goal create/list/update:
-   - Use `mkdtemp(tmpdir())` and a temp SQLite file.
+   - Use an injected fake Postgres pool or local test database with no real personal data.
    - `POST /api/goals` with fake title returns `201`, server-generated id/timestamps.
    - `GET /api/goals?status=all` returns the fake goal.
    - `PATCH /api/goals/:id` can move status to `completed` and sets `updated_at`/`completed_at`.
@@ -382,7 +370,7 @@ Server tests in `services/personal-dashboard/test/server.test.js` or a new `test
    - Invalid date returns `400 validation_failed`.
    - Unknown linked goal id returns `400 invalid_goal_ids`.
 7. Sanitized errors:
-   - Directory path passed as DB file or unreadable DB path returns `503 personal_data_unavailable` without exposing filesystem paths or raw SQLite diagnostics.
+   - Unavailable Postgres connection returns `503 personal_data_unavailable` without exposing filesystem paths, connection strings, or raw Postgres diagnostics.
 
 Frontend/static tests:
 
@@ -399,7 +387,7 @@ Recommended verification commands:
 ```bash
 cd /root/work/home-lab/services/personal-dashboard
 npm test
-DASHBOARD_AUTH_MODE=disabled DASHBOARD_ALLOW_DISABLED_AUTH=true PERSONAL_DASHBOARD_DB_FILE=/tmp/personal-dashboard-test.sqlite3 npm start
+DASHBOARD_AUTH_MODE=disabled DASHBOARD_ALLOW_DISABLED_AUTH=true PERSONAL_DASHBOARD_DATABASE_URL=postgres://REPLACE_WITH_LOCAL_TEST_URL npm start
 ```
 
 Manual smoke after implementation, using fake data only:
@@ -422,7 +410,7 @@ Expected local-dev result with disabled auth: fake goal/entry can be created and
 ## Acceptance checklist for the implementing worker
 
 - [ ] Diary and Goals are top-level tabs with accessible tab/panel wiring.
-- [ ] Runtime SQLite DB path is configured outside Git and mounted read-write only for that DB.
+- [ ] Runtime Postgres connection URL is rendered outside Git and no Diary/Goals SQLite bind is configured.
 - [ ] Schema supports future diary-entry-to-goal links without implementing automated assessment.
 - [ ] All diary/goal writes require auth and server-generated IDs/timestamps.
 - [ ] Text lengths, statuses, dates, pagination, and linked goal IDs are validated server-side.
