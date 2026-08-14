@@ -19,22 +19,31 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPT_PATH = join(__dirname, '..', 'scripts', 'run-critical-docker.sh');
+const COMPOSE_PATH = join(__dirname, '..', 'docker-compose.yml');
 
 async function loadScript() {
   return readFile(SCRIPT_PATH, 'utf8');
+}
+
+async function loadCompose() {
+  return readFile(COMPOSE_PATH, 'utf8');
 }
 
 // ---------------------------------------------------------------------------
 // PERSONAL_DASHBOARD_DB_HOST_PATH variable declaration
 // ---------------------------------------------------------------------------
 
-test('run-critical-docker.sh declares PERSONAL_DASHBOARD_DB_HOST_PATH variable with a default', async () => {
+test('run-critical-docker.sh declares PERSONAL_DASHBOARD_DB_HOST_DIR and derived DB path', async () => {
   const script = await loadScript();
-  // Must define the variable and give it a default path (mirrors KANBAN_DB_HOST_PATH pattern)
   assert.match(
     script,
-    /PERSONAL_DASHBOARD_DB_HOST_PATH=\$\{PERSONAL_DASHBOARD_DB_HOST_PATH:-[^}]+\}/,
-    'PERSONAL_DASHBOARD_DB_HOST_PATH must be declared with a default value'
+    /PERSONAL_DASHBOARD_DB_HOST_DIR=\$\{PERSONAL_DASHBOARD_DB_HOST_DIR:-[^}]+\}/,
+    'PERSONAL_DASHBOARD_DB_HOST_DIR must be declared with a default value'
+  );
+  assert.match(
+    script,
+    /PERSONAL_DASHBOARD_DB_HOST_PATH=\$PERSONAL_DASHBOARD_DB_HOST_DIR\/personal-dashboard\.sqlite3/,
+    'PERSONAL_DASHBOARD_DB_HOST_PATH must be derived from the mounted data directory'
   );
 });
 
@@ -105,4 +114,89 @@ test('run-critical-docker.sh does NOT mark the personal data directory bind moun
       `personal data directory bind mount must not be readonly; found: ${line}`
     );
   }
+});
+
+// ---------------------------------------------------------------------------
+// Read-only NAS artifacts must be directory-mounted, not file-mounted
+// ---------------------------------------------------------------------------
+
+test('run-critical-docker.sh directory-mounts atomically replaced read-only NAS artifacts', async () => {
+  const script = await loadScript();
+
+  for (const variableName of [
+    'FINNICK_REPORT_HOST_DIR',
+    'INVESTMENT_SCREENER_HOST_DIR',
+    'KANBAN_DB_HOST_DIR',
+  ]) {
+    assert.match(
+      script,
+      new RegExp(`${variableName}=\\$\\{${variableName}:-[^}]+\\}`),
+      `${variableName} must be declared with a default directory`
+    );
+  }
+
+  for (const [sourceVariable, target] of [
+    ['FINNICK_REPORT_HOST_DIR', '/app/finnick'],
+    ['INVESTMENT_SCREENER_HOST_DIR', '/app/investment-screener'],
+    ['KANBAN_DB_HOST_DIR', '/app/kanban'],
+    ['APP_DIR/config', '/app/config'],
+  ]) {
+    assert.match(
+      script,
+      new RegExp(`--mount[^\\n]*source=\\$${sourceVariable}[^\\n]*target=${target}[^\\n]*readonly`),
+      `Expected read-only directory bind from $${sourceVariable} to ${target}`
+    );
+  }
+
+  for (const fileTarget of [
+    '/app/config/dashboard.public.json',
+    '/app/finnick/latest_report.txt',
+    '/app/investment-screener/latest_report.txt',
+    '/app/investment-screener/latest_ranked.json',
+    '/app/kanban/kanban.db',
+  ]) {
+    assert.doesNotMatch(
+      script,
+      new RegExp(`--mount[^\\n]*target=${fileTarget.replaceAll('/', '\\/')}`),
+      `Do not bind-mount individual file target ${fileTarget}; atomic writer replacement can stale that handle`
+    );
+  }
+});
+
+test('docker-compose.yml directory-mounts read-only NAS artifacts and writable personal data dir', async () => {
+  const compose = await loadCompose();
+
+  for (const source of [
+    './config',
+    '${FINNICK_REPORT_HOST_DIR:-/mnt/nas/services/personal-dashboard/finnick}',
+    '${INVESTMENT_SCREENER_HOST_DIR:-/mnt/nas/services/personal-dashboard/investment-screener}',
+    '${KANBAN_DB_HOST_DIR:-/mnt/nas/services/personal-dashboard/kanban}',
+  ]) {
+    assert.match(
+      compose,
+      new RegExp(`source: ${source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?read_only: true`),
+      `Expected read-only compose directory bind for ${source}`
+    );
+  }
+
+  for (const fileTarget of [
+    '/app/config/dashboard.public.json',
+    '/app/finnick/latest_report.txt',
+    '/app/investment-screener/latest_report.txt',
+    '/app/investment-screener/latest_ranked.json',
+    '/app/kanban/kanban.db',
+    '/app/data/personal-dashboard.sqlite3',
+  ]) {
+    assert.doesNotMatch(
+      compose,
+      new RegExp(`target: ${fileTarget.replaceAll('/', '\\/')}`),
+      `Compose must not bind individual file target ${fileTarget}`
+    );
+  }
+
+  assert.match(
+    compose,
+    /source: \$\{PERSONAL_DASHBOARD_DB_HOST_DIR:-\/mnt\/nas\/services\/personal-dashboard\/data\}[\s\S]*?target: \/app\/data[\s\S]*?read_only: false/,
+    'Compose must bind the writable personal-data directory to /app/data'
+  );
 });
