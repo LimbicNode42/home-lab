@@ -13,13 +13,18 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
+import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPT_PATH = join(__dirname, '..', 'scripts', 'run-critical-docker.sh');
+const SYNC_SCRIPT_PATH = join(__dirname, '..', 'scripts', 'sync-runtime-snapshots.sh');
 const COMPOSE_PATH = join(__dirname, '..', 'docker-compose.yml');
+const execFileAsync = promisify(execFile);
 
 async function loadScript() {
   return readFile(SCRIPT_PATH, 'utf8');
@@ -117,37 +122,50 @@ test('run-critical-docker.sh does NOT mark the personal data directory bind moun
 });
 
 // ---------------------------------------------------------------------------
-// Read-only NAS artifacts must be directory-mounted, not file-mounted
+// Read-only NAS artifacts must be copied into a host-local runtime cache before
+// container start. Mounting NAS/NFS paths directly into Docker can preserve stale
+// NFS handles across writer replacement/remount events even when the host path is
+// readable again.
 // ---------------------------------------------------------------------------
 
-test('run-critical-docker.sh directory-mounts atomically replaced read-only NAS artifacts', async () => {
+test('run-critical-docker.sh syncs NAS artifacts into a host-local runtime cache before docker run', async () => {
   const script = await loadScript();
 
-  for (const variableName of [
-    'FINNICK_REPORT_HOST_DIR',
-    'INVESTMENT_SCREENER_HOST_DIR',
-    'KANBAN_DB_HOST_DIR',
+  assert.match(
+    script,
+    /PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR=\$\{PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-\/var\/lib\/personal-dashboard\/runtime-cache\}/,
+    'critical fallback must declare the host-local runtime cache directory'
+  );
+  assert.match(
+    script,
+    /scripts\/sync-runtime-snapshots\.sh/,
+    'critical fallback must run scripts/sync-runtime-snapshots.sh before recreating the container'
+  );
+
+  for (const [cacheSubdir, target] of [
+    ['config', '/app/config'],
+    ['finnick', '/app/finnick'],
+    ['investment-screener', '/app/investment-screener'],
+    ['kanban', '/app/kanban'],
   ]) {
     assert.match(
       script,
-      new RegExp(`${variableName}=\\$\\{${variableName}:-[^}]+\\}`),
-      `${variableName} must be declared with a default directory`
+      new RegExp(`--mount[^\\n]*source=\\$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/${cacheSubdir}[^\\n]*target=${target}[^\\n]*readonly`),
+      `Expected read-only host-local cache bind from $PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/${cacheSubdir} to ${target}`
     );
   }
 
-  for (const [sourceVariable, target] of [
-    ['FINNICK_REPORT_HOST_DIR', '/app/finnick'],
-    ['INVESTMENT_SCREENER_HOST_DIR', '/app/investment-screener'],
-    ['KANBAN_DB_HOST_DIR', '/app/kanban'],
-    ['APP_DIR/config', '/app/config'],
-  ]) {
-    assert.match(
+  for (const nasVariable of ['FINNICK_REPORT_HOST_DIR', 'INVESTMENT_SCREENER_HOST_DIR', 'KANBAN_DB_HOST_DIR']) {
+    assert.doesNotMatch(
       script,
-      new RegExp(`--mount[^\\n]*source=\\$${sourceVariable}[^\\n]*target=${target}[^\\n]*readonly`),
-      `Expected read-only directory bind from $${sourceVariable} to ${target}`
+      new RegExp(`--mount[^\\n]*source=\\$${nasVariable}[^\\n]*target=`),
+      `Do not mount NAS source $${nasVariable} directly into the dashboard container`
     );
   }
+});
 
+test('run-critical-docker.sh does not bind individual read-only artifact files', async () => {
+  const script = await loadScript();
   for (const fileTarget of [
     '/app/config/dashboard.public.json',
     '/app/finnick/latest_report.txt',
@@ -163,19 +181,32 @@ test('run-critical-docker.sh directory-mounts atomically replaced read-only NAS 
   }
 });
 
-test('docker-compose.yml directory-mounts read-only NAS artifacts and writable personal data dir', async () => {
+test('docker-compose.yml mounts host-local runtime cache for read-only artifacts and writable personal data dir', async () => {
   const compose = await loadCompose();
 
   for (const source of [
+    '${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}/config',
+    '${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}/finnick',
+    '${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}/investment-screener',
+    '${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}/kanban',
+  ]) {
+    assert.match(
+      compose,
+      new RegExp(`source: ${source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?read_only: true`),
+      `Expected read-only compose runtime-cache directory bind for ${source}`
+    );
+  }
+
+  for (const forbiddenSource of [
     './config',
     '${FINNICK_REPORT_HOST_DIR:-/mnt/nas/services/personal-dashboard/finnick}',
     '${INVESTMENT_SCREENER_HOST_DIR:-/mnt/nas/services/personal-dashboard/investment-screener}',
     '${KANBAN_DB_HOST_DIR:-/mnt/nas/services/personal-dashboard/kanban}',
   ]) {
-    assert.match(
+    assert.doesNotMatch(
       compose,
-      new RegExp(`source: ${source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?read_only: true`),
-      `Expected read-only compose directory bind for ${source}`
+      new RegExp(`source: ${forbiddenSource.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?target: \/app\/(config|finnick|investment-screener|kanban)`),
+      `Compose must not mount direct NAS/repo read-only source ${forbiddenSource}`
     );
   }
 
@@ -199,4 +230,44 @@ test('docker-compose.yml directory-mounts read-only NAS artifacts and writable p
     /source: \$\{PERSONAL_DASHBOARD_DB_HOST_DIR:-\/mnt\/nas\/services\/personal-dashboard\/data\}[\s\S]*?target: \/app\/data[\s\S]*?read_only: false/,
     'Compose must bind the writable personal-data directory to /app/data'
   );
+});
+
+test('sync-runtime-snapshots.sh copies expected source files into host-local cache layout', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dashboard-runtime-sync-'));
+  const appDir = join(root, 'app');
+  const finnickDir = join(root, 'nas', 'finnick');
+  const investmentDir = join(root, 'nas', 'investment-screener');
+  const kanbanDir = join(root, 'nas', 'kanban');
+  const cacheDir = join(root, 'runtime-cache');
+
+  await mkdir(join(appDir, 'config'), { recursive: true });
+  await mkdir(finnickDir, { recursive: true });
+  await mkdir(investmentDir, { recursive: true });
+  await mkdir(kanbanDir, { recursive: true });
+  await writeFile(join(appDir, 'config', 'dashboard.public.json'), '{"title":"Cache Test"}\n', 'utf8');
+  await writeFile(join(finnickDir, 'latest_report.txt'), 'finnick report\n', 'utf8');
+  await writeFile(join(investmentDir, 'latest_report.txt'), 'investment report\n', 'utf8');
+  await writeFile(join(investmentDir, 'latest_ranked.json'), '{"candidates":[]}\n', 'utf8');
+  await writeFile(join(kanbanDir, 'kanban.db'), 'sqlite snapshot bytes\n', 'utf8');
+
+  try {
+    await execFileAsync('sh', [SYNC_SCRIPT_PATH], {
+      env: {
+        ...process.env,
+        APP_DIR: appDir,
+        FINNICK_REPORT_HOST_DIR: finnickDir,
+        INVESTMENT_SCREENER_HOST_DIR: investmentDir,
+        KANBAN_DB_HOST_DIR: kanbanDir,
+        PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR: cacheDir
+      }
+    });
+
+    assert.equal(await readFile(join(cacheDir, 'config', 'dashboard.public.json'), 'utf8'), '{"title":"Cache Test"}\n');
+    assert.equal(await readFile(join(cacheDir, 'finnick', 'latest_report.txt'), 'utf8'), 'finnick report\n');
+    assert.equal(await readFile(join(cacheDir, 'investment-screener', 'latest_report.txt'), 'utf8'), 'investment report\n');
+    assert.equal(await readFile(join(cacheDir, 'investment-screener', 'latest_ranked.json'), 'utf8'), '{"candidates":[]}\n');
+    assert.equal(await readFile(join(cacheDir, 'kanban', 'kanban.db'), 'utf8'), 'sqlite snapshot bytes\n');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

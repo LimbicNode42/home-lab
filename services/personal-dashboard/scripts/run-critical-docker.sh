@@ -9,6 +9,7 @@ APP_DIR=${APP_DIR:-/mnt/nas/services/personal-dashboard}
 PUBLISHED_IP=${DASHBOARD_PUBLISHED_IP:-172.17.0.1}
 IMAGE=${DASHBOARD_IMAGE:-personal-dashboard:local}
 CONTAINER=${DASHBOARD_CONTAINER:-personal-dashboard}
+PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR=${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}
 FINNICK_REPORT_HOST_DIR=${FINNICK_REPORT_HOST_DIR:-/mnt/nas/services/personal-dashboard/finnick}
 INVESTMENT_SCREENER_HOST_DIR=${INVESTMENT_SCREENER_HOST_DIR:-/mnt/nas/services/personal-dashboard/investment-screener}
 KANBAN_DB_HOST_DIR=${KANBAN_DB_HOST_DIR:-/mnt/nas/services/personal-dashboard/kanban}
@@ -19,11 +20,13 @@ INVESTMENT_SCREENER_RANKED_HOST_PATH=$INVESTMENT_SCREENER_HOST_DIR/latest_ranked
 KANBAN_DB_HOST_PATH=$KANBAN_DB_HOST_DIR/kanban.db
 PERSONAL_DASHBOARD_DB_HOST_PATH=$PERSONAL_DASHBOARD_DB_HOST_DIR/personal-dashboard.sqlite3
 
-# The read-only config/report/Kanban artifacts are mounted as their containing
-# directories instead of individual files. External writers commonly publish
-# these artifacts by atomic rename on NAS/NFS; a Docker file bind can keep the
-# old inode and become a stale file handle inside the running container. The
-# container still reads only the explicit file paths configured below.
+# The read-only config/report/Kanban artifacts are copied into a host-local
+# runtime cache before container start, then mounted as directories from that
+# cache. External writers commonly publish artifacts by atomic rename on NAS/NFS,
+# and Docker bind mounts can preserve stale handles across replacement/remount
+# events even when the host path is readable again. Keep NAS paths out of the
+# running container; the container still reads only the explicit file paths
+# configured below.
 #
 # The kanban DB source must be a readable, read-only snapshot/export for the
 # node user inside the container. Do not use the Hermes runtime DB directly:
@@ -67,6 +70,13 @@ if [ ! -f "$PERSONAL_DASHBOARD_DB_HOST_PATH" ]; then
   exit 1
 fi
 
+PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR="$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR" \
+FINNICK_REPORT_HOST_DIR="$FINNICK_REPORT_HOST_DIR" \
+INVESTMENT_SCREENER_HOST_DIR="$INVESTMENT_SCREENER_HOST_DIR" \
+KANBAN_DB_HOST_DIR="$KANBAN_DB_HOST_DIR" \
+APP_DIR="$APP_DIR" \
+  "$APP_DIR/scripts/sync-runtime-snapshots.sh"
+
 docker build -t "$IMAGE" .
 
 if docker ps -a --format '{{.Names}}' | grep -Fxq "$CONTAINER"; then
@@ -91,9 +101,9 @@ docker run -d \
   -e KANBAN_DB_PATH=/app/kanban/kanban.db \
   -e PERSONAL_DASHBOARD_DB_FILE=/app/data/personal-dashboard.sqlite3 \
   -e REPO_DOCS_ROOT=/app/repo-docs \
-  --mount "type=bind,source=$APP_DIR/config,target=/app/config,readonly" \
-  --mount "type=bind,source=$FINNICK_REPORT_HOST_DIR,target=/app/finnick,readonly" \
-  --mount "type=bind,source=$INVESTMENT_SCREENER_HOST_DIR,target=/app/investment-screener,readonly" \
-  --mount "type=bind,source=$KANBAN_DB_HOST_DIR,target=/app/kanban,readonly" \
+  --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/config,target=/app/config,readonly" \
+  --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/finnick,target=/app/finnick,readonly" \
+  --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/investment-screener,target=/app/investment-screener,readonly" \
+  --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/kanban,target=/app/kanban,readonly" \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_DB_HOST_DIR,target=/app/data" \
   "$IMAGE"

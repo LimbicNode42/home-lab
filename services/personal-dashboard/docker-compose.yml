@@ -28,26 +28,29 @@ services:
       PERSONAL_DASHBOARD_DB_FILE: /app/data/personal-dashboard.sqlite3
       REPO_DOCS_ROOT: /app/repo-docs
     volumes:
+      # Read-only runtime artifacts are copied from NAS/repo sources into this
+      # host-local cache before deploy. Do not mount NAS/NFS paths directly here:
+      # Docker can keep stale bind handles after NFS writer replacement/remounts.
       - type: bind
-        source: ./config
+        source: ${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}/config
         target: /app/config
         read_only: true
         bind:
           create_host_path: false
       - type: bind
-        source: ${FINNICK_REPORT_HOST_DIR:-/mnt/nas/services/personal-dashboard/finnick}
+        source: ${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}/finnick
         target: /app/finnick
         read_only: true
         bind:
           create_host_path: false
       - type: bind
-        source: ${INVESTMENT_SCREENER_HOST_DIR:-/mnt/nas/services/personal-dashboard/investment-screener}
+        source: ${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}/investment-screener
         target: /app/investment-screener
         read_only: true
         bind:
           create_host_path: false
       - type: bind
-        source: ${KANBAN_DB_HOST_DIR:-/mnt/nas/services/personal-dashboard/kanban}
+        source: ${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}/kanban
         target: /app/kanban
         read_only: true
         bind:
