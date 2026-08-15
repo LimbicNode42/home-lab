@@ -106,8 +106,10 @@ Environment variables:
 | `INVESTMENT_SCREENER_REPORT_FILE` | unset | Absolute path inside the container to the latest sanitized investment screener text report. Set to `/app/investment-screener/latest_report.txt` in the deployment candidate. |
 | `INVESTMENT_SCREENER_RANKED_FILE` | unset | Absolute path inside the container to the latest sanitized ranked investment screener JSON export. Set to `/app/investment-screener/latest_ranked.json` in the deployment candidate. |
 | `INVESTMENT_SCREENER_HOST_DIR` | operator-provided host directory | Host-side export directory copied into the runtime cache; must contain `latest_report.txt` and `latest_ranked.json` before container recreate. |
-| `PERSONAL_DASHBOARD_DATABASE_URL` | unset | Private Diary/Goals Postgres connection string. Render from Vaultwarden; if unset, diary/goal APIs return 503 without creating data in surprise locations. |
+| `PERSONAL_DASHBOARD_DATABASE_URL` | unset | Private Diary/Goals Postgres connection string. Render from Vaultwarden; after the stable Docker network is in place, only the URL host component should be `postgres` instead of a raw bridge IP. If unset, diary/goal APIs return 503 without creating data in surprise locations. |
 | `PGSSLMODE` | `require` in Compose / fallback script | TLS mode for the shared critical Postgres service. Keep cert/key material out of this repo. |
+| `PERSONAL_DASHBOARD_DB_NETWORK` | `critical-internal` in fallback script | Docker-local internal network used for stable Postgres DNS. Live creation/attachment requires explicit approval. |
+| `PERSONAL_DASHBOARD_DB_ALIAS` | `postgres` in fallback script | Stable alias for the shared Postgres container on `critical-internal`; preserve database credentials and change only the Vaultwarden URL host. |
 
 ## Local development
 
@@ -157,25 +159,33 @@ See `docs/runbook.md` for the stale NAS/NFS bind failure mode and recovery steps
 
 ## Apply sequence
 
-1. On `critical`, verify current ports and container state:
+1. On `critical`, verify current ports, container state, and redactable Docker network state:
    - `docker ps --format 'table {{.Names}}\t{{.Ports}}\t{{.Status}}'`
    - `netstat -ltnp | grep -E ':(80|443|4322)\\b'` (`ss` is not currently installed on critical)
-2. Render/copy `services/personal-dashboard` to `/mnt/nas/services/personal-dashboard` and render `config/dashboard.public.json`.
-3. Start only the dashboard container. Preferred once Compose is available:
+   - `docker inspect postgres personal-dashboard --format '{{.Name}} {{json .NetworkSettings.Networks}}'`
+2. Ensure the stable Postgres network source-of-truth exists before editing the Vaultwarden URL host:
+   - `docker network create --internal critical-internal` if the network is absent.
+   - `docker network connect --alias postgres critical-internal postgres` if Postgres is not already attached.
+3. Update Vaultwarden folder `homelab`, item `personal-dashboard/database`, field `database_url` by changing only the host component from the old raw bridge IP to `postgres`; preserve username/password/port/database/query parameters.
+4. Render/copy `services/personal-dashboard` to `/mnt/nas/services/personal-dashboard`, render `config/dashboard.public.json`, and re-render the dashboard `.env` from Vaultwarden.
+5. Start only the dashboard container. Preferred once Compose is available:
    - `DASHBOARD_PUBLISHED_IP=172.17.0.1 docker compose up -d --build dashboard`
    Current critical fallback, because the Docker Compose plugin is not installed there:
    - `sh scripts/run-critical-docker.sh`
-4. Verify direct health from critical and through Traefik:
+6. Verify direct health, Postgres alias reachability, and Traefik:
    - `curl -fsS http://172.17.0.1:4322/healthz`
+   - `docker exec personal-dashboard node -e "require('node:dns').lookup('postgres', console.log)"`
    - `curl -fsS -H 'Host: dashboard.wheeler-network.com' http://192.168.0.50/healthz`
    - `curl -i http://192.168.0.50:4322/api/config/public -H 'cf-access-authenticated-user-email: forged@example.invalid'` should fail to connect or otherwise not return `200`.
-5. Sync the prepared Traefik `dynamic-config.yaml` route to `/mnt/nas/services/traefik/dynamic-config.yaml`.
-6. Verify Traefik loaded the route; if the NAS file-provider watcher misses the update, restart only `proxy` after approval.
-7. Create the Cloudflare Tunnel public hostname and Access policy described in `../cloudflare-tunnel/dashboard-public-hostname-plan.md`.
-8. Verify public route with Cloudflare Access identity headers and confirm unauthenticated access is denied by Access/app.
+7. Sync the prepared Traefik `dynamic-config.yaml` route to `/mnt/nas/services/traefik/dynamic-config.yaml`.
+8. Verify Traefik loaded the route; if the NAS file-provider watcher misses the update, restart only `proxy` after approval.
+9. Create the Cloudflare Tunnel public hostname and Access policy described in `../cloudflare-tunnel/dashboard-public-hostname-plan.md`.
+10. Verify public route with Cloudflare Access identity headers and confirm unauthenticated access is denied by Access/app.
 
 ## Rollback
 
+- Restore the prior Vaultwarden `personal-dashboard/database` `database_url` host component (for example the previous bridge IP) without rotating credentials, re-render `.env`, and rerun `sh scripts/run-critical-docker.sh` to recreate only the dashboard container.
+- If the rollback target should no longer use the Docker-local DB network, disconnect only the dashboard container from `critical-internal` after it is healthy on the restored URL. Leave Postgres data and credentials untouched.
 - Remove/disable the Cloudflare public hostname `dashboard.wheeler-network.com` and any associated Access application/policy.
 - Revert `/mnt/nas/services/traefik/dynamic-config.yaml` to the previous version and reload/restart only `proxy` if required.
 - Stop/remove only the dashboard container: `docker compose down` from the approved dashboard live path.

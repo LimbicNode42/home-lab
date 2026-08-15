@@ -2,7 +2,7 @@
 
 Status: candidate IaC/CaC import seed from the live `postgres` container on `critical` (`192.168.0.50`), hosted by Proxmox node `emperor` (`192.168.0.6`).
 
-This Postgres instance currently backs Vaultwarden and may be reused by future services. Treat it as shared critical infrastructure until a service ownership split is documented.
+This Postgres instance currently backs Vaultwarden and may be reused by future services. Treat it as shared critical infrastructure until a service ownership split is documented. The desired-state Docker Compose attaches it to the internal `critical-internal` network with the stable service alias `postgres` so app URLs do not depend on raw Docker bridge IPs.
 
 Live evidence captured 2026-05-22:
 
@@ -11,6 +11,7 @@ Live evidence captured 2026-05-22:
 - Candidate pinned image: `bitnamilegacy/postgresql@sha256:42a8200d35971f931b869ef5252d996e137c6beb4b8f1b6d2181dc7d1b6f62e0`
 - Restart policy: `unless-stopped`
 - Published port: `5432:5432`
+- Stable Docker-local network: `critical-internal` with container alias `postgres`
 - Data mount: `/mnt/nas/services/postgres:/bitnami/postgresql`
 - Certificate mount: `/mnt/nas/services/postgres/certs:/opt/bitnami/postgresql/certs`
 - TLS enabled: yes

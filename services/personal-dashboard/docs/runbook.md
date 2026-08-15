@@ -23,6 +23,42 @@ Keep `PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR` on local storage, not under `/mnt/na
 
 The private Diary/Goals store is different: it now lives in the shared critical Postgres service and is reached only through `PERSONAL_DASHBOARD_DATABASE_URL` plus `PGSSLMODE`; do not add a writable SQLite `/app/data` bind back to the dashboard container. The dashboard container still must not receive Docker socket access, SSH keys, the Hermes runtime DB, or writable access to report/config/Kanban sources. Tiny blast radii, not a NAS buffet.
 
+## Stable Postgres network alias
+
+Diary/Goals reaches the shared critical Postgres container over a Docker-local
+network alias instead of a raw bridge IP. Desired state:
+
+- Docker network: `critical-internal` (`internal: true`)
+- Postgres container: attached to `critical-internal` with alias `postgres`
+- Dashboard container: attached to `critical-internal` for database DNS, and to
+  its default/bridge network for status probes and the `172.17.0.1:4322` Traefik
+  publish path
+- Vaultwarden secret: folder `homelab`, item `personal-dashboard/database`, field
+  `database_url`; update only the URL host component from the old raw bridge IP
+  to `postgres` after the Docker network source-of-truth is in place. Preserve
+  username, password, port, database name, and TLS/query parameters.
+
+This task does not apply the live change by itself. Applying it requires explicit
+approval because the safe sequence mutates Docker networking and recreates only
+the dashboard container:
+
+1. Back up/record current state: `docker inspect postgres personal-dashboard` and
+   the current rendered `PERSONAL_DASHBOARD_DATABASE_URL` with secrets redacted.
+2. Create the network if absent: `docker network create --internal critical-internal`.
+3. Attach Postgres if absent: `docker network connect --alias postgres critical-internal postgres`.
+4. Update the Vaultwarden `database_url` host to `postgres` only; do not rotate or
+   rewrite any other component.
+5. Re-render the dashboard `.env` and run `sh scripts/run-critical-docker.sh` from
+   the approved live path, recreating only `personal-dashboard`.
+6. Verify `http://172.17.0.1:4322/healthz`, a Diary/Goals API call with auth
+   headers, and `docker exec personal-dashboard node -e` DNS/TCP checks to
+   `postgres:5432` if needed.
+
+Rollback: restore the previous Vaultwarden `database_url` host component, re-render
+`.env`, rerun `sh scripts/run-critical-docker.sh`, and disconnect the dashboard
+from `critical-internal` only if the recreated container still has the unwanted
+network attachment. Do not remove Postgres data or rotate credentials.
+
 ## Recovery when stale handles recur
 
 If dashboard APIs fail while host-side files remain readable, check inside the running container:

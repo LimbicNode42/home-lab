@@ -58,9 +58,19 @@ services:
           create_host_path: false
     labels:
       traefik.enable: "false"
+    networks:
+      # Keep the default egress-capable network for status probes, and add the
+      # shared internal DB network for the stable Postgres DNS alias.
+      - default
+      - critical-internal
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4322/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 30s
       timeout: 3s
       retries: 3
       start_period: 10s
+
+networks:
+  critical-internal:
+    name: critical-internal
+    external: true

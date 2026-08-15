@@ -13,3 +13,12 @@ services:
     volumes:
       - /mnt/nas/services/postgres:/bitnami/postgresql
       - /mnt/nas/services/postgres/certs:/opt/bitnami/postgresql/certs
+    networks:
+      critical-internal:
+        aliases:
+          - postgres
+
+networks:
+  critical-internal:
+    name: critical-internal
+    internal: true
