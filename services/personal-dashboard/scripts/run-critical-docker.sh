@@ -9,6 +9,8 @@ APP_DIR=${APP_DIR:-/mnt/nas/services/personal-dashboard}
 PUBLISHED_IP=${DASHBOARD_PUBLISHED_IP:-172.17.0.1}
 IMAGE=${DASHBOARD_IMAGE:-personal-dashboard:local}
 CONTAINER=${DASHBOARD_CONTAINER:-personal-dashboard}
+DB_NETWORK=${PERSONAL_DASHBOARD_DB_NETWORK:-critical-internal}
+DB_NETWORK_ALIAS=${PERSONAL_DASHBOARD_DB_ALIAS:-postgres}
 PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR=${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}
 FINNICK_REPORT_HOST_DIR=${FINNICK_REPORT_HOST_DIR:-/mnt/nas/services/personal-dashboard/finnick}
 INVESTMENT_SCREENER_HOST_DIR=${INVESTMENT_SCREENER_HOST_DIR:-/mnt/nas/services/personal-dashboard/investment-screener}
@@ -31,10 +33,10 @@ KANBAN_DB_HOST_PATH=$KANBAN_DB_HOST_DIR/kanban.db
 # node user inside the container. Do not use the Hermes runtime DB directly:
 # /root/.hermes is 0700 and the DB is commonly 0600 root:root.
 #
-# PERSONAL_DASHBOARD_DATABASE_URL points to Ben's shared Postgres instance on
-# critical (192.168.0.50:5432). Render it from Vaultwarden; do not put the
-# connection string in Git or shell transcripts. Diary/Goals do not use a
-# writable SQLite /app/data bind.
+# PERSONAL_DASHBOARD_DATABASE_URL points to Ben's shared Postgres instance over
+# the Docker-local $DB_NETWORK network using the stable alias $DB_NETWORK_ALIAS.
+# Render it from Vaultwarden; do not put the connection string in Git or shell
+# transcripts. Diary/Goals do not use a writable SQLite /app/data bind.
 
 cd "$APP_DIR"
 
@@ -69,6 +71,19 @@ APP_DIR="$APP_DIR" \
 
 docker build -t "$IMAGE" .
 
+if ! docker network inspect "$DB_NETWORK" >/dev/null 2>&1; then
+  docker network create --internal "$DB_NETWORK"
+fi
+
+if ! docker inspect postgres >/dev/null 2>&1; then
+  printf '%s\n' "Postgres container 'postgres' is missing; refusing to recreate $CONTAINER without the shared DB endpoint." >&2
+  exit 1
+fi
+
+if ! docker inspect postgres --format '{{range $name, $_ := .NetworkSettings.Networks}}{{println $name}}{{end}}' | grep -Fxq "$DB_NETWORK"; then
+  docker network connect --alias "$DB_NETWORK_ALIAS" "$DB_NETWORK" postgres
+fi
+
 if docker ps -a --format '{{.Names}}' | grep -Fxq "$CONTAINER"; then
   docker rm -f "$CONTAINER"
 fi
@@ -77,6 +92,7 @@ docker run -d \
   --name "$CONTAINER" \
   --restart unless-stopped \
   -p "$PUBLISHED_IP:4322:4322" \
+  --network bridge \
   -e NODE_ENV=production \
   -e PORT=4322 \
   -e HOST=0.0.0.0 \
@@ -97,3 +113,5 @@ docker run -d \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/investment-screener,target=/app/investment-screener,readonly" \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/kanban,target=/app/kanban,readonly" \
   "$IMAGE"
+
+docker network connect "$DB_NETWORK" "$CONTAINER"

@@ -20,6 +20,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPT_PATH = join(__dirname, '..', 'scripts', 'run-critical-docker.sh');
 const SYNC_SCRIPT_PATH = join(__dirname, '..', 'scripts', 'sync-runtime-snapshots.sh');
 const COMPOSE_PATH = join(__dirname, '..', 'docker-compose.yml');
+const POSTGRES_COMPOSE_PATH = join(__dirname, '..', '..', 'postgres', 'docker-compose.yml');
 const execFileAsync = promisify(execFile);
 
 async function loadScript() {
@@ -30,6 +31,10 @@ async function loadCompose() {
   return readFile(COMPOSE_PATH, 'utf8');
 }
 
+async function loadPostgresCompose() {
+  return readFile(POSTGRES_COMPOSE_PATH, 'utf8');
+}
+
 test('run-critical-docker.sh requires PERSONAL_DASHBOARD_DATABASE_URL before docker run', async () => {
   const script = await loadScript();
   assert.match(
@@ -37,6 +42,27 @@ test('run-critical-docker.sh requires PERSONAL_DASHBOARD_DATABASE_URL before doc
     /PERSONAL_DASHBOARD_DATABASE_URL:\?Render PERSONAL_DASHBOARD_DATABASE_URL from Vaultwarden/,
     'fallback script must fail fast until the Postgres connection URL is rendered from Vaultwarden'
   );
+});
+
+test('run-critical-docker.sh manages the stable internal Postgres network before recreating the dashboard', async () => {
+  const script = await loadScript();
+
+  assert.match(
+    script,
+    /DB_NETWORK=\$\{PERSONAL_DASHBOARD_DB_NETWORK:-critical-internal\}/,
+    'fallback script must default the shared DB network to critical-internal'
+  );
+  assert.match(
+    script,
+    /DB_NETWORK_ALIAS=\$\{PERSONAL_DASHBOARD_DB_ALIAS:-postgres\}/,
+    'fallback script must default the Postgres alias to postgres'
+  );
+  assert.match(script, /docker network inspect "\$DB_NETWORK"/, 'fallback script must check for the DB network');
+  assert.match(script, /docker network create --internal "\$DB_NETWORK"/, 'fallback script must create the DB network as internal when absent');
+  assert.match(script, /docker inspect postgres/, 'fallback script must verify the Postgres container exists before recreate');
+  assert.match(script, /docker network connect --alias "\$DB_NETWORK_ALIAS" "\$DB_NETWORK" postgres/, 'fallback script must attach Postgres with the stable alias');
+  assert.match(script, /--network bridge \\/, 'dashboard must keep bridge egress/published-port behavior for status probes and Traefik');
+  assert.match(script, /docker network connect "\$DB_NETWORK" "\$CONTAINER"/, 'dashboard must also attach to the shared DB network');
 });
 
 test('run-critical-docker.sh passes Postgres env vars to docker run without embedding secret values', async () => {
@@ -153,9 +179,20 @@ test('docker-compose.yml mounts host-local runtime cache for read-only artifacts
 
   assert.match(compose, /PERSONAL_DASHBOARD_DATABASE_URL:\s*\$\{PERSONAL_DASHBOARD_DATABASE_URL:-\}/, 'Compose must pass the Postgres database URL from the rendered environment');
   assert.match(compose, /PGSSLMODE:\s*\$\{PGSSLMODE:-require\}/, 'Compose must default PGSSLMODE=require');
+  assert.match(compose, /networks:[\s\S]*?- default[\s\S]*?- critical-internal/, 'Compose must attach the dashboard to both default and stable DB networks');
+  assert.match(compose, /critical-internal:[\s\S]*?name:\s*critical-internal[\s\S]*?external:\s*true/, 'Dashboard Compose must consume the shared critical-internal network');
   assert.doesNotMatch(compose, /PERSONAL_DASHBOARD_DB_HOST_DIR/, 'Compose should not configure the old SQLite directory bind');
   assert.doesNotMatch(compose, /target:\s*\/app\/data/, 'Compose should not mount a writable /app/data SQLite directory');
   assert.doesNotMatch(compose, /PERSONAL_DASHBOARD_DB_FILE/, 'Compose should not pass the old SQLite DB file env var');
+});
+
+test('Postgres Compose owns the stable internal DB network and postgres alias', async () => {
+  const compose = await loadPostgresCompose();
+
+  assert.match(compose, /container_name:\s*postgres/, 'Postgres container name remains postgres');
+  assert.match(compose, /networks:[\s\S]*?critical-internal:[\s\S]*?aliases:[\s\S]*?- postgres/, 'Postgres service must attach with postgres alias');
+  assert.match(compose, /critical-internal:[\s\S]*?name:\s*critical-internal[\s\S]*?internal:\s*true/, 'Postgres Compose must create the internal critical-internal network');
+  assert.match(compose, /\/mnt\/nas\/services\/postgres:\/bitnami\/postgresql/, 'Postgres data mount must remain preserved');
 });
 
 test('sync-runtime-snapshots.sh copies expected source files into host-local cache layout', async () => {
