@@ -458,7 +458,7 @@ The dashboard's `KANBAN_DB_HOST_DIR` remains a read-only SQLite snapshot source 
 
 ## Documentation panel
 
-The dashboard includes an authenticated **Documentation** panel for a small allowlist of committed, non-secret Markdown files from the `home-lab` repository. The browser renders those Markdown files as structured documentation with headings, lists, tables, code blocks, safe links, per-document table of contents, stable heading anchors, grouped navigation, and selected-document state.
+The dashboard includes an authenticated **Documentation** panel for a small allowlist of committed, non-secret Markdown files from the `home-lab` repository. The browser renders those Markdown files as structured documentation with headings, lists, tables, code blocks, safe links, per-document table of contents, stable heading anchors, grouped navigation, client-side metadata search, and selected-document state.
 
 ### Safety model
 
@@ -538,7 +538,7 @@ Use this for UI-only behavior that the Node built-in test harness cannot prove r
 6. In Work, confirm the Kanban panel initially renders compactly, the **Expand board** / **Compact board** control toggles with `aria-expanded`, and the preference persists across reload via `localStorage`.
 7. Collapse and expand at least one Kanban lane; confirm its count/title remain visible, cards hide/show by keyboard-operable buttons, and the lane preference persists across reload.
 8. Confirm read-only mode is visible and card move controls remain disabled unless the server explicitly reports mutations enabled.
-9. In Knowledge, confirm Completed Epics and Documentation load; selecting a document still fetches by opaque manifest id.
+9. In Knowledge, confirm Completed Epics and Documentation load; selecting a document still fetches by opaque manifest id, and the docs search box filters the approved list with a clear no-match state.
 10. In Reports, confirm Finnick and Investment Screener load or show their existing safe empty/error states.
 11. With browser devtools open, confirm no console errors during initial load, tab changes, Kanban expand/collapse, docs selection, status refresh, and report refreshes.
 
