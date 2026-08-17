@@ -59,6 +59,14 @@ class FakeNode {
     await Promise.all(results);
   }
 
+
+  async input(value) {
+    this.value = value;
+    const event = { target: this };
+    const results = (this.listeners.get('input') ?? []).map((callback) => callback(event));
+    await Promise.all(results);
+  }
+
   querySelector(selector) {
     return this.querySelectorAll(selector)[0] ?? null;
   }
@@ -128,7 +136,7 @@ function createHarness() {
     'dashboard-title', 'sections', 'status-list', 'refresh-status', 'finnick-content', 'refresh-finnick',
     'investment-screener-content', 'refresh-investment-screener', 'investment-screener-controls',
     'investment-market-filter', 'investment-metric-filter', 'investment-weight-filter', 'investment-topn-filter',
-    'reset-investment-screener-filters', 'epics-list', 'docs-list', 'docs-content', 'refresh-docs',
+    'reset-investment-screener-filters', 'epics-list', 'docs-list', 'docs-content', 'docs-search', 'refresh-docs',
     'kanban-panel', 'kanban-board', 'kanban-message', 'refresh-kanban', 'toggle-kanban-density'
   ];
   for (const id of requiredIds) {
@@ -205,4 +213,22 @@ test('relative markdown doc links resolve to approved in-app document ids', asyn
   assert.ok(docLink, 'expected relative markdown link to map through approved /api/docs/:id route');
   assert.equal(docLink.getAttribute('target'), '_blank');
   assert.equal(content.querySelector('a[href="http://dashboard.local/cli-generator.md"]'), null);
+});
+
+
+test('documentation search filters approved docs and shows no-match state', async () => {
+  const { nodesById } = createHarness();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  const docsSearch = nodesById.get('docs-search');
+  await docsSearch.input('cli');
+
+  let buttons = nodesById.get('docs-list').querySelectorAll('button');
+  assert.equal(buttons.length, 1);
+  assert.equal(buttons[0].textContent, 'CLI and Generator');
+
+  await docsSearch.input('nope');
+  buttons = nodesById.get('docs-list').querySelectorAll('button');
+  assert.equal(buttons.length, 0);
+  assert.match(nodesById.get('docs-list').textContent, /No docs match “nope”/);
 });
