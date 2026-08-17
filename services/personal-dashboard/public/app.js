@@ -7,11 +7,16 @@ const refreshFinnickButton = document.querySelector('#refresh-finnick');
 const investmentScreenerContent = document.querySelector('#investment-screener-content');
 const refreshInvestmentScreenerButton = document.querySelector('#refresh-investment-screener');
 const investmentScreenerControls = document.querySelector('#investment-screener-controls');
+const investmentSearchFilter = document.querySelector('#investment-search-filter');
 const investmentMarketFilter = document.querySelector('#investment-market-filter');
 const investmentMetricFilter = document.querySelector('#investment-metric-filter');
 const investmentWeightFilter = document.querySelector('#investment-weight-filter');
 const investmentTopNFilter = document.querySelector('#investment-topn-filter');
 const resetInvestmentScreenerFiltersButton = document.querySelector('#reset-investment-screener-filters');
+const investmentPageSummary = document.querySelector('#investment-page-summary');
+const investmentPrevPageButton = document.querySelector('#investment-prev-page');
+const investmentNextPageButton = document.querySelector('#investment-next-page');
+let investmentScreenerOffset = 0;
 const epicsList = document.querySelector('#epics-list');
 const docsList = document.querySelector('#docs-list');
 const docsContent = document.querySelector('#docs-content');
@@ -540,29 +545,57 @@ if (refreshFinnickButton) {
 
 function investmentScreenerRequestPath() {
   const searchParams = new URLSearchParams();
+  const queryText = investmentSearchFilter?.value?.trim();
   const market = investmentMarketFilter?.value?.trim();
   const metric = investmentMetricFilter?.value?.trim();
   const weight = investmentWeightFilter?.value?.trim();
   const topN = investmentTopNFilter?.value?.trim();
+  if (queryText) searchParams.set('q', queryText);
   if (market) searchParams.set('market', market);
   if (metric && metric !== 'composite') searchParams.set('metric', metric);
   if (weight && weight !== 'balanced') searchParams.set('weight', weight);
-  if (topN && topN !== '6') searchParams.set('topN', topN);
+  if (topN) searchParams.set('limit', topN);
+  if (investmentScreenerOffset > 0) searchParams.set('offset', String(investmentScreenerOffset));
   const query = searchParams.toString();
   return query ? `/api/investment-screener/ranked?${query}` : '/api/investment-screener/ranked';
 }
 
 function investmentSuggestionLimit(payload) {
-  const serverLimit = payload?.applied_filters?.topN;
+  const serverLimit = payload?.pagination?.limit ?? payload?.applied_filters?.limit ?? payload?.applied_filters?.topN;
   const controlLimit = Number(investmentTopNFilter?.value ?? 6);
   const limit = Number.isInteger(serverLimit) ? serverLimit : controlLimit;
-  return Number.isInteger(limit) && limit > 0 ? Math.min(limit, 25) : 6;
+  return Number.isInteger(limit) && limit > 0 ? Math.min(limit, 100) : 6;
+}
+
+function updateInvestmentPaginationControls(payload) {
+  const pagination = payload && payload.pagination;
+  if (!pagination) {
+    if (investmentPageSummary) investmentPageSummary.textContent = 'Showing latest generated candidates.';
+    if (investmentPrevPageButton) investmentPrevPageButton.disabled = true;
+    if (investmentNextPageButton) investmentNextPageButton.disabled = true;
+    return;
+  }
+  const total = Number(pagination.total ?? payload.total_candidates ?? 0);
+  const offset = Number(pagination.offset ?? 0);
+  const count = Number(payload.displayed_count ?? 0);
+  const first = total === 0 ? 0 : offset + 1;
+  const last = Math.min(offset + count, total);
+  if (investmentPageSummary) investmentPageSummary.textContent = `Showing ${first}-${last} of ${total} candidates.`;
+  if (investmentPrevPageButton) {
+    investmentPrevPageButton.disabled = pagination.previous_offset === null || pagination.previous_offset === undefined;
+    investmentPrevPageButton.dataset.offset = String(pagination.previous_offset ?? 0);
+  }
+  if (investmentNextPageButton) {
+    investmentNextPageButton.disabled = pagination.next_offset === null || pagination.next_offset === undefined;
+    investmentNextPageButton.dataset.offset = String(pagination.next_offset ?? 0);
+  }
 }
 
 function renderInvestmentScreener(payload) {
   if (!investmentScreenerContent) return;
   const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
   const suggestionLimit = investmentSuggestionLimit(payload);
+  updateInvestmentPaginationControls(payload);
   const metaItems = [
     payload.mode ? `Mode: ${payload.mode}` : null,
     payload.generated_at ? `Generated: ${formatDateTime(payload.generated_at)}` : null,
@@ -643,6 +676,7 @@ async function refreshInvestmentScreener() {
       : error.message.includes('503')
         ? 'Investment screener output is not configured on this instance.'
         : `Investment screener unavailable: ${error.message}`;
+    updateInvestmentPaginationControls(null);
     investmentScreenerContent.replaceChildren(el('p', { className: 'error', text: msg }));
   } finally {
     if (refreshInvestmentScreenerButton) refreshInvestmentScreenerButton.disabled = false;
@@ -654,15 +688,40 @@ if (refreshInvestmentScreenerButton) {
 }
 
 if (investmentScreenerControls) {
-  investmentScreenerControls.addEventListener('change', refreshInvestmentScreener);
+  investmentScreenerControls.addEventListener('change', () => {
+    investmentScreenerOffset = 0;
+    refreshInvestmentScreener();
+  });
+  investmentScreenerControls.addEventListener('input', (event) => {
+    if (event.target === investmentSearchFilter) {
+      investmentScreenerOffset = 0;
+      refreshInvestmentScreener();
+    }
+  });
 }
 
 if (resetInvestmentScreenerFiltersButton) {
   resetInvestmentScreenerFiltersButton.addEventListener('click', () => {
+    if (investmentSearchFilter) investmentSearchFilter.value = '';
     if (investmentMarketFilter) investmentMarketFilter.value = '';
     if (investmentMetricFilter) investmentMetricFilter.value = 'composite';
     if (investmentWeightFilter) investmentWeightFilter.value = 'balanced';
     if (investmentTopNFilter) investmentTopNFilter.value = '6';
+    investmentScreenerOffset = 0;
+    refreshInvestmentScreener();
+  });
+}
+
+if (investmentPrevPageButton) {
+  investmentPrevPageButton.addEventListener('click', () => {
+    investmentScreenerOffset = Number(investmentPrevPageButton.dataset.offset ?? 0);
+    refreshInvestmentScreener();
+  });
+}
+
+if (investmentNextPageButton) {
+  investmentNextPageButton.addEventListener('click', () => {
+    investmentScreenerOffset = Number(investmentNextPageButton.dataset.offset ?? 0);
     refreshInvestmentScreener();
   });
 }

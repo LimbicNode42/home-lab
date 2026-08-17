@@ -541,6 +541,57 @@ test('GET /api/investment-screener/ranked normalizes bare CLI lists and can show
   }
 });
 
+
+
+test('GET /api/investment-screener/ranked paginates and searches a broad sanitized universe', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'investment-broad-universe-'));
+  const rankedPath = join(dir, 'latest_ranked.json');
+  const candidates = Array.from({ length: 32 }, (_unused, index) => ({
+    rank: index + 1,
+    ticker: `CO${String(index + 1).padStart(2, '0')}`,
+    name: index === 27 ? 'Needle Robotics' : `Coverage Company ${index + 1}`,
+    market: index % 3 === 0 ? 'US' : index % 3 === 1 ? 'JP' : 'EU',
+    currency: index % 3 === 0 ? 'USD' : index % 3 === 1 ? 'JPY' : 'EUR',
+    score: 95 - index,
+    sub_scores: { quality: 90 - index, valuation: 70 + (index % 10) }
+  }));
+  await writeFile(rankedPath, JSON.stringify({
+    mode: 'live',
+    generated_at: '2026-08-17T08:00:00Z',
+    data_as_of: '2026-08-16',
+    candidates
+  }), 'utf8');
+
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerRankedFile: rankedPath });
+  const server = await listen(app);
+  try {
+    const firstPage = await fetch(`${server.baseUrl}/api/investment-screener/ranked?limit=10&offset=0`);
+    const firstBody = await firstPage.json();
+    assert.equal(firstPage.status, 200);
+    assert.equal(firstBody.total_candidates, 32);
+    assert.equal(firstBody.displayed_count, 10);
+    assert.deepEqual(firstBody.pagination, { limit: 10, offset: 0, total: 32, has_more: true, next_offset: 10, previous_offset: null });
+    assert.deepEqual(firstBody.candidates.map((candidate) => candidate.ticker), ['CO01', 'CO02', 'CO03', 'CO04', 'CO05', 'CO06', 'CO07', 'CO08', 'CO09', 'CO10']);
+
+    const secondPage = await fetch(`${server.baseUrl}/api/investment-screener/ranked?limit=10&offset=10`);
+    const secondBody = await secondPage.json();
+    assert.equal(secondPage.status, 200);
+    assert.deepEqual(secondBody.candidates.map((candidate) => candidate.ticker), ['CO11', 'CO12', 'CO13', 'CO14', 'CO15', 'CO16', 'CO17', 'CO18', 'CO19', 'CO20']);
+    assert.deepEqual(secondBody.pagination, { limit: 10, offset: 10, total: 32, has_more: true, next_offset: 20, previous_offset: 0 });
+
+    const searched = await fetch(`${server.baseUrl}/api/investment-screener/ranked?q=needle&limit=10`);
+    const searchedBody = await searched.json();
+    assert.equal(searched.status, 200);
+    assert.equal(searchedBody.total_candidates, 1);
+    assert.deepEqual(searchedBody.candidates.map((candidate) => candidate.ticker), ['CO28']);
+    assert.deepEqual(searchedBody.applied_filters, { q: 'needle', limit: 10 });
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('GET /api/investment-screener/ranked returns a clear no-match message without leaking unsafe query paths', async () => {
   const rankedPath = new URL('./fixtures/investment-screener-ranked.json', import.meta.url);
   const configPath = await writeConfig(basicConfig);

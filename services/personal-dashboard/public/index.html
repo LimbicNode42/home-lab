@@ -109,6 +109,10 @@
             <button id="refresh-investment-screener" type="button">Refresh</button>
           </div>
           <form id="investment-screener-controls" class="investment-screener-controls" aria-label="Investment screener filters">
+            <label class="investment-search-control">
+              Search
+              <input id="investment-search-filter" name="q" type="search" placeholder="Ticker or company" autocomplete="off">
+            </label>
             <label>
               Market
               <select id="investment-market-filter" name="market">
@@ -177,7 +181,12 @@
             </label>
             <button id="reset-investment-screener-filters" type="button">Reset filters</button>
           </form>
-          <p class="muted investment-control-note">Market, score focus, weight preset, and suggestion count are applied to already-sanitized ranked data. Exchange, region, sector, and industry are shown but disabled until the screener exports those fields safely.</p>
+          <p class="muted investment-control-note">Search, market, score focus, weight preset, and page size are applied to already-sanitized ranked data. Exchange, region, sector, and industry are shown but disabled until the screener exports those fields safely.</p>
+          <div class="investment-pagination" aria-label="Investment screener pagination">
+            <button id="investment-prev-page" type="button" disabled>Previous</button>
+            <span id="investment-page-summary" class="muted">Showing latest page</span>
+            <button id="investment-next-page" type="button" disabled>Next</button>
+          </div>
           <div id="investment-screener-content" class="investment-screener-content" aria-live="polite">
             <p class="muted">Loading investment screener output…</p>
           </div>
