@@ -33,6 +33,7 @@ copy_snapshot() {
 cleanup() {
   rm -f \
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/config/dashboard.public.json.tmp.$$" \
+    "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/config/home-lab-committed-files.txt.tmp.$$" \
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/finnick/latest_report.txt.tmp.$$" \
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/investment-screener/latest_report.txt.tmp.$$" \
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/investment-screener/latest_ranked.json.tmp.$$" \
@@ -45,6 +46,9 @@ mkdir -p "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR"
 copy_snapshot "$APP_DIR/config/dashboard.public.json" \
   "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/config/dashboard.public.json" \
   "Dashboard public config"
+copy_snapshot "$APP_DIR/config/home-lab-committed-files.txt" \
+  "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/config/home-lab-committed-files.txt" \
+  "Home-lab committed files manifest"
 copy_snapshot "$FINNICK_REPORT_HOST_DIR/latest_report.txt" \
   "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/finnick/latest_report.txt" \
   "Finnick report"
