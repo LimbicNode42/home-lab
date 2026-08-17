@@ -44,7 +44,7 @@ test('dashboard investment screener exposes filtering and suggestion-count contr
   assert.match(appSource, /function investmentScreenerRequestPath\(\)/);
   assert.match(appSource, /searchParams\.set\('market'/);
   assert.match(appSource, /searchParams\.set\('metric'/);
-  assert.match(appSource, /searchParams\.set\('topN'/);
+  assert.match(appSource, /searchParams\.set\('limit'/);
 });
 
 
@@ -53,4 +53,22 @@ test('dashboard investment screener renders filter messages, no-match states, an
   assert.match(appSource, /No candidates match/i);
   assert.match(appSource, /investmentTopNFilter/);
   assert.match(appSource, /candidates\.slice\(0, suggestionLimit\)/);
+});
+
+
+test('dashboard investment screener exposes search and pagination controls for broader coverage', async () => {
+  const indexSource = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  for (const id of [
+    'investment-search-filter',
+    'investment-page-summary',
+    'investment-prev-page',
+    'investment-next-page'
+  ]) {
+    assert.match(indexSource, new RegExp(`id="${id}"`));
+  }
+  assert.match(appSource, /searchParams\.set\('q'/);
+  assert.match(appSource, /searchParams\.set\('limit'/);
+  assert.match(appSource, /searchParams\.set\('offset'/);
+  assert.match(appSource, /function updateInvestmentPaginationControls\(/);
+  assert.match(appSource, /payload\.pagination/);
 });

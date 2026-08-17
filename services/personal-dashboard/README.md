@@ -304,8 +304,10 @@ Available controls:
 | Exchange / Region / Sector / Industry | Disabled until those fields are present in the sanitized ranked export. The backend accepts those query keys only to return a clear unsupported-filter error instead of pretending an empty result is meaningful. |
 | Score focus | Re-sorts the already-sanitized candidates by a public sub-score. Supported safe values are `composite`/default, `quality`, `valuation`, `growth`, `graham_safety`, `durability`, and `risk_adjustments`. |
 | Weight preset | Applies the same public sub-score sort as a preset tilt. Supported safe values are `balanced`/default, `quality`, `valuation`, `growth`, `graham_safety`, `durability`, and `risk_adjustments`. |
-| Suggestions | Limits the rendered suggestions to Top 3, Top 6, Top 10, or Top 25. The API validates `topN` as an integer from 1 to 25. |
-| Reset filters | Restores All markets, Composite score, Balanced weight, and Top 6 suggestions, then refreshes the panel. |
+| Search | Searches the sanitized candidate universe by ticker, company name, market, or currency using plain text. |
+| Suggestions | Sets the page size to 3, 6, 10, or 25 visible candidates. The API also accepts `limit` up to 100 for clients that need larger pages. |
+| Previous / Next | Pages through the sanitized candidate universe without requiring the generator to emit only a tiny top-N list. |
+| Reset filters | Clears search, restores All markets, Composite score, Balanced weight, and Top 6 page size, then refreshes the first page. |
 
 The panel renders ranked candidates with ticker, name, market/currency, score, selected risk flags, caveats, generated timestamp, data-as-of timestamp, limitations, and links to the committed investment screener product docs.
 
@@ -315,13 +317,16 @@ The panel renders ranked candidates with ticker, name, market/currency, score, s
 
 | Parameter | Accepted values | Behavior |
 | --- | --- | --- |
+| `q` | Plain text company/ticker search matching `/^[\p{L}\p{N}][\p{L}\p{N} ._&'()-]{0,119}$/u` | Case-insensitive contains search over sanitized ticker, name, market, and currency fields. |
 | `market` | Plain market label matching `/^[a-z0-9][a-z0-9 ._-]{0,79}$/i` | Exact, case-insensitive match against candidate `market`. |
 | `exchange`, `region`, `sector`, `industry` | Any non-empty value currently rejected | Returns `400 unsupported_investment_screener_filter` because these fields are not available in the sanitized dashboard export yet. |
 | `metric` | `composite`, `quality`, `valuation`, `growth`, `graham_safety`, `durability`, `risk_adjustments` | Re-sorts by the selected public sub-score unless `composite` is selected. |
 | `weight` | `balanced`, `quality`, `valuation`, `growth`, `graham_safety`, `durability`, `risk_adjustments` | Re-sorts by the selected tilt unless `balanced` is selected. |
-| `topN` | Integer `1` through `25` | Limits the returned/rendered candidate list. Defaults to 6 when filters are active and no top-N is provided. |
+| `topN` | Integer `1` through `100` | Backward-compatible alias for page size when `limit` is absent. |
+| `limit` | Integer `1` through `100` | Candidate page size. Defaults to 25 when filters are active and no page size is provided. |
+| `offset` | Non-negative integer | Candidate page offset for browsing beyond the first page. |
 
-Unsupported query keys return `400 unsupported_investment_screener_filter`. Invalid market labels, metric values, weight presets, or top-N values return `400 invalid_investment_screener_filter`. When filters are valid but match nothing, the API returns `200` with an empty `candidates` list and the message: "No candidates match the selected investment screener filters. Try clearing one filter or waiting for richer ranked data." No-match is not treated as a server error; the goblin found zero mushrooms, not a fire.
+Unsupported query keys return `400 unsupported_investment_screener_filter`. Invalid search text, market labels, metric values, weight presets, page limits, offsets, or top-N values return `400 invalid_investment_screener_filter`. When filters are valid but match nothing, the API returns `200` with an empty `candidates` list and the message: "No candidates match the selected investment screener filters. Try clearing one filter or waiting for richer ranked data." No-match is not treated as a server error; the goblin found zero mushrooms, not a fire.
 
 Other user-visible error states:
 
@@ -368,12 +373,15 @@ The screener CLI `--output` file is now the dashboard-safe ranked JSON object co
 }
 ```
 
-The dashboard API reads that object, sanitizes it again, caps `candidates` and `excluded` to 25 rows each, normalizes `mode` to `fixture`, `live`, or `unknown`, and adds the dashboard-only fields `disclaimer` and `doc_links`. When API query filters are active, it also adds `applied_filters` and `messages`, for example:
+The dashboard API reads that object, sanitizes it again, caps sanitized `candidates` and `excluded` to 500 rows each before API filtering/pagination, normalizes `mode` to `fixture`, `live`, or `unknown`, and adds the dashboard-only fields `disclaimer` and `doc_links`. When API query filters are active, it also adds `applied_filters` and `messages`, for example:
 
 ```json
 {
-  "applied_filters": { "market": "US", "metric": "quality", "weight": "quality", "topN": 3 },
-  "messages": ["Showing 3 candidates after the selected filters."]
+  "applied_filters": { "q": "berkshire", "market": "US", "metric": "quality", "weight": "quality", "limit": 10 },
+  "total_candidates": 1,
+  "displayed_count": 1,
+  "pagination": { "limit": 10, "offset": 0, "total": 1, "has_more": false, "next_offset": null, "previous_offset": null },
+  "messages": ["Showing 1 of 1 candidate after the selected filters."]
 }
 ```
 
