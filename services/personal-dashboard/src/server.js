@@ -251,18 +251,44 @@ function parseDiaryListParams(searchParams) {
   return { limit: parsedLimit, offset: parsedOffset };
 }
 
-async function initPersonalDataStore({ postgresConnectionString, postgresPool, postgresSsl } = {}) {
-  if (postgresConnectionString || postgresPool) {
-    try {
-      return { store: await createPostgresPersonalDataStore({ connectionString: postgresConnectionString, pool: postgresPool, ssl: postgresSsl }), unavailable: false, configured: true };
-    } catch (err) {
-      if (typeof console?.warn === 'function') {
-        console.warn('Personal dashboard Postgres data store unavailable', { code: err?.code, name: err?.name });
-      }
-      return { store: null, unavailable: true, configured: true };
+function createPersonalDataState({ postgresConnectionString, postgresPool, postgresSsl } = {}) {
+  const configured = Boolean(postgresConnectionString || postgresPool);
+  let store = null;
+  let initializing = null;
+
+  async function initialize() {
+    if (!configured) return null;
+    if (store) return store;
+    if (!initializing) {
+      initializing = createPostgresPersonalDataStore({ connectionString: postgresConnectionString, pool: postgresPool, ssl: postgresSsl })
+        .then((createdStore) => {
+          store = createdStore;
+          return store;
+        })
+        .catch((err) => {
+          if (typeof console?.warn === 'function') {
+            console.warn('Personal dashboard Postgres data store unavailable', { code: err?.code, name: err?.name });
+          }
+          throw err;
+        })
+        .finally(() => {
+          initializing = null;
+        });
     }
+    return initializing;
   }
-  return { store: null, unavailable: false, configured: false };
+
+  return {
+    configured,
+    async getStore() {
+      if (!configured) return { store: null, unavailable: false, configured };
+      try {
+        return { store: await initialize(), unavailable: false, configured };
+      } catch {
+        return { store: null, unavailable: true, configured };
+      }
+    }
+  };
 }
 
 function isoFromUnixSeconds(value) {
@@ -1244,7 +1270,7 @@ export async function createApp(options = {}) {
     : null;
   assertSafeAuth({ authMode, nodeEnv, allowDisabledAuth });
 
-  const personalData = await initPersonalDataStore({
+  const personalDataState = createPersonalDataState({
     postgresConnectionString: personalDataDatabaseUrl,
     postgresPool: personalDataPostgresPool,
     postgresSsl: process.env.PGSSLMODE === 'disable' ? false : undefined
@@ -1307,6 +1333,7 @@ export async function createApp(options = {}) {
 
       const diaryEntryMatch = /^\/api\/diary\/entries\/([^/]+)$/.exec(url.pathname);
       if (url.pathname === '/api/diary/entries' || diaryEntryMatch) {
+        const personalData = await personalDataState.getStore();
         if (!personalData.configured) {
           return json(response, 503, personalDataNotConfiguredPayload());
         }
@@ -1352,6 +1379,7 @@ export async function createApp(options = {}) {
 
       const goalMatch = /^\/api\/goals\/([^/]+)$/.exec(url.pathname);
       if (url.pathname === '/api/goals' || goalMatch) {
+        const personalData = await personalDataState.getStore();
         if (!personalData.configured) {
           return json(response, 503, personalDataNotConfiguredPayload());
         }
