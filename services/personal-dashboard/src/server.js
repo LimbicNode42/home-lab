@@ -766,7 +766,9 @@ function sanitizeRuntimeDocContent(content) {
 
 
 const INVESTMENT_SCREENER_DISCLAIMER = 'Informational screener output only; not financial advice or a trading recommendation.';
-const INVESTMENT_SCREENER_CANDIDATE_LIMIT = 25;
+const INVESTMENT_SCREENER_DEFAULT_PAGE_SIZE = 25;
+const INVESTMENT_SCREENER_MAX_PAGE_SIZE = 100;
+const INVESTMENT_SCREENER_MAX_CANDIDATES = 500;
 const INVESTMENT_SCREENER_REPORT_MAX_BYTES = 96 * 1024;
 const INVESTMENT_SCREENER_REPORT_MAX_CHARS = 48 * 1024;
 const INVESTMENT_SCREENER_DOC_LINKS = [
@@ -779,7 +781,7 @@ const INVESTMENT_SCREENER_FILTERABLE_FIELDS = new Set(['market']);
 const INVESTMENT_SCREENER_UNAVAILABLE_FIELDS = new Set(['exchange', 'region', 'sector', 'industry']);
 const INVESTMENT_SCREENER_METRIC_VALUES = new Set(['composite', 'quality', 'valuation', 'growth', 'graham_safety', 'durability', 'risk_adjustments']);
 const INVESTMENT_SCREENER_WEIGHT_VALUES = new Set(['balanced', 'quality', 'valuation', 'growth', 'graham_safety', 'durability', 'risk_adjustments']);
-const INVESTMENT_SCREENER_QUERY_KEYS = new Set(['market', 'exchange', 'region', 'sector', 'industry', 'metric', 'weight', 'topN']);
+const INVESTMENT_SCREENER_QUERY_KEYS = new Set(['market', 'exchange', 'region', 'sector', 'industry', 'metric', 'weight', 'topN', 'q', 'limit', 'offset']);
 
 function isForbiddenRuntimeValue(value) {
   if (value === null || value === undefined) return false;
@@ -881,10 +883,10 @@ function normalizeInvestmentRankedPayload(raw) {
 function sanitizeInvestmentRankedPayload(raw, fileMtime) {
   const source = normalizeInvestmentRankedPayload(raw);
   const candidates = Array.isArray(source.candidates)
-    ? source.candidates.map((candidate, index) => sanitizeInvestmentCandidate(candidate, index)).filter(Boolean).slice(0, INVESTMENT_SCREENER_CANDIDATE_LIMIT)
+    ? source.candidates.map((candidate, index) => sanitizeInvestmentCandidate(candidate, index)).filter(Boolean).slice(0, INVESTMENT_SCREENER_MAX_CANDIDATES)
     : [];
   const excluded = Array.isArray(source.excluded)
-    ? source.excluded.map((candidate, index) => sanitizeInvestmentCandidate(candidate, index)).filter(Boolean).slice(0, INVESTMENT_SCREENER_CANDIDATE_LIMIT)
+    ? source.excluded.map((candidate, index) => sanitizeInvestmentCandidate(candidate, index)).filter(Boolean).slice(0, INVESTMENT_SCREENER_MAX_CANDIDATES)
     : [];
   return {
     mode: safeMode(source.mode),
@@ -947,16 +949,66 @@ function readInvestmentFilterParams(searchParams) {
     if (weight !== 'balanced') applied.weight = weight;
   }
 
+  const q = safeText(searchParams.get('q'), null, 120);
+  if (q) {
+    if (!/^[\p{L}\p{N}][\p{L}\p{N} ._&'()-]{0,119}$/u.test(q)) {
+      return investmentFilterError('invalid_investment_screener_filter', 'Investment screener search must use plain company or ticker text.');
+    }
+    applied.q = q;
+  } else if (searchParams.has('q') && String(searchParams.get('q') ?? '').trim()) {
+    return investmentFilterError('invalid_investment_screener_filter', 'Investment screener search must use plain company or ticker text.');
+  }
+
   const topNRaw = searchParams.get('topN');
   if (topNRaw !== null && topNRaw !== '') {
     const topN = Number(topNRaw);
-    if (!Number.isInteger(topN) || topN < 1 || topN > INVESTMENT_SCREENER_CANDIDATE_LIMIT) {
-      return investmentFilterError('invalid_investment_screener_filter', `topN must be an integer from 1 to ${INVESTMENT_SCREENER_CANDIDATE_LIMIT}.`);
+    if (!Number.isInteger(topN) || topN < 1 || topN > INVESTMENT_SCREENER_MAX_PAGE_SIZE) {
+      return investmentFilterError('invalid_investment_screener_filter', `topN must be an integer from 1 to ${INVESTMENT_SCREENER_MAX_PAGE_SIZE}.`);
     }
     applied.topN = topN;
   }
 
+  const limitRaw = searchParams.get('limit');
+  if (limitRaw !== null && limitRaw !== '') {
+    const limit = Number(limitRaw);
+    if (!Number.isInteger(limit) || limit < 1 || limit > INVESTMENT_SCREENER_MAX_PAGE_SIZE) {
+      return investmentFilterError('invalid_investment_screener_filter', `limit must be an integer from 1 to ${INVESTMENT_SCREENER_MAX_PAGE_SIZE}.`);
+    }
+    applied.limit = limit;
+  }
+
+  const offsetRaw = searchParams.get('offset');
+  if (offsetRaw !== null && offsetRaw !== '') {
+    const offset = Number(offsetRaw);
+    if (!Number.isInteger(offset) || offset < 0 || offset > 10000) {
+      return investmentFilterError('invalid_investment_screener_filter', 'offset must be a non-negative integer.');
+    }
+    applied.offset = offset;
+  }
+
   return { applied, active: Object.keys(applied).length > 0 || [...searchParams.keys()].length > 0 };
+}
+
+function searchInvestmentCandidates(candidates, query) {
+  if (!query) return candidates;
+  const needle = query.toLowerCase();
+  return candidates.filter((candidate) => [candidate.ticker, candidate.name, candidate.market, candidate.currency]
+    .some((value) => String(value ?? '').toLowerCase().includes(needle)));
+}
+
+function investmentPagination(total, limit, offset) {
+  const safeLimit = Number.isInteger(limit) && limit > 0 ? Math.min(limit, INVESTMENT_SCREENER_MAX_PAGE_SIZE) : INVESTMENT_SCREENER_DEFAULT_PAGE_SIZE;
+  const safeOffset = Number.isInteger(offset) && offset > 0 ? offset : 0;
+  const nextOffset = safeOffset + safeLimit < total ? safeOffset + safeLimit : null;
+  const previousOffset = safeOffset > 0 ? Math.max(0, safeOffset - safeLimit) : null;
+  return {
+    limit: safeLimit,
+    offset: safeOffset,
+    total,
+    has_more: nextOffset !== null,
+    next_offset: nextOffset,
+    previous_offset: previousOffset
+  };
 }
 
 function applyInvestmentScreenerFilters(payload, searchParams) {
@@ -973,6 +1025,8 @@ function applyInvestmentScreenerFilters(payload, searchParams) {
     candidates = candidates.filter((candidate) => String(candidate.market ?? '').toLowerCase() === wanted);
   }
 
+  candidates = searchInvestmentCandidates(candidates, applied.q);
+
   const sortMetric = applied.metric ?? (applied.weight && applied.weight !== 'balanced' ? applied.weight : null);
   if (sortMetric) {
     candidates.sort((left, right) => {
@@ -982,12 +1036,15 @@ function applyInvestmentScreenerFilters(payload, searchParams) {
     });
   }
 
-  const topN = applied.topN ?? 6;
-  candidates = candidates.slice(0, topN);
+  const total = candidates.length;
+  const limit = applied.limit ?? applied.topN ?? INVESTMENT_SCREENER_DEFAULT_PAGE_SIZE;
+  const offset = applied.offset ?? 0;
+  const pagination = investmentPagination(total, limit, offset);
+  candidates = candidates.slice(pagination.offset, pagination.offset + pagination.limit);
   if (candidates.length === 0) {
     messages.push('No candidates match the selected investment screener filters. Try clearing one filter or waiting for richer ranked data.');
   } else {
-    messages.push(`Showing ${candidates.length} candidate${candidates.length === 1 ? '' : 's'} after the selected filters.`);
+    messages.push(`Showing ${candidates.length} of ${total} candidate${total === 1 ? '' : 's'} after the selected filters.`);
   }
 
   return {
@@ -996,6 +1053,9 @@ function applyInvestmentScreenerFilters(payload, searchParams) {
       ...payload,
       candidates,
       applied_filters: applied,
+      total_candidates: total,
+      displayed_count: candidates.length,
+      pagination,
       messages
     }
   };
