@@ -30,13 +30,16 @@ test('dashboard docs viewer preserves link safety for markdown links', () => {
 
 test('dashboard docs list supports grouping and selected document state', () => {
   assert.match(appSource, /function groupDocsByCategory\(/);
+  assert.match(appSource, /function filterDocs\(/);
+  assert.match(appSource, /const docsSearch = document\.querySelector\('#docs-search'\)/);
+  assert.match(appSource, /docsSearch\.addEventListener\('input', applyDocsFilter\)/);
   assert.match(appSource, /className: 'doc-group'/);
   assert.match(appSource, /classList\.toggle\('is-selected'/);
   assert.match(appSource, /aria-current', selected \? 'true' : 'false'/);
 });
 
 test('dashboard docs CSS styles markdown, toc, selected state, tables, and code blocks', () => {
-  for (const selector of ['.doc-markdown', '.doc-toc', '.doc-picker.is-selected', '.doc-markdown table', '.doc-markdown pre', '.doc-markdown code']) {
+  for (const selector of ['.doc-markdown', '.doc-toc', '.doc-picker.is-selected', '.docs-actions', '#docs-search', '.doc-markdown table', '.doc-markdown pre', '.doc-markdown code']) {
     assert.match(stylesSource, new RegExp(selector.replace('.', '\\.')));
   }
 });

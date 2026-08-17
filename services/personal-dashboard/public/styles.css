@@ -187,6 +187,10 @@ h2, h3 { margin-top: 0; }
 .investment-doc-links { margin-top: 0.85rem; }
 
 /* Documentation viewer */
+.docs-actions { align-items: center; }
+.docs-search-label { min-width: min(16rem, 100%); }
+#docs-search { width: 100%; min-height: 2.45rem; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .docs-layout { display: grid; grid-template-columns: minmax(210px, 0.34fr) minmax(0, 1fr); gap: 1rem; margin-top: 1rem; align-items: start; }
 .docs-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.75rem; }
 .doc-group { padding: 0.65rem; border: 1px solid #273244; border-radius: 0.8rem; background: #111827; }
