@@ -59,6 +59,26 @@ Rollback: restore the previous Vaultwarden `database_url` host component, re-ren
 from `critical-internal` only if the recreated container still has the unwanted
 network attachment. Do not remove Postgres data or rotate credentials.
 
+## Diary/Goals 503 triage
+
+If `/api/goals` or `/api/diary/entries` returns `personal_data_unavailable`, first
+check deployment config rather than assuming the frontend lost state:
+
+1. Verify the dashboard env has `PERSONAL_DASHBOARD_DATABASE_URL` and redacted host
+   component points at the stable `postgres` alias, not a raw Docker bridge IP.
+2. Verify Postgres is running and attached to `critical-internal` with alias
+   `postgres`.
+3. From the dashboard container network context, verify DNS/TCP to `postgres:5432`
+   and then run an app-only `SELECT 1` without printing the URL or password.
+4. Sample authenticated API load and save paths with obviously fake content, then
+   delete only the exact fake rows if a smoke write succeeded.
+
+The server retries Postgres initialization on later Diary/Goals requests after an
+initial connection failure, so a temporary database startup race should recover
+without wiping data or restarting the dashboard. A persistent 503 after the database
+is healthy usually means the rendered DB endpoint/secret is still wrong and should
+be corrected through the stable-alias deploy path above.
+
 ## Recovery when stale handles recur
 
 If dashboard APIs fail while host-side files remain readable, check inside the running container:
