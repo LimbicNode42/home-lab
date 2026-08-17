@@ -148,7 +148,7 @@ h2, h3 { margin-top: 0; }
   background: #0e1626;
 }
 .investment-screener-controls label { display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.82rem; color: #9aa7b4; }
-.investment-screener-controls select {
+.investment-screener-controls select, .investment-screener-controls input {
   width: 100%;
   border: 1px solid #3b4658;
   border-radius: 0.55rem;
@@ -157,6 +157,8 @@ h2, h3 { margin-top: 0; }
   background: #111827;
 }
 .investment-screener-controls select:disabled { opacity: 0.58; cursor: not-allowed; }
+.investment-search-control { grid-column: span 2; }
+.investment-pagination { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.75rem; flex-wrap: wrap; }
 .investment-control-note { margin: 0.55rem 0 0; font-size: 0.82rem; }
 .investment-filter-messages { margin: 0.55rem 0 0.85rem; padding-left: 1.1rem; font-size: 0.84rem; }
 .investment-screener-card {
