@@ -208,6 +208,7 @@ test('sync-runtime-snapshots.sh copies expected source files into host-local cac
   await mkdir(investmentDir, { recursive: true });
   await mkdir(kanbanDir, { recursive: true });
   await writeFile(join(appDir, 'config', 'dashboard.public.json'), '{"title":"Cache Test"}\n', 'utf8');
+  await writeFile(join(appDir, 'config', 'home-lab-committed-files.txt'), 'services/personal-dashboard/README.md\n', 'utf8');
   await writeFile(join(finnickDir, 'latest_report.txt'), 'finnick report\n', 'utf8');
   await writeFile(join(investmentDir, 'latest_report.txt'), 'investment report\n', 'utf8');
   await writeFile(join(investmentDir, 'latest_ranked.json'), '{"candidates":[]}\n', 'utf8');
@@ -226,6 +227,7 @@ test('sync-runtime-snapshots.sh copies expected source files into host-local cac
     });
 
     assert.equal(await readFile(join(cacheDir, 'config', 'dashboard.public.json'), 'utf8'), '{"title":"Cache Test"}\n');
+    assert.equal(await readFile(join(cacheDir, 'config', 'home-lab-committed-files.txt'), 'utf8'), 'services/personal-dashboard/README.md\n');
     assert.equal(await readFile(join(cacheDir, 'finnick', 'latest_report.txt'), 'utf8'), 'finnick report\n');
     assert.equal(await readFile(join(cacheDir, 'investment-screener', 'latest_report.txt'), 'utf8'), 'investment report\n');
     assert.equal(await readFile(join(cacheDir, 'investment-screener', 'latest_ranked.json'), 'utf8'), '{"candidates":[]}\n');
