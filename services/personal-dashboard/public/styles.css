@@ -210,6 +210,8 @@ h2, h3 { margin-top: 0; }
   background: #111827;
 }
 .doc-viewer-card { min-width: 0; }
+.doc-viewer-summary { display: grid; gap: 0.65rem; }
+.doc-reopen-button { justify-self: start; }
 .doc-viewer-title { font-size: 1.1rem; font-weight: 800; margin-bottom: 0.25rem; }
 .doc-rendered { margin-top: 1rem; }
 .doc-rendered.has-toc { display: grid; grid-template-columns: minmax(0, 1fr) minmax(11rem, 0.28fr); gap: 1rem; align-items: start; }
@@ -240,6 +242,36 @@ h2, h3 { margin-top: 0; }
 .doc-markdown th { color: #f0f6fc; background: #0e1626; }
 .doc-markdown tr:last-child td { border-bottom: 0; }
 .doc-viewer-content { display: none; }
+.doc-reader-open { overflow: hidden; }
+.doc-reader-modal[hidden] { display: none; }
+.doc-reader-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: clamp(0.75rem, 3vw, 2rem);
+}
+.doc-reader-backdrop { position: absolute; inset: 0; background: rgba(3, 7, 18, 0.78); backdrop-filter: blur(8px); }
+.doc-reader-dialog {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  width: min(72rem, 100%);
+  max-height: min(86vh, 58rem);
+  border: 1px solid #3b4658;
+  border-radius: 1rem;
+  background: #0d1117;
+  box-shadow: 0 1.5rem 5rem rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+.doc-reader-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1rem 1.1rem; border-bottom: 1px solid #273244; background: #111827; }
+.doc-reader-header h2 { margin: 0 0 0.2rem; }
+.doc-reader-content { flex: 1; min-height: 0; overflow: auto; padding: clamp(1rem, 2.4vw, 1.6rem); }
+.doc-reader-content .doc-rendered { margin-top: 0; }
+.doc-reader-content .doc-toc { top: 1rem; max-height: calc(86vh - 9rem); }
+
 
 /* Kanban board */
 .board-message { margin: 0.2rem 0 0; font-size: 0.9rem; }
@@ -340,6 +372,10 @@ h2, h3 { margin-top: 0; }
   .docs-layout { grid-template-columns: 1fr; }
   .doc-rendered.has-toc { grid-template-columns: 1fr; }
   .doc-toc { position: static; order: 0; max-height: none; }
+  .doc-reader-modal { align-items: stretch; padding: 0.5rem; }
+  .doc-reader-dialog { max-height: calc(100vh - 1rem); }
+  .doc-reader-header { flex-direction: column; }
+  .doc-reader-header button { align-self: flex-start; }
   .kanban-board { grid-template-columns: 1fr; }
 }
 

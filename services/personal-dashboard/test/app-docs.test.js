@@ -38,8 +38,17 @@ test('dashboard docs list supports grouping and selected document state', () => 
   assert.match(appSource, /aria-current', selected \? 'true' : 'false'/);
 });
 
-test('dashboard docs CSS styles markdown, toc, selected state, tables, and code blocks', () => {
-  for (const selector of ['.doc-markdown', '.doc-toc', '.doc-picker.is-selected', '.docs-actions', '#docs-search', '.doc-markdown table', '.doc-markdown pre', '.doc-markdown code']) {
+test('dashboard docs CSS styles markdown, toc, selected state, tables, code blocks, and the modal reader', () => {
+  for (const selector of ['.doc-markdown', '.doc-toc', '.doc-picker.is-selected', '.docs-actions', '#docs-search', '.doc-markdown table', '.doc-markdown pre', '.doc-markdown code', '.doc-reader-modal', '.doc-reader-dialog', '.doc-reader-content']) {
     assert.match(stylesSource, new RegExp(selector.replace('.', '\\.')));
   }
+});
+
+
+test('dashboard docs viewer includes modal reader focus and close handling', () => {
+  assert.match(appSource, /const docReaderModal = document\.querySelector\('#doc-reader-modal'\)/);
+  assert.match(appSource, /function openDocReader\(/);
+  assert.match(appSource, /function closeDocReader\(/);
+  assert.match(appSource, /event\.key === 'Escape'/);
+  assert.match(appSource, /trapDocReaderFocus/);
 });

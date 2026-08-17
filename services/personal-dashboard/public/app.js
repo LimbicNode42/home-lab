@@ -20,6 +20,12 @@ let investmentScreenerOffset = 0;
 const epicsList = document.querySelector('#epics-list');
 const docsList = document.querySelector('#docs-list');
 const docsContent = document.querySelector('#docs-content');
+const docReaderModal = document.querySelector('#doc-reader-modal');
+const docReaderDialog = document.querySelector('#doc-reader-dialog');
+const docReaderTitle = document.querySelector('#doc-reader-title');
+const docReaderMeta = document.querySelector('#doc-reader-meta');
+const docReaderContent = document.querySelector('#doc-reader-content');
+const closeDocReaderButton = document.querySelector('#close-doc-reader');
 const docsSearch = document.querySelector('#docs-search');
 const refreshDocsButton = document.querySelector('#refresh-docs');
 const kanbanPanel = document.querySelector('#kanban-panel');
@@ -730,7 +736,9 @@ if (investmentNextPageButton) {
 let selectedDocId = null;
 let selectedDocPath = null;
 let docsByPath = new Map();
+let docsById = new Map();
 let currentDocs = [];
+let lastDocReaderFocus = null;
 
 function groupDocsByCategory(documents) {
   const groups = new Map();
@@ -781,7 +789,7 @@ function renderDocList(documents, { totalCount = documents.length, query = docsS
         'aria-current': selected ? 'true' : 'false'
       });
       button.classList.toggle('is-selected', selected);
-      button.addEventListener('click', () => loadDoc(doc));
+      button.addEventListener('click', () => loadDoc(doc, { sourceElement: button }));
       return el('li', { className: 'doc-picker-item' }, [button, el('span', { className: 'muted doc-path', text: doc.path })]);
     });
     docsList.append(el('li', { className: 'doc-group' }, [
@@ -927,6 +935,62 @@ function renderMarkdownToc(headings) {
   ]);
 }
 
+
+function setBodyModalOpen(open) {
+  try {
+    document.body?.classList?.toggle('doc-reader-open', open);
+  } catch {
+    // The reader must still work in minimal DOM/test harnesses.
+  }
+}
+
+function docReaderFocusableElements() {
+  if (!docReaderModal?.querySelectorAll) return [];
+  return [...docReaderModal.querySelectorAll('button, a[href], input, select, textarea, [tabindex="0"]')]
+    .filter((node) => !node.disabled && node.getAttribute?.('aria-hidden') !== 'true');
+}
+
+function openDocReader(sourceElement = null) {
+  if (!docReaderModal) return;
+  lastDocReaderFocus = sourceElement ?? document.activeElement ?? null;
+  docReaderModal.hidden = false;
+  docReaderModal.setAttribute('aria-hidden', 'false');
+  setBodyModalOpen(true);
+  closeDocReaderButton?.focus?.();
+}
+
+function closeDocReader({ restoreFocus = true } = {}) {
+  if (!docReaderModal || docReaderModal.hidden) return;
+  docReaderModal.hidden = true;
+  docReaderModal.setAttribute('aria-hidden', 'true');
+  setBodyModalOpen(false);
+  if (restoreFocus) lastDocReaderFocus?.focus?.();
+}
+
+function trapDocReaderFocus(event) {
+  if (event.key !== 'Tab' || !docReaderModal || docReaderModal.hidden) return;
+  const focusable = docReaderFocusableElements();
+  if (focusable.length === 0) return;
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus?.();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus?.();
+  }
+}
+
+function renderDocShell(target, data, doc) {
+  if (!target) return;
+  target.replaceChildren(renderMarkdownDocument(data.content ?? ''));
+  if (target === docReaderContent) {
+    if (docReaderTitle) docReaderTitle.textContent = data.title ?? doc.title ?? doc.id;
+    if (docReaderMeta) docReaderMeta.textContent = data.path ?? doc.path ?? '';
+  }
+}
+
 function renderMarkdownDocument(markdown) {
   const lines = String(markdown ?? '').split(/\r?\n/);
   const headings = markdownHeadings(markdown);
@@ -1049,26 +1113,34 @@ function renderMarkdownDocument(markdown) {
   return el('div', { className: toc ? 'doc-rendered has-toc' : 'doc-rendered' }, toc ? [toc, body] : [body]);
 }
 
-async function loadDoc(doc) {
-  if (!docsContent || !doc?.id) return;
+async function loadDoc(doc, { sourceElement = null } = {}) {
+  if (!doc?.id) return;
   selectedDocId = doc.id;
   selectedDocPath = doc.path ?? null;
-  docsContent.replaceChildren(el('p', { className: 'muted', text: `Loading ${doc.title ?? doc.id}…` }));
+  const label = doc.title ?? doc.id;
+  docsContent?.replaceChildren(el('p', { className: 'muted', text: `Opening ${label} in the reader…` }));
+  if (docReaderContent) docReaderContent.replaceChildren(el('p', { className: 'muted', text: `Loading ${label}…` }));
+  if (docReaderTitle) docReaderTitle.textContent = label;
+  if (docReaderMeta) docReaderMeta.textContent = doc.path ?? '';
+  openDocReader(sourceElement);
   try {
     const data = await getJson(`/api/docs/${encodeURIComponent(doc.id)}`);
-    docsContent.replaceChildren(el('article', { className: 'doc-viewer-card' }, [
-      el('div', { className: 'doc-viewer-title', text: data.title ?? doc.title ?? doc.id }),
-      el('div', { className: 'muted doc-path', text: data.path ?? doc.path ?? '' }),
-      renderMarkdownDocument(data.content ?? '')
+    renderDocShell(docReaderContent, data, doc);
+    docsContent?.replaceChildren(el('article', { className: 'doc-viewer-card doc-viewer-summary' }, [
+      el('div', { className: 'doc-viewer-title', text: data.title ?? label }),
+      el('p', { className: 'muted', text: 'This document is open in the reader overlay.' }),
+      el('button', { className: 'doc-reopen-button', type: 'button', text: 'Reopen reader' })
     ]));
+    docsContent?.querySelector?.('.doc-reopen-button')?.addEventListener('click', () => openDocReader(sourceElement));
     const buttons = docsList?.querySelectorAll('.doc-picker') ?? [];
     for (const button of buttons) {
-      const selected = button.textContent === (doc.title ?? doc.id);
+      const selected = button.textContent === label;
       button.classList.toggle('is-selected', selected);
       button.setAttribute('aria-current', selected ? 'true' : 'false');
     }
   } catch (error) {
-    docsContent.replaceChildren(el('p', { className: 'error', text: `Document unavailable: ${error.message}` }));
+    if (docReaderContent) docReaderContent.replaceChildren(el('p', { className: 'error', text: `Document unavailable: ${error.message}` }));
+    docsContent?.replaceChildren(el('p', { className: 'error', text: `Document unavailable: ${error.message}` }));
   }
 }
 
@@ -1085,12 +1157,14 @@ async function refreshDocs() {
     const documents = Array.isArray(data.documents) ? data.documents : [];
     currentDocs = documents;
     docsByPath = new Map(documents.map((doc) => [normalizeDocPath(doc.path), doc]).filter(([path]) => path));
+    docsById = new Map(documents.map((doc) => [doc.id, doc]).filter(([id]) => id));
     applyDocsFilter();
     if (docsContent && !selectedDocId) {
-      docsContent.replaceChildren(el('p', { className: 'muted', text: documents.length === 0 ? 'No document selected.' : 'Select a document to view it here.' }));
+      docsContent.replaceChildren(el('p', { className: 'muted', text: documents.length === 0 ? 'No document selected.' : 'Select a document to open the reader.' }));
     }
   } catch (error) {
     currentDocs = [];
+    docsById = new Map();
     docsList.replaceChildren(el('p', { className: 'error', text: `Docs unavailable: ${error.message}` }));
   } finally {
     if (refreshDocsButton) refreshDocsButton.disabled = false;
@@ -1103,6 +1177,34 @@ if (docsSearch) {
 
 if (refreshDocsButton) {
   refreshDocsButton.addEventListener('click', refreshDocs);
+}
+
+if (closeDocReaderButton) {
+  closeDocReaderButton.addEventListener('click', () => closeDocReader());
+}
+
+if (docReaderModal) {
+  docReaderModal.addEventListener('click', (event) => {
+    if (event.target === docReaderModal || event.target?.classList?.contains('doc-reader-backdrop')) {
+      closeDocReader();
+    }
+  });
+  docReaderModal.addEventListener('keydown', trapDocReaderFocus);
+  docReaderContent?.addEventListener('click', async (event) => {
+    const link = event.target?.closest?.('a[href^="/api/docs/"]');
+    if (!link) return;
+    const id = decodeURIComponent(String(link.getAttribute('href')).replace(/^\/api\/docs\//, ''));
+    const doc = docsById.get(id);
+    if (!doc) return;
+    event.preventDefault();
+    await loadDoc(doc, { sourceElement: lastDocReaderFocus });
+  });
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !docReaderModal.hidden) {
+      event.preventDefault();
+      closeDocReader();
+    }
+  });
 }
 
 function formatDate(isoString) {

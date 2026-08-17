@@ -311,6 +311,19 @@
         </section>
       </section>
     </main>
+    <div id="doc-reader-modal" class="doc-reader-modal" role="dialog" aria-modal="true" aria-labelledby="doc-reader-title" aria-hidden="true" hidden>
+      <div class="doc-reader-backdrop" aria-hidden="true"></div>
+      <article id="doc-reader-dialog" class="doc-reader-dialog" tabindex="-1">
+        <header class="doc-reader-header">
+          <div>
+            <h2 id="doc-reader-title">Document reader</h2>
+            <p id="doc-reader-meta" class="muted doc-path"></p>
+          </div>
+          <button id="close-doc-reader" type="button" aria-label="Close document reader">Close</button>
+        </header>
+        <div id="doc-reader-content" class="doc-reader-content" tabindex="0"></div>
+      </article>
+    </div>
     <script type="module" src="/app.js"></script>
   </body>
 </html>
