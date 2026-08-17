@@ -76,7 +76,13 @@
               <h2>Documentation</h2>
               <p class="muted board-message">Approved committed Markdown docs only. No filesystem path browsing. Very modern: a door with a lock.</p>
             </div>
-            <button id="refresh-docs" type="button">Refresh</button>
+            <div class="panel-actions docs-actions">
+              <label class="docs-search-label" for="docs-search">
+                <span class="sr-only">Search documentation</span>
+                <input id="docs-search" type="search" placeholder="Search docs" autocomplete="off" aria-label="Search documentation">
+              </label>
+              <button id="refresh-docs" type="button">Refresh</button>
+            </div>
           </div>
           <div class="docs-layout">
             <ul id="docs-list" class="docs-list" aria-live="polite">

@@ -15,6 +15,7 @@ const resetInvestmentScreenerFiltersButton = document.querySelector('#reset-inve
 const epicsList = document.querySelector('#epics-list');
 const docsList = document.querySelector('#docs-list');
 const docsContent = document.querySelector('#docs-content');
+const docsSearch = document.querySelector('#docs-search');
 const refreshDocsButton = document.querySelector('#refresh-docs');
 const kanbanPanel = document.querySelector('#kanban-panel');
 const kanbanBoard = document.querySelector('#kanban-board');
@@ -670,6 +671,7 @@ if (resetInvestmentScreenerFiltersButton) {
 let selectedDocId = null;
 let selectedDocPath = null;
 let docsByPath = new Map();
+let currentDocs = [];
 
 function groupDocsByCategory(documents) {
   const groups = new Map();
@@ -681,11 +683,33 @@ function groupDocsByCategory(documents) {
   return [...groups.entries()].map(([category, docs]) => ({ category, docs }));
 }
 
-function renderDocList(documents) {
+function docSearchText(doc) {
+  return [doc?.title, doc?.category, doc?.path, doc?.id]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
+function filterDocs(documents, query = docsSearch?.value ?? '') {
+  const terms = String(query ?? '').toLowerCase().trim().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return documents;
+  return documents.filter((doc) => {
+    const haystack = docSearchText(doc);
+    return terms.every((term) => haystack.includes(term));
+  });
+}
+
+function docsEmptyMessage(totalCount, query = docsSearch?.value ?? '') {
+  if (totalCount === 0) return 'No approved dashboard docs are available.';
+  const text = String(query ?? '').trim();
+  return text ? `No docs match “${text}”.` : 'No approved dashboard docs are available.';
+}
+
+function renderDocList(documents, { totalCount = documents.length, query = docsSearch?.value ?? '' } = {}) {
   if (!docsList) return;
   docsList.replaceChildren();
   if (documents.length === 0) {
-    docsList.append(el('p', { className: 'muted', text: 'No approved dashboard docs are available.' }));
+    docsList.append(el('p', { className: 'muted', text: docsEmptyMessage(totalCount, query) }));
     return;
   }
   for (const group of groupDocsByCategory(documents)) {
@@ -989,22 +1013,33 @@ async function loadDoc(doc) {
   }
 }
 
+function applyDocsFilter() {
+  const filtered = filterDocs(currentDocs);
+  renderDocList(filtered, { totalCount: currentDocs.length });
+}
+
 async function refreshDocs() {
   if (!docsList) return;
   if (refreshDocsButton) refreshDocsButton.disabled = true;
   try {
     const data = await getJson('/api/docs');
     const documents = Array.isArray(data.documents) ? data.documents : [];
+    currentDocs = documents;
     docsByPath = new Map(documents.map((doc) => [normalizeDocPath(doc.path), doc]).filter(([path]) => path));
-    renderDocList(documents);
+    applyDocsFilter();
     if (docsContent && !selectedDocId) {
       docsContent.replaceChildren(el('p', { className: 'muted', text: documents.length === 0 ? 'No document selected.' : 'Select a document to view it here.' }));
     }
   } catch (error) {
+    currentDocs = [];
     docsList.replaceChildren(el('p', { className: 'error', text: `Docs unavailable: ${error.message}` }));
   } finally {
     if (refreshDocsButton) refreshDocsButton.disabled = false;
   }
+}
+
+if (docsSearch) {
+  docsSearch.addEventListener('input', applyDocsFilter);
 }
 
 if (refreshDocsButton) {
