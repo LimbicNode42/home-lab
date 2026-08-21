@@ -1,0 +1,33 @@
+composite_weights:
+  quality: 25
+  valuation: 25
+  growth: 15
+  graham_safety: 15
+  durability: 10
+  risk_adjustments: 10
+
+hard_exclusions:
+  require_price_and_shares: true
+  require_recent_financials_days: 730
+
+missing_data:
+  per_missing_field_penalty: 2
+  max_missing_penalty: 20
+
+thresholds:
+  current_ratio_good: 1.5
+  debt_to_assets_good: 0.5
+  debt_to_assets_excessive: 0.8
+  single_year_anomaly_revenue_growth_abs: 0.5
+  min_avg_daily_value: 1000000
+  net_margin_good: 0.15
+  roe_good: 0.15
+  fcf_margin_good: 0.10
+  pe_good: 20
+  pe_fair: 30
+  price_to_sales_good: 4
+  revenue_growth_good: 0.08
+
+suggestion_count:
+  min: 1
+  max: 25
