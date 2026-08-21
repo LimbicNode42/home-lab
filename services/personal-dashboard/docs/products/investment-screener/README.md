@@ -34,8 +34,9 @@ Do not use it as the final reason to buy, sell, hold, size, or time a position. 
 | Ranked JSON output | Machine-readable, dashboard-safe candidate data. | Feed the dashboard; do not read manually unless debugging. | [Interpreting results](./interpreting-results.md) |
 | Plain-text report output | Human-readable snapshot of the latest run. | Skim candidates, caveats, and limitations when the dashboard is unavailable. | [Interpreting results](./interpreting-results.md) |
 | Dashboard panel | Authenticated UI for the latest export with filters and suggestion counts. | Review candidates and adjust display focus. | [Dashboard panel](./dashboard-panel.md) |
-| Historical pipeline architecture | ASX-first recurring hydration, Postgres history, provenance, and dashboard evolution contract. | Guide implementation of the next storage/hydration lane. | [Historical pipeline architecture](./historical-pipeline-architecture.md) |
-| Operational runbook | Safe local checks and troubleshooting. | Diagnose missing/stale output without live deployment. | [Operations and limitations](./operations-limitations.md) |
+| Historical storage | Optional Postgres-backed record of completed screener runs, observations, scores, and provenance. | Compare recurring runs later through sanitized projections. | [Historical pipeline architecture](./historical-pipeline-architecture.md) |
+| Historical pipeline architecture | ASX-first recurring hydration, Postgres history, provenance, and dashboard evolution contract. | Guide implementation of the storage/hydration lane. | [Historical pipeline architecture](./historical-pipeline-architecture.md) |
+| Operational runbook | Safe monthly/quarterly hydration, publication, checks, and troubleshooting. | Refresh output without leaking credentials or poking live services unnecessarily. | [Operations and limitations](./operations-limitations.md) |
 
 ## How to use it
 
@@ -50,9 +51,13 @@ Do not use it as the final reason to buy, sell, hold, size, or time a position. 
 
 ## Inputs
 
-The product depends on a prepared company universe and whatever financial fields the generator can safely score. Input quality matters more than UI polish. If the universe is stale, sparse, or market-skewed, the output will be stale, sparse, or market-skewed with a nicer hat.
+The product is now ASX-first. The bootstrap universe is a committed ASX watchlist rather than a live full-market discovery feed. That makes recurring runs auditable and deterministic, but it also means the screener only covers names intentionally present in the watchlist until a reviewed broader-universe importer exists.
 
-The dashboard does not fetch fresh market data. It reads only the latest sanitized export mounted into the dashboard runtime.
+Input quality matters more than UI polish. If the watchlist is stale, sparse, sector-skewed, or missing metadata, the output will inherit those limits with a nicer hat.
+
+First-cut hydration uses explicitly labeled bootstrap data sources. Yahoo-derived chart and fundamentals-timeseries values are useful for recurring shape checks and shortlisting, but they are not ASX filings and must not be treated as source-of-record data. Interesting candidates still need verification against company reports, ASX announcements, or another authorized source.
+
+The dashboard does not fetch fresh market data. It reads only the latest sanitized export mounted into the dashboard runtime. Historical data is written by the generator/storage lane, not by the browser.
 
 ## Outputs
 
@@ -80,10 +85,12 @@ The useful workflow is:
 ## Known limitations
 
 - The screener can only score fields present in the input data.
-- Cross-market comparisons may be distorted by accounting, currency, reporting cadence, and data-provider differences.
+- The ASX-first bootstrap universe is not full ASX coverage until a broader importer is implemented and reviewed.
+- Yahoo-derived values are bootstrap evidence, not authoritative filings data.
+- Cross-market and cross-sector comparisons may be distorted by accounting, currency, reporting cadence, and data-provider differences; banks and financials are especially easy to misread with industrial-company metrics.
 - Dashboard filters operate on the latest exported data; they do not recompute the model.
-- Unofficial or prototype data sources should be treated as untrusted until independently verified.
-- The dashboard intentionally exposes a sanitized projection, not raw scorer internals.
+- Historical trends are useful for direction and recurrence, but only when run cadence, universe, source quality, and scoring version are considered together.
+- The dashboard intentionally exposes a sanitized projection, not raw scorer internals or database rows.
 
 ## Operational runbook
 
@@ -103,6 +110,5 @@ For routine operation, use the dashboard first. If the dashboard says output is 
 - Keep the in-browser documentation map current as new screener docs are added.
 - Export richer safe metadata for exchange, region, sector, and industry filters.
 - Add a freshness badge and last-success marker for the generator job.
-- Implement the ASX-first historical pipeline described in [Historical pipeline architecture](./historical-pipeline-architecture.md).
-- Add side-by-side run comparison once historical Postgres projections exist.
+- Add side-by-side run comparison once sanitized historical Postgres projections exist.
 - Add a human review notes field outside the ranked JSON contract.

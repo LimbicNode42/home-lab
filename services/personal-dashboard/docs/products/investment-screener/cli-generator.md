@@ -17,7 +17,7 @@ The generator is the production line. The dashboard is the display case. Do not 
 
 ## When to use it
 
-Use the generator when the dashboard output is stale, missing, or needs a refreshed universe. Use fixture or sample mode for local validation. Use any live or unofficial data mode only when the data-source risk has been explicitly accepted.
+Use the generator when the dashboard output is stale, missing, or needs a refreshed ASX watchlist/universe. Use fixture or sample mode for local validation. Use live or unofficial data modes only when the data-source risk has been explicitly accepted and the run will label provenance accordingly.
 
 ## Inputs
 
@@ -60,13 +60,14 @@ See [Historical pipeline architecture](./historical-pipeline-architecture.md) fo
 First-cut storage command shape:
 
 ```bash
+export SCREENER_OUTPUT_DIR="<runtime-output-directory>"
 python3 screener.py --asx-watchlist universe/asx-watchlist.json \
-  --output-dir /safe/runtime/output \
+  --output-dir "$SCREENER_OUTPUT_DIR" \
   --write-postgres-history \
   --run-key investment-screener:ASX:monthly:YYYY-MM:<universe-hash>:<config-hash>:<code-version>
 ```
 
-Use `--database-url-env NAME` only to change which runtime variable holds the Postgres URL; do not place the URL itself in the command, docs, or Git.
+Use `--database-url-env NAME` only to change which runtime variable holds the Postgres URL; do not place the URL itself in the command, docs, or Git. Render both the output directory and database URL from the deployment environment or secret manager, not from committed examples.
 
 ## Filter behavior
 
