@@ -280,6 +280,7 @@ Human-facing Investment Screener docs now live under `services/personal-dashboar
 | [CLI and generator](./docs/products/investment-screener/cli-generator.md) | How the generator artifact produces safe ranked JSON and report outputs. |
 | [Dashboard panel](./docs/products/investment-screener/dashboard-panel.md) | How to use the Reports-tab panel and understand its controls. |
 | [Interpreting results](./docs/products/investment-screener/interpreting-results.md) | How to read scores, filters, risk flags, caveats, and suggestion counts. |
+| [Historical pipeline architecture](./docs/products/investment-screener/historical-pipeline-architecture.md) | ASX-first universe, data sources, Postgres history, recurrence, and dashboard evolution contract. |
 | [Operations and limitations](./docs/products/investment-screener/operations-limitations.md) | Runbook, trust boundaries, troubleshooting, and future improvements. |
 
 The sections below remain the implementation/API notes for maintainers; the product docs above are the intended starting point for humans trying to use the screener without reading JSON.

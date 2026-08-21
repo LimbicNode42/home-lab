@@ -33,6 +33,7 @@ The investment screener docs live as committed Markdown under the personal dashb
 | `services/personal-dashboard/docs/products/investment-screener/dashboard-panel.md` | Dashboard panel usage, controls, and UI troubleshooting. |
 | `services/personal-dashboard/docs/products/investment-screener/interpreting-results.md` | Scores, filters, caveats, and review workflow. |
 | `services/personal-dashboard/docs/products/investment-screener/operations-limitations.md` | Operations, trust boundaries, and limitations. |
+| `services/personal-dashboard/docs/products/investment-screener/historical-pipeline-architecture.md` | ASX-first recurring hydration, Postgres history, provenance, and dashboard evolution contract. |
 
 Rationale: these docs sit beside the dashboard service because the authenticated home dashboard is the current delivery surface. A future public/sanitized docs site can copy from this structure, but should not be assumed by default.
 
@@ -72,6 +73,8 @@ For documentation changes:
 - Unofficial live data can be stale, incomplete, blocked, or silently changed by the provider.
 - Different markets can have incompatible accounting conventions and currencies.
 - A clean dashboard card does not prove the source data is correct.
+- Yahoo ASX hydration is a bootstrap source, not a source-of-record filings archive.
+- Historical database projections must be sanitized before dashboard exposure.
 
 ## Financial-advice disclaimer
 
@@ -83,3 +86,4 @@ The screener is informational only. It does not provide financial advice, person
 - Add automated validation that product docs contain no forbidden runtime patterns.
 - Add a generated-output schema check before the dashboard reads a new ranked JSON file.
 - Add a freshness threshold and visible stale-warning state.
+- Add the ASX historical pipeline and recurring-job controls described in [Historical pipeline architecture](./historical-pipeline-architecture.md).

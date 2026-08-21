@@ -97,6 +97,7 @@ const DEFAULT_DOCS_MANIFEST = [
   { id: 'investment-screener-cli-generator', title: 'Investment Screener CLI and Generator', category: 'Investment Screener', path: 'services/personal-dashboard/docs/products/investment-screener/cli-generator.md' },
   { id: 'investment-screener-dashboard-panel', title: 'Investment Screener Dashboard Panel', category: 'Investment Screener', path: 'services/personal-dashboard/docs/products/investment-screener/dashboard-panel.md' },
   { id: 'investment-screener-interpreting-results', title: 'Interpreting Investment Screener Results', category: 'Investment Screener', path: 'services/personal-dashboard/docs/products/investment-screener/interpreting-results.md' },
+  { id: 'investment-screener-historical-pipeline', title: 'ASX Screener Historical Pipeline Architecture', category: 'Investment Screener', path: 'services/personal-dashboard/docs/products/investment-screener/historical-pipeline-architecture.md' },
   { id: 'investment-screener-operations-limitations', title: 'Investment Screener Operations and Limitations', category: 'Investment Screener', path: 'services/personal-dashboard/docs/products/investment-screener/operations-limitations.md' },
   { id: 'service-catalog', title: 'Service Catalog', category: 'Operations', path: 'docs/service-catalog.md' },
   { id: 'backup-coverage', title: 'Backup Coverage Matrix', category: 'Operations', path: 'docs/backup-coverage-matrix.md' }
