@@ -570,8 +570,11 @@ class TestInsertScreenerRun(unittest.TestCase):
             conn, ranked, source="test", mode="fixture", universe=["CBA.AX"]
         )
 
-        score_params = conn.cursor_obj.statements[-1][1]
-        self.assertEqual(score_params[1], "CBA.AX")
+        score_params = next(
+            params for sql, params in conn.cursor_obj.statements
+            if "investment_screener_scores" in sql
+        )
+        self.assertEqual(score_params[2], "CBA.AX")
 
 
 # ---------------------------------------------------------------------------

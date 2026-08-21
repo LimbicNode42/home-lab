@@ -1,0 +1,56 @@
+# Investment screener Postgres history
+
+This directory contains the reviewable Postgres storage contract for ASX screener historical runs.
+
+## Schema
+
+The schema is committed at:
+
+- `migrations/001_investment_screener_history.sql`
+
+It is intentionally non-destructive: table creation uses `CREATE TABLE IF NOT EXISTS`, indexes use `CREATE INDEX IF NOT EXISTS`, and compatibility additions use `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`. It must be reviewed before applying to any live database.
+
+Tables covered:
+
+- `investment_screener_runs` — idempotent run records keyed by `run_key`.
+- `investment_screener_companies` — stable ASX company/security identity.
+- `investment_screener_observations` — raw normalized fields, derived fields, missing fields, source quality, and dates per company/run.
+- `investment_screener_scores` — ranks, score components, risk flags, caveats, score caps, and scorer version per company/run.
+- `investment_screener_provenance` — normalized field-level evidence rows.
+- `investment_screener_price_snapshots` — reserved schema for later performance snapshots.
+
+## Runtime credentials
+
+Do not commit database URLs, passwords, `.env` files, provider tokens, or local operator paths.
+
+The CLI reads the database URL only from a runtime environment variable:
+
+```bash
+DATABASE_URL="$(vaultwarden-rendered-secret)" \
+python3 screener.py --fixture \
+  --write-postgres-history \
+  --run-key investment-screener:ASX:fixture:YYYY-MM \
+  --output-dir /safe/runtime/output
+```
+
+In the homelab, render that environment variable from the existing Vaultwarden reference for the personal-dashboard Postgres connection. Commit only the folder/item/field reference in deployment automation, not the secret value. This implementation card does not mutate the live database.
+
+Use `--database-url-env NAME` if the runtime chooses a different environment variable name. The variable value itself must stay outside Git.
+
+## Idempotency
+
+Scheduled jobs should pass a stable `--run-key` derived from market, cadence, period, universe hash, config hash, and code version. Re-running the same logical run upserts the run/company/observation/score rows instead of creating duplicate history.
+
+## Local verification
+
+Unit tests use fake connections only:
+
+```bash
+python3 -m pytest tests/test_postgres_history_storage.py -v
+```
+
+The full screener test suite also avoids live Postgres credentials:
+
+```bash
+python3 -m pytest tests -v
+```

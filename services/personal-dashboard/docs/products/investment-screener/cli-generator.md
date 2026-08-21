@@ -55,7 +55,18 @@ For the ASX-first lane, the generator should start from a committed `asx-watchli
 
 Historical storage must be optional from the dashboard's point of view. A failed or unavailable database should not make the existing latest-file panel unusable if the last sanitized files are present.
 
-See [Historical pipeline architecture](./historical-pipeline-architecture.md) for the storage contract and recurring job rules.
+See [Historical pipeline architecture](./historical-pipeline-architecture.md) for the storage contract and recurring job rules. The implementation keeps the repo-backed SQL and credential notes beside the generator at `services/personal-dashboard/investment-screener/POSTGRES_HISTORY.md`; the database URL is read only from a runtime environment variable (default `DATABASE_URL`) rendered from Vaultwarden, never from committed config.
+
+First-cut storage command shape:
+
+```bash
+python3 screener.py --asx-watchlist universe/asx-watchlist.json \
+  --output-dir /safe/runtime/output \
+  --write-postgres-history \
+  --run-key investment-screener:ASX:monthly:YYYY-MM:<universe-hash>:<config-hash>:<code-version>
+```
+
+Use `--database-url-env NAME` only to change which runtime variable holds the Postgres URL; do not place the URL itself in the command, docs, or Git.
 
 ## Filter behavior
 

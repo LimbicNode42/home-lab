@@ -1013,11 +1013,11 @@ def hydrate_companies_from_asx_tickers(
 POSTGRES_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS investment_screener_runs (
   id BIGSERIAL PRIMARY KEY,
-  run_key TEXT,
+  run_key TEXT NOT NULL,
   started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   completed_at TIMESTAMPTZ,
-  status TEXT NOT NULL DEFAULT 'started',
-  market TEXT,
+  status TEXT NOT NULL DEFAULT 'completed',
+  market TEXT NOT NULL DEFAULT 'ASX',
   mode TEXT NOT NULL,
   universe_version TEXT,
   source_mix JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -1026,16 +1026,24 @@ CREATE TABLE IF NOT EXISTS investment_screener_runs (
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_iss_runs_run_key
+  ON investment_screener_runs(run_key);
+
 CREATE TABLE IF NOT EXISTS investment_screener_companies (
   id BIGSERIAL PRIMARY KEY,
   ticker TEXT NOT NULL UNIQUE,
+  asx_code TEXT,
   name TEXT,
   market TEXT,
   exchange TEXT,
   region TEXT,
+  sector TEXT,
+  industry TEXT,
   currency TEXT,
+  active BOOLEAN NOT NULL DEFAULT true,
   first_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  identity_provenance JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
 CREATE TABLE IF NOT EXISTS investment_screener_observations (
@@ -1043,16 +1051,21 @@ CREATE TABLE IF NOT EXISTS investment_screener_observations (
   run_id BIGINT NOT NULL REFERENCES investment_screener_runs(id) ON DELETE CASCADE,
   company_id BIGINT NOT NULL REFERENCES investment_screener_companies(id),
   ticker TEXT NOT NULL,
+  period_end DATE,
   data_as_of DATE,
-  raw_fields JSONB NOT NULL,
-  provenance JSONB NOT NULL,
+  currency TEXT,
+  source_quality TEXT,
+  raw_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
+  derived_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
+  missing_fields JSONB NOT NULL DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE(run_id, ticker)
+  UNIQUE(run_id, company_id)
 );
 
 CREATE TABLE IF NOT EXISTS investment_screener_scores (
   id BIGSERIAL PRIMARY KEY,
   run_id BIGINT NOT NULL REFERENCES investment_screener_runs(id) ON DELETE CASCADE,
+  company_id BIGINT NOT NULL REFERENCES investment_screener_companies(id),
   ticker TEXT NOT NULL,
   rank INTEGER,
   excluded BOOLEAN NOT NULL DEFAULT false,
@@ -1063,17 +1076,92 @@ CREATE TABLE IF NOT EXISTS investment_screener_scores (
   caveats JSONB NOT NULL DEFAULT '[]'::jsonb,
   score_caps JSONB NOT NULL DEFAULT '{}'::jsonb,
   exclusion_reasons JSONB NOT NULL DEFAULT '[]'::jsonb,
+  score_version TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE(run_id, ticker)
+  UNIQUE(run_id, company_id)
 );
+
+CREATE TABLE IF NOT EXISTS investment_screener_provenance (
+  id BIGSERIAL PRIMARY KEY,
+  run_id BIGINT REFERENCES investment_screener_runs(id) ON DELETE CASCADE,
+  company_id BIGINT REFERENCES investment_screener_companies(id),
+  field_name TEXT,
+  source_family TEXT,
+  source_url TEXT,
+  retrieved_at TIMESTAMPTZ,
+  source_reported_at DATE,
+  data_as_of DATE,
+  trust_level TEXT,
+  extraction_status TEXT NOT NULL DEFAULT 'not_attempted',
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_iss_provenance_dedupe
+  ON investment_screener_provenance(run_id, company_id, field_name, source_family, source_url, data_as_of);
+
+CREATE TABLE IF NOT EXISTS investment_screener_price_snapshots (
+  id BIGSERIAL PRIMARY KEY,
+  company_id BIGINT NOT NULL REFERENCES investment_screener_companies(id),
+  ticker TEXT NOT NULL,
+  observed_at TIMESTAMPTZ NOT NULL,
+  trading_date DATE,
+  price NUMERIC,
+  currency TEXT,
+  source_family TEXT,
+  source_quality TEXT,
+  provenance JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(company_id, observed_at, source_family)
+);
+
+ALTER TABLE investment_screener_runs
+  ADD COLUMN IF NOT EXISTS run_key TEXT,
+  ADD COLUMN IF NOT EXISTS universe_version TEXT,
+  ADD COLUMN IF NOT EXISTS source_mix JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS code_version TEXT,
+  ADD COLUMN IF NOT EXISTS config_hash TEXT,
+  ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+ALTER TABLE investment_screener_companies
+  ADD COLUMN IF NOT EXISTS asx_code TEXT,
+  ADD COLUMN IF NOT EXISTS sector TEXT,
+  ADD COLUMN IF NOT EXISTS industry TEXT,
+  ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS identity_provenance JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+ALTER TABLE investment_screener_observations
+  ADD COLUMN IF NOT EXISTS period_end DATE,
+  ADD COLUMN IF NOT EXISTS currency TEXT,
+  ADD COLUMN IF NOT EXISTS source_quality TEXT,
+  ADD COLUMN IF NOT EXISTS derived_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS missing_fields JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+ALTER TABLE investment_screener_scores
+  ADD COLUMN IF NOT EXISTS company_id BIGINT REFERENCES investment_screener_companies(id),
+  ADD COLUMN IF NOT EXISTS score_version TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_iss_scores_ticker_created ON investment_screener_scores(ticker, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_iss_obs_ticker_asof ON investment_screener_observations(ticker, data_as_of DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_iss_obs_run_company ON investment_screener_observations(run_id, company_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_iss_scores_run_company ON investment_screener_scores(run_id, company_id);
+CREATE INDEX IF NOT EXISTS idx_iss_price_ticker_observed ON investment_screener_price_snapshots(ticker, observed_at DESC);
 """
 
 
 def _json_param(value: Any) -> str:
-    return json.dumps(value, default=str)
+    return json.dumps(value, default=str, sort_keys=True)
+
+
+def _stable_run_key(source: str, mode: str, universe: list[str], metadata: Optional[dict]) -> str:
+    payload = {
+        "source": source,
+        "mode": mode,
+        "universe": sorted(str(item) for item in universe),
+        "metadata": metadata or {},
+    }
+    digest = __import__("hashlib").sha256(_json_param(payload).encode()).hexdigest()[:16]
+    return f"investment-screener:ASX:{mode}:{digest}"
 
 
 def _row_data_as_of(row: dict) -> Optional[str]:
@@ -1081,14 +1169,84 @@ def _row_data_as_of(row: dict) -> Optional[str]:
     return _first_sorted_value(summary.get("data_as_of") or []) if isinstance(summary, dict) else None
 
 
+def _row_period_end(row: dict) -> Optional[str]:
+    return _row_data_as_of(row)
+
+
+def _field_entry_from_row(row: dict, key: str) -> dict:
+    fields = row.get("fields") or {}
+    value = fields.get(key) if isinstance(fields, dict) else None
+    if isinstance(value, dict):
+        return {
+            "value": value.get("value"),
+            "status": value.get("status") or ("present" if value.get("value") is not None else "missing"),
+            "provenance": value.get("provenance") or {},
+        }
+    return {"value": None, "status": "missing", "provenance": {}}
+
+
 def _row_raw_fields(row: dict) -> dict:
-    fields = row.get("fields") or {}
-    return {key: value.get("value") for key, value in fields.items() if isinstance(value, dict)}
+    return {key: _field_entry_from_row(row, key) for key in RAW_FIELDS}
 
 
-def _row_provenance(row: dict) -> dict:
+def _row_derived_fields(row: dict) -> dict:
     fields = row.get("fields") or {}
-    return {key: value.get("provenance") for key, value in fields.items() if isinstance(value, dict)}
+    if not isinstance(fields, dict):
+        return {}
+    return {
+        key: _field_entry_from_row(row, key)
+        for key in fields
+        if key not in RAW_FIELDS
+    }
+
+
+def _row_source_quality(row: dict) -> str:
+    for field_data in _row_raw_fields(row).values():
+        prov = field_data.get("provenance") or {}
+        for key in ("source_quality", "trust_level", "freshness"):
+            if prov.get(key):
+                return str(prov[key])[:120]
+    return "unknown"
+
+
+def _parse_iso_date(value: Any) -> Optional[str]:
+    if not value:
+        return None
+    parsed = _parse_provenance_time(value)
+    return parsed.date().isoformat() if parsed else str(value)[:10]
+
+
+def _parse_iso_timestamp(value: Any) -> Optional[str]:
+    if not value:
+        return None
+    parsed = _parse_provenance_time(value)
+    return parsed.isoformat() if parsed else None
+
+
+def _provenance_rows(row: dict) -> list[tuple]:
+    rows: list[tuple] = []
+    seen: set[tuple] = set()
+    for field_name, field_data in _row_raw_fields(row).items():
+        prov = field_data.get("provenance") or {}
+        if not prov:
+            continue
+        source_family = prov.get("source_family") or prov.get("provider") or prov.get("yahoo_type") or prov.get("freshness") or "unknown"
+        item = (
+            field_name,
+            str(source_family)[:80],
+            prov.get("source_url"),
+            _parse_iso_timestamp(prov.get("retrieved_at") or prov.get("retrieved_from_source_at")),
+            _parse_iso_date(prov.get("source_reported_at")),
+            _parse_iso_date(prov.get("data_as_of")),
+            prov.get("trust_level") or prov.get("source_quality") or prov.get("freshness"),
+            prov.get("extraction_status") or "not_attempted",
+            prov.get("notes") or prov.get("freshness"),
+        )
+        key = (item[0], item[1], item[2], item[5])
+        if key not in seen:
+            seen.add(key)
+            rows.append(item)
+    return rows
 
 
 def init_postgres_schema(conn) -> None:
@@ -1103,55 +1261,176 @@ def insert_screener_run(
     mode: str,
     universe: list[str],
     metadata: Optional[dict] = None,
+    run_key: Optional[str] = None,
+    score_version: Optional[str] = None,
+    universe_version: Optional[str] = None,
+    code_version: Optional[str] = None,
+    config_hash: Optional[str] = None,
 ) -> int:
-    """Insert a screener run with companies, observations, and scores. Returns run id."""
+    """Insert/upsert a completed screener run and its historical rows. Returns run id.
+
+    The writer is idempotent by ``run_key``. Re-running the same logical run updates
+    the same run/company/observation/score rows instead of inserting mystery twins.
+    """
+    run_key = run_key or _stable_run_key(source, mode, universe, metadata)
     cur = conn.cursor()
     cur.execute(
-        "INSERT INTO investment_screener_runs(mode, market, source_mix, metadata) VALUES (%s, %s, %s::jsonb, %s::jsonb) RETURNING id",
-        (mode, "ASX", _json_param({"source": source, "universe": universe}), _json_param(metadata or {})),
+        """
+        INSERT INTO investment_screener_runs(
+          run_key, started_at, completed_at, status, market, mode, universe_version,
+          source_mix, code_version, config_hash, metadata
+        )
+        VALUES (%s, now(), now(), %s, %s, %s, %s, %s::jsonb, %s, %s, %s::jsonb)
+        ON CONFLICT (run_key) DO UPDATE SET
+          completed_at = EXCLUDED.completed_at,
+          status = EXCLUDED.status,
+          market = EXCLUDED.market,
+          mode = EXCLUDED.mode,
+          universe_version = COALESCE(EXCLUDED.universe_version, investment_screener_runs.universe_version),
+          source_mix = EXCLUDED.source_mix,
+          code_version = COALESCE(EXCLUDED.code_version, investment_screener_runs.code_version),
+          config_hash = COALESCE(EXCLUDED.config_hash, investment_screener_runs.config_hash),
+          metadata = EXCLUDED.metadata
+        RETURNING id
+        """,
+        (
+            run_key,
+            "completed",
+            "ASX",
+            mode,
+            universe_version,
+            _json_param({"source": source, "universe": universe}),
+            code_version,
+            config_hash,
+            _json_param(metadata or {}),
+        ),
     )
     run_id = cur.fetchone()[0]
     for row in ranked:
+        ticker = row.get("ticker")
+        asx_code = (str(ticker).upper().replace(".AX", "") if ticker else None)
         cur.execute(
             """
-            INSERT INTO investment_screener_companies(ticker, name, market, exchange, region, currency)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO investment_screener_companies(
+              ticker, asx_code, name, market, exchange, region, sector, industry,
+              currency, active, identity_provenance, last_seen_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, now())
             ON CONFLICT (ticker) DO UPDATE SET
+              asx_code = COALESCE(EXCLUDED.asx_code, investment_screener_companies.asx_code),
               name = COALESCE(EXCLUDED.name, investment_screener_companies.name),
               market = COALESCE(EXCLUDED.market, investment_screener_companies.market),
               exchange = COALESCE(EXCLUDED.exchange, investment_screener_companies.exchange),
               region = COALESCE(EXCLUDED.region, investment_screener_companies.region),
+              sector = COALESCE(EXCLUDED.sector, investment_screener_companies.sector),
+              industry = COALESCE(EXCLUDED.industry, investment_screener_companies.industry),
               currency = COALESCE(EXCLUDED.currency, investment_screener_companies.currency),
+              active = EXCLUDED.active,
+              identity_provenance = EXCLUDED.identity_provenance,
               last_seen_at = now()
             RETURNING id
             """,
-            (row.get("ticker"), row.get("name"), row.get("market"), row.get("exchange"), row.get("region"), row.get("currency")),
+            (
+                ticker,
+                row.get("asx_code") or asx_code,
+                row.get("name"),
+                row.get("market"),
+                row.get("exchange"),
+                row.get("region"),
+                row.get("sector"),
+                row.get("industry"),
+                row.get("currency"),
+                bool(row.get("active", True)),
+                _json_param(row.get("identity_provenance") or {"source_family": "screener_run"}),
+            ),
         )
         company_id = cur.fetchone()[0]
         cur.execute(
             """
-            INSERT INTO investment_screener_observations(run_id, company_id, ticker, data_as_of, raw_fields, provenance)
-            VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb)
-            ON CONFLICT (run_id, ticker) DO NOTHING
+            INSERT INTO investment_screener_observations(
+              run_id, company_id, ticker, period_end, data_as_of, currency, source_quality,
+              raw_fields, derived_fields, missing_fields
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb)
+            ON CONFLICT (run_id, company_id) DO UPDATE SET
+              ticker = EXCLUDED.ticker,
+              period_end = EXCLUDED.period_end,
+              data_as_of = EXCLUDED.data_as_of,
+              currency = EXCLUDED.currency,
+              source_quality = EXCLUDED.source_quality,
+              raw_fields = EXCLUDED.raw_fields,
+              derived_fields = EXCLUDED.derived_fields,
+              missing_fields = EXCLUDED.missing_fields
             """,
-            (run_id, company_id, row.get("ticker"), _row_data_as_of(row), _json_param(_row_raw_fields(row)), _json_param(_row_provenance(row))),
+            (
+                run_id,
+                company_id,
+                ticker,
+                _row_period_end(row),
+                _row_data_as_of(row),
+                row.get("currency"),
+                _row_source_quality(row),
+                _json_param(_row_raw_fields(row)),
+                _json_param(_row_derived_fields(row)),
+                _json_param(row.get("missing_fields") or []),
+            ),
         )
         cur.execute(
             """
-            INSERT INTO investment_screener_scores(run_id, ticker, rank, excluded, composite_score, sub_scores,
-              missing_penalty_points, risk_flags, caveats, score_caps, exclusion_reasons)
-            VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb)
-            ON CONFLICT (run_id, ticker) DO NOTHING
+            INSERT INTO investment_screener_scores(
+              run_id, company_id, ticker, rank, excluded, composite_score, sub_scores,
+              missing_penalty_points, risk_flags, caveats, score_caps, exclusion_reasons, score_version
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s)
+            ON CONFLICT (run_id, company_id) DO UPDATE SET
+              ticker = EXCLUDED.ticker,
+              rank = EXCLUDED.rank,
+              excluded = EXCLUDED.excluded,
+              composite_score = EXCLUDED.composite_score,
+              sub_scores = EXCLUDED.sub_scores,
+              missing_penalty_points = EXCLUDED.missing_penalty_points,
+              risk_flags = EXCLUDED.risk_flags,
+              caveats = EXCLUDED.caveats,
+              score_caps = EXCLUDED.score_caps,
+              exclusion_reasons = EXCLUDED.exclusion_reasons,
+              score_version = EXCLUDED.score_version
             """,
             (
-                run_id, row.get("ticker"), row.get("rank"), bool(row.get("excluded")), row.get("composite_score"),
+                run_id, company_id, ticker, row.get("rank"), bool(row.get("excluded")), row.get("composite_score"),
                 _json_param(row.get("sub_scores") or {}), row.get("missing_penalty_points"),
                 _json_param(row.get("risk_flags") or []), _json_param(row.get("caveats") or []),
-                _json_param(row.get("score_caps") or {}), _json_param(row.get("exclusion_reasons") or []),
+                _json_param(row.get("score_caps") or {}), _json_param(row.get("exclusion_reasons") or []), score_version,
             ),
         )
+        for prov in _provenance_rows(row):
+            cur.execute(
+                """
+                INSERT INTO investment_screener_provenance(
+                  run_id, company_id, field_name, source_family, source_url, retrieved_at,
+                  source_reported_at, data_as_of, trust_level, extraction_status, notes
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT DO NOTHING
+                """,
+                (run_id, company_id) + prov,
+            )
     conn.commit()
     return run_id
+
+
+def connect_postgres_from_env(env_name: str = "DATABASE_URL"):
+    database_url = os.environ.get(env_name)
+    if not database_url:
+        raise RuntimeError(f"{env_name} is not set; render it from Vaultwarden at runtime, do not commit it")
+    try:
+        import psycopg
+        return psycopg.connect(database_url)
+    except ImportError:
+        try:
+            import psycopg2
+            return psycopg2.connect(database_url)
+        except ImportError as exc:
+            raise RuntimeError("Install psycopg or psycopg2 to write Postgres history") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -1186,6 +1465,22 @@ def parse_args(argv=None):
     ap.add_argument(
         "--top-n", type=int, default=None,
         help="Limit candidates to top N.",
+    )
+    ap.add_argument(
+        "--write-postgres-history", action="store_true", default=False,
+        help="Write the completed run to Postgres using a runtime database URL env var.",
+    )
+    ap.add_argument(
+        "--database-url-env", default="DATABASE_URL",
+        help="Environment variable containing the Postgres URL; value is read at runtime only.",
+    )
+    ap.add_argument(
+        "--run-key", default=None,
+        help="Stable idempotency key for this logical screener run.",
+    )
+    ap.add_argument(
+        "--score-version", default="asx-bootstrap-v1",
+        help="Version label for scorer logic stored with score rows.",
     )
     return ap.parse_args(argv)
 
@@ -1241,17 +1536,20 @@ def main(argv=None):
     cfg = load_config(Path(args.config))
 
     companies: list[dict] = []
+    universe_tickers: list[str] = []
     watchlist_path_str: Optional[str] = None
 
     if args.fixture:
         print("Running in fixture mode (no network calls).", file=sys.stderr)
         companies = list(FIXTURE_UNIVERSE)
+        universe_tickers = [str(c.get("ticker")) for c in companies if c.get("ticker")]
         mode = "fixture"
     elif args.asx_watchlist:
         watchlist_path = Path(args.asx_watchlist)
         watchlist_path_str = str(watchlist_path)
         watchlist = load_asx_watchlist(watchlist_path)
         tickers = [e["ticker"] for e in watchlist if e.get("active")]
+        universe_tickers = list(tickers)
         print(f"Hydrating {len(tickers)} active ASX tickers from watchlist.", file=sys.stderr)
         warnings: list[str] = []
         companies = hydrate_companies_from_asx_tickers(tickers, warning_sink=warnings.append)
@@ -1260,6 +1558,7 @@ def main(argv=None):
         mode = "asx-yahoo-timeseries"
     elif args.asx_tickers:
         print(f"Hydrating ASX tickers: {', '.join(args.asx_tickers)}", file=sys.stderr)
+        universe_tickers = [normalise_asx_ticker(ticker) for ticker in args.asx_tickers]
         warnings: list[str] = []
         companies = hydrate_companies_from_asx_tickers(args.asx_tickers, warning_sink=warnings.append)
         for w in warnings:
@@ -1279,6 +1578,21 @@ def main(argv=None):
 
     export = build_dashboard_ranked_export(ranked, mode=mode)
     report = build_plain_text_report(ranked, export, watchlist_path_str)
+
+    if args.write_postgres_history:
+        conn = connect_postgres_from_env(args.database_url_env)
+        init_postgres_schema(conn)
+        run_id = insert_screener_run(
+            conn,
+            ranked,
+            source=mode,
+            mode=mode,
+            universe=universe_tickers,
+            metadata={"output_dir_requested": bool(args.output_dir), "top_n": args.top_n},
+            run_key=args.run_key,
+            score_version=args.score_version,
+        )
+        print(f"Wrote Postgres history run id: {run_id}", file=sys.stderr)
 
     if args.output_dir:
         out = Path(args.output_dir)
