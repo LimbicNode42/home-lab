@@ -68,6 +68,20 @@ For each candidate that looks interesting:
 
 Treat data as untrusted until verified. Stale, missing, unofficial, or inconsistent data can move scores. Generated timestamps say when the screener ran; data-as-of values say what the source claims about freshness. Neither proves the facts are correct.
 
+For ASX mode, Yahoo-derived chart and fundamentals-timeseries values are bootstrap inputs. They are acceptable for recurring shortlisting experiments, but any candidate that survives review should be checked against ASX announcements, company reports, or another authorized source before it influences a real decision.
+
+## Reading historical trends
+
+Historical storage makes the screener more useful, but it also adds ways to fool yourself. Compare trends only after checking:
+
+1. Cadence: monthly runs and quarterly reporting-season runs answer different questions.
+2. Universe: a candidate appearing or disappearing may reflect watchlist changes, not business performance.
+3. Source quality: bootstrap, primary-verified, and paid-provider rows should not be blended without labels.
+4. Scoring version: a score jump can come from code/config changes rather than new company data.
+5. Sector fit: bank, resources, healthcare, and industrial scores are not equally comparable under the first model.
+
+Useful trend signals include repeated appearance near the top of the shortlist, improving or deteriorating sub-scores under the same scoring version, and recurring caveats that fail to clear after source refreshes. Weak signals include one-off rank moves, stale source dates, and apparent performance without dividend/corporate-action treatment.
+
 ## Financial-advice disclaimer
 
 This product is informational only. It is not financial advice, not a rating, not a recommendation, and not a trading signal. The output should support research prioritization, not investment decisions.
@@ -93,4 +107,4 @@ This product is informational only. It is not financial advice, not a rating, no
 
 - Add score explanation snippets per candidate.
 - Add safe sector/industry metadata.
-- Add historical trend comparison for candidates that recur across runs.
+- Add dashboard historical trend comparison for candidates that recur across sanitized runs.

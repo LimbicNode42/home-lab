@@ -26,11 +26,12 @@ Do not commit database URLs, passwords, `.env` files, provider tokens, or local 
 The CLI reads the database URL only from a runtime environment variable:
 
 ```bash
+export SCREENER_OUTPUT_DIR="<runtime-output-directory>"
 DATABASE_URL="$(vaultwarden-rendered-secret)" \
 python3 screener.py --fixture \
   --write-postgres-history \
   --run-key investment-screener:ASX:fixture:YYYY-MM \
-  --output-dir /safe/runtime/output
+  --output-dir "$SCREENER_OUTPUT_DIR"
 ```
 
 In the homelab, render that environment variable from the existing Vaultwarden reference for the personal-dashboard Postgres connection. Commit only the folder/item/field reference in deployment automation, not the secret value. This implementation card does not mutate the live database.

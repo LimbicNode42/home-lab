@@ -4,6 +4,8 @@
 
 The dashboard panel is the authenticated home UI for the latest sanitized Investment Screener export. It is read-only. It displays candidates, timestamps, limitations, filters, and documentation links without exposing raw generator internals.
 
+Current state: the panel displays the latest file-backed artifacts (`latest_ranked.json` and `latest_report.txt`) only. It does not yet query Postgres, draw historical trend charts, or compare candidate performance across runs. Historical views should be added later as separate sanitized API projections once the storage lane has enough verified runs.
+
 ## Who it is for
 
 - Ben, when reviewing the latest shortlist.
@@ -45,6 +47,8 @@ Use the plain-text report only as a fallback or when comparing output outside th
 
 The panel reads the dashboard API response generated from the latest sanitized ranked JSON output. It does not accept arbitrary file paths, local uploads, or raw JSON pasted into the browser. Historical Postgres-backed views are a later, separate API surface; the current panel remains file-backed so the UI can keep working while storage evolves.
 
+If Postgres history is unavailable, incomplete, or still being backfilled, the current dashboard panel should continue to work from the last published sanitized files. Treat any future history widget as an addition, not a replacement for the latest-artifact display.
+
 ## Outputs
 
 The panel renders:
@@ -63,7 +67,7 @@ The card score is a prompt for attention, not a decision. A candidate with a hig
 
 ## Known limitations
 
-- The panel shows only the latest exported snapshot.
+- The panel shows only the latest exported snapshot; it does not display Postgres history yet.
 - Filters operate after sanitization.
 - Disabled controls represent fields not yet safely present in the dashboard export.
 - The UI intentionally truncates some lists so the panel remains readable.
