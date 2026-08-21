@@ -19,6 +19,19 @@ FINNICK_REPORT_HOST_PATH=$FINNICK_REPORT_HOST_DIR/latest_report.txt
 INVESTMENT_SCREENER_REPORT_HOST_PATH=$INVESTMENT_SCREENER_HOST_DIR/latest_report.txt
 INVESTMENT_SCREENER_RANKED_HOST_PATH=$INVESTMENT_SCREENER_HOST_DIR/latest_ranked.json
 KANBAN_DB_HOST_PATH=$KANBAN_DB_HOST_DIR/kanban.db
+PERSONAL_DASHBOARD_ENV_FILE=${PERSONAL_DASHBOARD_ENV_FILE:-/root/.hermes/rendered/personal-dashboard.env}
+
+# Source an operator-local rendered secret file when present. This keeps the
+# committed deploy script portable while avoiding secret values in Git, command
+# lines, or Kanban handoffs. The file is expected to be mode 0600 and rendered
+# from Vaultwarden folder `homelab`, item `personal-dashboard/database`, field
+# `database_url`.
+if [ -f "$PERSONAL_DASHBOARD_ENV_FILE" ]; then
+  set -a
+  . "$PERSONAL_DASHBOARD_ENV_FILE"
+  set +a
+fi
+
 : "${PERSONAL_DASHBOARD_DATABASE_URL:?Render PERSONAL_DASHBOARD_DATABASE_URL from Vaultwarden before recreating the dashboard container}"
 
 # The read-only config/report/Kanban artifacts are copied into a host-local

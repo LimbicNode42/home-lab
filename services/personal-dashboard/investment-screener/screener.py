@@ -1250,7 +1250,43 @@ def _provenance_rows(row: dict) -> list[tuple]:
 
 
 def init_postgres_schema(conn) -> None:
-    conn.cursor().execute(POSTGRES_SCHEMA_SQL)
+    """Apply the idempotent schema, or accept an existing schema for non-owner writers.
+
+    The recurring homelab ASX job intentionally uses a least-privilege writer role.
+    That role can insert/update screener history but does not own the tables, so the
+    compatibility ALTER statements in POSTGRES_SCHEMA_SQL may fail even when the
+    reviewed schema is already present. In that case, verify the expected tables are
+    present and continue without broadening the credential to a schema owner.
+    """
+    try:
+        conn.cursor().execute(POSTGRES_SCHEMA_SQL)
+        conn.commit()
+        return
+    except Exception:
+        conn.rollback()
+
+    expected_tables = {
+        "investment_screener_runs",
+        "investment_screener_companies",
+        "investment_screener_observations",
+        "investment_screener_scores",
+        "investment_screener_provenance",
+        "investment_screener_price_snapshots",
+    }
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = ANY(%s)
+        """,
+        (list(expected_tables),),
+    )
+    existing = {row[0] for row in cur.fetchall()}
+    if existing != expected_tables:
+        missing = ", ".join(sorted(expected_tables - existing))
+        raise RuntimeError(f"Postgres screener schema initialization failed and expected tables are missing: {missing}")
     conn.commit()
 
 
