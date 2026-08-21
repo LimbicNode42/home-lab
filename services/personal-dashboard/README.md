@@ -458,7 +458,8 @@ Persistent personal-data store (Postgres; render secrets before first deploy):
 
 - Shared service: `services/postgres` on `critical` (`192.168.0.50:5432`), TLS enabled, data at `/mnt/nas/services/postgres`.
 - Secret source: Vaultwarden folder `homelab`, item `personal-dashboard/database`, field `database_url` → `PERSONAL_DASHBOARD_DATABASE_URL`.
-- Use a dedicated database/user for the dashboard; do not reuse or commit the shared Postgres superuser password.
+- `scripts/run-critical-docker.sh` may source an operator-local rendered env file at `/root/.hermes/rendered/personal-dashboard.env` (override with `PERSONAL_DASHBOARD_ENV_FILE`). Keep that file out of Git, mode `0600`, and render it from the Vaultwarden reference above.
+- Use a dedicated database/user for the dashboard; do not reuse or commit the shared Postgres superuser password. The same dedicated `dashboard_user` may be granted least-privilege `SELECT, INSERT, UPDATE` plus sequence usage on the six `investment_screener_*` history tables so the ASX cron can write history without a Postgres superuser credential.
 - The app creates its own `goals`, `diary_entries`, and `diary_entry_goals` tables on first connection. Creating the database/user and rendering the connection URL are deploy prerequisites, not repo state.
 - Include the dedicated dashboard database in the Postgres backup/restore plan; do not store dumps or rendered connection strings in Git or Kanban comments.
 - If the old SQLite Diary/Goals file exists on critical, perform an explicit reviewed backfill into Postgres before declaring the Postgres cutover complete. Do not mount the SQLite file back into the running container as a fallback.
