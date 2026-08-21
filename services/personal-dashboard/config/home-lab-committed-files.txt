@@ -198,4 +198,5 @@ services/personal-dashboard/docs/products/investment-screener/README.md
 services/personal-dashboard/docs/products/investment-screener/cli-generator.md
 services/personal-dashboard/docs/products/investment-screener/dashboard-panel.md
 services/personal-dashboard/docs/products/investment-screener/interpreting-results.md
+services/personal-dashboard/docs/products/investment-screener/historical-pipeline-architecture.md
 services/personal-dashboard/docs/products/investment-screener/operations-limitations.md

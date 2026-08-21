@@ -43,7 +43,7 @@ Use the plain-text report only as a fallback or when comparing output outside th
 
 ## Inputs
 
-The panel reads the dashboard API response generated from the latest sanitized ranked JSON output. It does not accept arbitrary file paths, local uploads, or raw JSON pasted into the browser.
+The panel reads the dashboard API response generated from the latest sanitized ranked JSON output. It does not accept arbitrary file paths, local uploads, or raw JSON pasted into the browser. Historical Postgres-backed views are a later, separate API surface; the current panel remains file-backed so the UI can keep working while storage evolves.
 
 ## Outputs
 
@@ -93,3 +93,4 @@ For panel verification:
 
 - Add direct links from candidate cards to the relevant interpretation sections.
 - Add a visible freshness warning when generated output is older than the accepted window.
+- Add historical trend and performance panels only from sanitized Postgres projections, not raw observation tables.

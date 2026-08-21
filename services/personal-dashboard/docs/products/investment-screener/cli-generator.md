@@ -28,6 +28,8 @@ Use the generator when the dashboard output is stale, missing, or needs a refres
 | Filters | Narrow the universe before scoring where supported by the input data. | Market, exchange, region, sector, and industry are only meaningful if present. |
 | Weighting | Tilts category importance for the run. | Keep weights explicit and non-negative. |
 | Suggestion count | Limits how many candidates are highlighted. | Current dashboard-safe maximum is 25. |
+| ASX watchlist | Bootstrap universe for recurring ASX hydration. | Start with a committed watchlist; broaden from external list sources only after normalization rules are documented. |
+| Historical database | Stores run, observation, score, and provenance history. | Inject credentials at runtime only; see [Historical pipeline architecture](./historical-pipeline-architecture.md). |
 
 ## Outputs
 
@@ -46,6 +48,14 @@ Use the generator when the dashboard output is stale, missing, or needs a refres
 5. Check that the ranked JSON is an object with `candidates`, not a raw array or internal scorer dump.
 6. Copy or publish only sanitized outputs into the dashboard handoff location through the approved deployment flow.
 7. Refresh the dashboard Reports tab and confirm the timestamps changed.
+
+## ASX and historical mode
+
+For the ASX-first lane, the generator should start from a committed `asx-watchlist.json`, hydrate values from explicitly labeled sources, write the sanitized latest files, and store the same run in Postgres when database storage is enabled. Yahoo-derived ASX values are bootstrap evidence, not authoritative filings data; high-interest candidates still need ASX report verification.
+
+Historical storage must be optional from the dashboard's point of view. A failed or unavailable database should not make the existing latest-file panel unusable if the last sanitized files are present.
+
+See [Historical pipeline architecture](./historical-pipeline-architecture.md) for the storage contract and recurring job rules.
 
 ## Filter behavior
 
@@ -97,4 +107,4 @@ For a generator run:
 
 - Add a machine-readable generation summary with input universe count, filtered count, excluded count, and top-level warnings.
 - Add a schema check for the ranked JSON object before publication.
-- Preserve safe historical snapshots for comparison.
+- Preserve safe historical snapshots for comparison via the Postgres contract in [Historical pipeline architecture](./historical-pipeline-architecture.md).

@@ -34,6 +34,7 @@ Do not use it as the final reason to buy, sell, hold, size, or time a position. 
 | Ranked JSON output | Machine-readable, dashboard-safe candidate data. | Feed the dashboard; do not read manually unless debugging. | [Interpreting results](./interpreting-results.md) |
 | Plain-text report output | Human-readable snapshot of the latest run. | Skim candidates, caveats, and limitations when the dashboard is unavailable. | [Interpreting results](./interpreting-results.md) |
 | Dashboard panel | Authenticated UI for the latest export with filters and suggestion counts. | Review candidates and adjust display focus. | [Dashboard panel](./dashboard-panel.md) |
+| Historical pipeline architecture | ASX-first recurring hydration, Postgres history, provenance, and dashboard evolution contract. | Guide implementation of the next storage/hydration lane. | [Historical pipeline architecture](./historical-pipeline-architecture.md) |
 | Operational runbook | Safe local checks and troubleshooting. | Diagnose missing/stale output without live deployment. | [Operations and limitations](./operations-limitations.md) |
 
 ## How to use it
@@ -102,5 +103,6 @@ For routine operation, use the dashboard first. If the dashboard says output is 
 - Keep the in-browser documentation map current as new screener docs are added.
 - Export richer safe metadata for exchange, region, sector, and industry filters.
 - Add a freshness badge and last-success marker for the generator job.
-- Add side-by-side run comparison once historical sanitized exports exist.
+- Implement the ASX-first historical pipeline described in [Historical pipeline architecture](./historical-pipeline-architecture.md).
+- Add side-by-side run comparison once historical Postgres projections exist.
 - Add a human review notes field outside the ranked JSON contract.
