@@ -1,0 +1,122 @@
+[
+  {
+    "ticker": "BHP.AX",
+    "asx_code": "BHP",
+    "name": "BHP Group Limited",
+    "market": "ASX",
+    "exchange": "ASX",
+    "region": "AU",
+    "sector": "Materials",
+    "industry": "Diversified Metals and Mining",
+    "active": true,
+    "notes": "bootstrap watchlist member — global resources major"
+  },
+  {
+    "ticker": "CBA.AX",
+    "asx_code": "CBA",
+    "name": "Commonwealth Bank of Australia",
+    "market": "ASX",
+    "exchange": "ASX",
+    "region": "AU",
+    "sector": "Financials",
+    "industry": "Diversified Banks",
+    "active": true,
+    "notes": "bootstrap watchlist member — largest Australian bank; financial-sector scoring caveats apply"
+  },
+  {
+    "ticker": "CSL.AX",
+    "asx_code": "CSL",
+    "name": "CSL Limited",
+    "market": "ASX",
+    "exchange": "ASX",
+    "region": "AU",
+    "sector": "Health Care",
+    "industry": "Biotechnology",
+    "active": true,
+    "notes": "bootstrap watchlist member — global plasma/biotech; healthcare-sector scoring caveats apply"
+  },
+  {
+    "ticker": "WES.AX",
+    "asx_code": "WES",
+    "name": "Wesfarmers Limited",
+    "market": "ASX",
+    "exchange": "ASX",
+    "region": "AU",
+    "sector": "Consumer Discretionary",
+    "industry": "General Merchandise Stores",
+    "active": true,
+    "notes": "bootstrap watchlist member — diversified retail and industrial conglomerate"
+  },
+  {
+    "ticker": "WBC.AX",
+    "asx_code": "WBC",
+    "name": "Westpac Banking Corporation",
+    "market": "ASX",
+    "exchange": "ASX",
+    "region": "AU",
+    "sector": "Financials",
+    "industry": "Diversified Banks",
+    "active": true,
+    "notes": "bootstrap watchlist member — major Australian bank; financial-sector scoring caveats apply"
+  },
+  {
+    "ticker": "ANZ.AX",
+    "asx_code": "ANZ",
+    "name": "ANZ Group Holdings Limited",
+    "market": "ASX",
+    "exchange": "ASX",
+    "region": "AU",
+    "sector": "Financials",
+    "industry": "Diversified Banks",
+    "active": true,
+    "notes": "bootstrap watchlist member — major Australian bank; financial-sector scoring caveats apply"
+  },
+  {
+    "ticker": "NAB.AX",
+    "asx_code": "NAB",
+    "name": "National Australia Bank Limited",
+    "market": "ASX",
+    "exchange": "ASX",
+    "region": "AU",
+    "sector": "Financials",
+    "industry": "Diversified Banks",
+    "active": true,
+    "notes": "bootstrap watchlist member — major Australian bank; financial-sector scoring caveats apply"
+  },
+  {
+    "ticker": "RIO.AX",
+    "asx_code": "RIO",
+    "name": "Rio Tinto Limited",
+    "market": "ASX",
+    "exchange": "ASX",
+    "region": "AU",
+    "sector": "Materials",
+    "industry": "Diversified Metals and Mining",
+    "active": true,
+    "notes": "bootstrap watchlist member — global diversified miner; resources-sector cyclicality caveats apply"
+  },
+  {
+    "ticker": "FMG.AX",
+    "asx_code": "FMG",
+    "name": "Fortescue Limited",
+    "market": "ASX",
+    "exchange": "ASX",
+    "region": "AU",
+    "sector": "Materials",
+    "industry": "Steel",
+    "active": true,
+    "notes": "bootstrap watchlist member — iron ore producer; iron ore price exposure is high"
+  },
+  {
+    "ticker": "MQG.AX",
+    "asx_code": "MQG",
+    "name": "Macquarie Group Limited",
+    "market": "ASX",
+    "exchange": "ASX",
+    "region": "AU",
+    "sector": "Financials",
+    "industry": "Investment Banking and Brokerage",
+    "active": true,
+    "notes": "bootstrap watchlist member — diversified financial services; financial-sector scoring caveats apply"
+  }
+]
