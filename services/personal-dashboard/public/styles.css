@@ -157,6 +157,7 @@ h2, h3 { margin-top: 0; }
   background: #111827;
 }
 .investment-screener-controls select:disabled { opacity: 0.58; cursor: not-allowed; }
+.investment-unavailable-control { opacity: 0.82; }
 .investment-search-control { grid-column: span 2; }
 .investment-pagination { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.75rem; flex-wrap: wrap; }
 .investment-control-note { margin: 0.55rem 0 0; font-size: 0.82rem; }
@@ -169,6 +170,15 @@ h2, h3 { margin-top: 0; }
 }
 .investment-disclaimer { margin-top: 0; color: #ffd580; }
 .investment-meta { margin: 0.35rem 0 0.9rem; font-size: 0.86rem; }
+.investment-fixture-warning {
+  margin: 0.45rem 0 0.65rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(255, 213, 128, 0.42);
+  border-radius: 0.6rem;
+  color: #ffd580;
+  background: rgba(255, 213, 128, 0.08);
+}
+.investment-applied-filters { margin: 0.35rem 0 0.8rem; font-size: 0.84rem; }
 .investment-candidate-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
@@ -184,6 +194,7 @@ h2, h3 { margin-top: 0; }
 .investment-candidate-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 0.45rem; margin-bottom: 0.45rem; }
 .investment-candidate-name { font-weight: 700; line-height: 1.35; overflow-wrap: anywhere; }
 .investment-candidate-meta { margin-top: 0.25rem; font-size: 0.82rem; }
+.investment-provenance { margin: 0.55rem 0 0; font-size: 0.78rem; }
 .investment-risk-flags { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.6rem; }
 .investment-caveats, .investment-limitations { margin: 0.65rem 0 0; padding-left: 1.1rem; font-size: 0.84rem; }
 .investment-doc-links { margin-top: 0.85rem; }

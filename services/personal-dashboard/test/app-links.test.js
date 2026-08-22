@@ -48,6 +48,21 @@ test('dashboard investment screener exposes filtering and suggestion-count contr
 });
 
 
+test('dashboard investment screener market selector is ASX-first and honest about unavailable markets', async () => {
+  const indexSource = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.match(indexSource, /<option value="ASX">Australia \/ ASX<\/option>/);
+  assert.doesNotMatch(indexSource, /<option value="US">US<\/option>/);
+  assert.match(indexSource, /US, Japan, and Switzerland are not populated in the current dashboard export/i);
+});
+
+
+test('dashboard investment screener renders applied filter state and fixture warning', () => {
+  assert.match(appSource, /Applied filters:/);
+  assert.match(appSource, /Market: \$\{appliedFilters\.market\}/);
+  assert.match(appSource, /Fixture\/sample data only — not a real ASX scrape\/backfill\./);
+});
+
+
 test('dashboard investment screener renders filter messages, no-match states, and suggestion limits', () => {
   assert.match(appSource, /payload\.messages/);
   assert.match(appSource, /No candidates match/i);
