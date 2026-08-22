@@ -174,6 +174,7 @@ test('writing API remains behind dashboard API auth when reverse proxy auth is e
 test('Knowledge panel exposes a read-only Blog and Drafts surface with safe markdown rendering', async () => {
   const indexSource = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
   const appSource = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const dockerfileSource = await readFile(new URL('../Dockerfile', import.meta.url), 'utf8');
 
   assert.match(indexSource, /id="writing-panel"/);
   assert.match(indexSource, /Blog \/ Drafts/);
@@ -181,5 +182,6 @@ test('Knowledge panel exposes a read-only Blog and Drafts surface with safe mark
   assert.match(appSource, /const writingPostsList = document\.querySelector\('#writing-posts-list'\)/);
   assert.match(appSource, /\/api\/writing\/posts/);
   assert.match(appSource, /renderMarkdownDocument\(post\.body_markdown/);
+  assert.match(dockerfileSource, /COPY data \.\/data/);
   assert.doesNotMatch(appSource, /writing[\s\S]{0,80}innerHTML\s*=/i);
 });
