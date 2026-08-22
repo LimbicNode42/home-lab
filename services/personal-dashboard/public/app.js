@@ -62,6 +62,7 @@ let currentKanbanMutations = { enabled: false, supported_statuses: [] };
 let kanbanCompactMode = readStoredBoolean(KANBAN_COMPACT_STORAGE_KEY, true);
 let collapsedKanbanLanes = readStoredJson(KANBAN_COLLAPSED_LANES_STORAGE_KEY, []);
 let dashboardBootComplete = false;
+const FEATURED_DOC_IDS = ['home-lab-service-catalog'];
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
