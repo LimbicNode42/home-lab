@@ -157,6 +157,7 @@ services/personal-dashboard/docs/epics/t_d33783f2.md
 services/personal-dashboard/docs/epics/t_e257ce35.md
 services/personal-dashboard/docs/epics/t_f3f37a9b.md
 services/personal-dashboard/docs/epics/t_f4e81ce9.md
+services/personal-dashboard/docs/products/home-lab/service-catalog.md
 services/personal-dashboard/docs/products/investment-screener/README.md
 services/personal-dashboard/docs/products/investment-screener/cli-generator.md
 services/personal-dashboard/docs/products/investment-screener/dashboard-panel.md

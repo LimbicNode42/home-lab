@@ -93,6 +93,7 @@ const DEFAULT_REPO_DOCS_ROOT = HOME_LAB_ROOT;
 const GITHUB_BASE = 'https://github.com/LimbicNode42/home-lab/blob/master';
 const DEFAULT_DOCS_MANIFEST = [
   { id: 'dashboard-readme', title: 'Personal Dashboard README', category: 'Dashboard', path: 'services/personal-dashboard/README.md' },
+  { id: 'home-lab-service-catalog', title: 'Home Lab Service Catalog', category: 'Home Lab', path: 'services/personal-dashboard/docs/products/home-lab/service-catalog.md' },
   { id: 'investment-screener-overview', title: 'Investment Screener Product Guide', category: 'Investment Screener', path: 'services/personal-dashboard/docs/products/investment-screener/README.md' },
   { id: 'investment-screener-cli-generator', title: 'Investment Screener CLI and Generator', category: 'Investment Screener', path: 'services/personal-dashboard/docs/products/investment-screener/cli-generator.md' },
   { id: 'investment-screener-dashboard-panel', title: 'Investment Screener Dashboard Panel', category: 'Investment Screener', path: 'services/personal-dashboard/docs/products/investment-screener/dashboard-panel.md' },
