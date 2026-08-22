@@ -406,3 +406,36 @@ h2, h3 { margin-top: 0; }
 .diary-entry-body { white-space: pre-wrap; line-height: 1.6; }
 .linked-goal-list { margin: 0.5rem 0 0; padding-left: 1.2rem; }
 @media (max-width: 760px) { .personal-data-layout { grid-template-columns: 1fr; } }
+
+
+.investment-source-panel {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 0.9rem;
+  padding: 0.9rem;
+  margin: 0.8rem 0;
+  background: rgba(15, 23, 42, 0.38);
+}
+
+.investment-source-panel h3 {
+  margin: 0 0 0.55rem;
+  font-size: 0.98rem;
+}
+
+.investment-source-row {
+  margin: 0.3rem 0;
+}
+
+.investment-source-caveats {
+  margin: 0.6rem 0;
+  padding-left: 1.25rem;
+  color: #fbbf24;
+}
+
+.investment-source-details {
+  margin-top: 0.65rem;
+}
+
+.investment-source-details summary {
+  cursor: pointer;
+  color: #93c5fd;
+}
