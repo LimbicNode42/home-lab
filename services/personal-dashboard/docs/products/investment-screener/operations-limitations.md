@@ -46,7 +46,7 @@ Rationale: these docs sit beside the dashboard service because the authenticated
 3. If it says output has not been generated, inspect the generator job and export artifacts.
 4. If output exists but is stale, rerun the generator using the approved artifact workflow.
 5. Publish both the ranked JSON and plain-text report together.
-6. Refresh the Reports tab.
+6. Refresh the Investment Screener tab.
 7. Confirm generated timestamp, candidates, limitations, and doc links appear.
 
 ### Monthly ASX hydration
@@ -60,7 +60,7 @@ Use the monthly run for routine watchlist refresh and latest-dashboard publicati
 5. Write Postgres history only when the runtime credential is available and the storage lane has been approved for that environment. A database failure should not require breaking the latest-file dashboard if a valid last export exists.
 6. Validate the generated ranked JSON and plain-text report before publication. Check candidate count, excluded count, limitations, generated timestamp, data-as-of values, and source-quality labels.
 7. Publish the latest files atomically through the approved file handoff: validate temporary outputs first, then replace the current latest pair together.
-8. Refresh the dashboard Reports tab and verify the latest artifact display. Do not expect historical charts yet.
+8. Refresh the dashboard Investment Screener tab and verify the latest artifact display. Do not expect historical charts yet.
 9. Record a short operator note with cadence, period, universe version/hash, code version, candidate count, excluded count, source mix, and any caveats worth human review. Keep the note sanitized.
 
 ### Quarterly reporting-season refresh
