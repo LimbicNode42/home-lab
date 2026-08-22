@@ -123,33 +123,31 @@
               Market
               <select id="investment-market-filter" name="market">
                 <option value="">All markets</option>
-                <option value="US">US</option>
-                <option value="JP">Japan</option>
-                <option value="CH">Switzerland</option>
+                <option value="ASX">Australia / ASX</option>
               </select>
             </label>
-            <label>
+            <label class="investment-unavailable-control">
               Exchange
               <select id="investment-exchange-filter" name="exchange" disabled>
-                <option value="">Unavailable in sanitized output</option>
+                <option value="">Coming later: unavailable in current ASX export</option>
               </select>
             </label>
-            <label>
+            <label class="investment-unavailable-control">
               Region
               <select id="investment-region-filter" name="region" disabled>
-                <option value="">Unavailable in sanitized output</option>
+                <option value="">Coming later: unavailable in current ASX export</option>
               </select>
             </label>
-            <label>
+            <label class="investment-unavailable-control">
               Sector
               <select id="investment-sector-filter" name="sector" disabled>
-                <option value="">Unavailable in sanitized output</option>
+                <option value="">Coming later: unavailable in current ASX export</option>
               </select>
             </label>
-            <label>
+            <label class="investment-unavailable-control">
               Industry
               <select id="investment-industry-filter" name="industry" disabled>
-                <option value="">Unavailable in sanitized output</option>
+                <option value="">Coming later: unavailable in current ASX export</option>
               </select>
             </label>
             <label>
@@ -187,7 +185,7 @@
             </label>
             <button id="reset-investment-screener-filters" type="button">Reset filters</button>
           </form>
-          <p class="muted investment-control-note">Search, market, score focus, weight preset, and page size are applied to already-sanitized ranked data. Exchange, region, sector, and industry are shown but disabled until the screener exports those fields safely.</p>
+          <p class="muted investment-control-note">Search, market, score focus, weight sort preset, and page size are applied to already-sanitized ranked data. US, Japan, and Switzerland are not populated in the current dashboard export, so Australia / ASX is the only active market option. Exchange, region, sector, and industry are disabled until the screener exports those fields safely.</p>
           <div class="investment-pagination" aria-label="Investment screener pagination">
             <button id="investment-prev-page" type="button" disabled>Previous</button>
             <span id="investment-page-summary" class="muted">Showing latest page</span>

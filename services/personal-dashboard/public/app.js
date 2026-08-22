@@ -616,6 +616,15 @@ function renderInvestmentScreener(payload) {
     children.push(el('div', { className: 'investment-meta muted', text: metaItems.join(' · ') }));
   }
 
+  if (payload.mode === 'fixture') {
+    children.push(el('p', { className: 'investment-fixture-warning', text: 'Fixture/sample data only — not a real ASX scrape/backfill.' }));
+  }
+
+  const appliedFilterSummary = investmentAppliedFilterSummary(payload.applied_filters);
+  if (appliedFilterSummary) {
+    children.push(el('p', { className: 'investment-applied-filters muted', text: appliedFilterSummary }));
+  }
+
   const messages = Array.isArray(payload.messages) ? payload.messages : [];
   if (messages.length) {
     children.push(el('ul', { className: 'investment-filter-messages muted' }, messages.slice(0, 3).map((message) => el('li', { text: message }))));
@@ -643,6 +652,18 @@ function renderInvestmentScreener(payload) {
   investmentScreenerContent.replaceChildren(el('div', { className: 'investment-screener-card' }, children));
 }
 
+function investmentAppliedFilterSummary(appliedFilters) {
+  if (!appliedFilters || typeof appliedFilters !== 'object') return null;
+  const parts = [];
+  if (appliedFilters.q) parts.push(`Search: ${appliedFilters.q}`);
+  if (appliedFilters.market) parts.push(`Market: ${appliedFilters.market}`);
+  if (appliedFilters.metric) parts.push(`Score focus: ${appliedFilters.metric}`);
+  if (appliedFilters.weight) parts.push(`Sort preset: ${appliedFilters.weight}`);
+  if (appliedFilters.limit || appliedFilters.topN) parts.push(`Page size: ${appliedFilters.limit ?? appliedFilters.topN}`);
+  if (appliedFilters.offset) parts.push(`Offset: ${appliedFilters.offset}`);
+  return parts.length ? `Applied filters: ${parts.join(' · ')}` : null;
+}
+
 function renderInvestmentCandidate(candidate) {
   const meta = [candidate.market, candidate.currency].filter(Boolean).join(' · ');
   const riskFlags = Array.isArray(candidate.risk_flags) ? candidate.risk_flags.slice(0, 3) : [];
@@ -661,6 +682,9 @@ function renderInvestmentCandidate(candidate) {
   }
   if (caveats.length) {
     children.push(el('ul', { className: 'investment-caveats muted' }, caveats.map((caveat) => el('li', { text: caveat }))));
+  }
+  if (candidate.sanitized_provenance_summary) {
+    children.push(el('p', { className: 'investment-provenance muted', text: `Provenance: ${candidate.sanitized_provenance_summary}` }));
   }
   return el('article', { className: 'investment-candidate' }, children);
 }

@@ -464,6 +464,38 @@ test('GET /api/investment-screener/ranked applies market and topN filters after 
 });
 
 
+test('GET /api/investment-screener/ranked returns ASX candidates and visible applied filter state', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'investment-asx-ranked-'));
+  const rankedPath = join(dir, 'latest_ranked.json');
+  await writeFile(rankedPath, JSON.stringify({
+    mode: 'fixture',
+    generated_at: '2026-08-22T08:00:00Z',
+    data_as_of: '2026-08-21',
+    candidates: [
+      { rank: 1, ticker: 'BHP.AX', name: 'BHP Group', market: 'ASX', currency: 'AUD', score: 88, sub_scores: { valuation: 25, quality: 22 } },
+      { rank: 2, ticker: 'CSL.AX', name: 'CSL Limited', market: 'ASX', currency: 'AUD', score: 86, sub_scores: { valuation: 17, quality: 29 } },
+      { rank: 3, ticker: 'BRK.B', name: 'Berkshire Hathaway Inc.', market: 'US', currency: 'USD', score: 91, sub_scores: { valuation: 24, quality: 28 } }
+    ]
+  }), 'utf8');
+
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerRankedFile: rankedPath });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/investment-screener/ranked?market=ASX&limit=10`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.deepEqual(body.applied_filters, { market: 'ASX', limit: 10 });
+    assert.deepEqual(body.candidates.map((candidate) => candidate.ticker), ['BHP.AX', 'CSL.AX']);
+    assert.equal(body.candidates.every((candidate) => candidate.market === 'ASX'), true);
+    assert.equal(body.messages.some((message) => message.includes('2 candidates')), true);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+
 test('GET /api/investment-screener/ranked can rank by a supported sub-score metric', async () => {
   const rankedPath = new URL('./fixtures/investment-screener-ranked.json', import.meta.url);
   const configPath = await writeConfig(basicConfig);

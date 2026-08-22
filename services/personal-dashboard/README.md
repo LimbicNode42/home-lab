@@ -291,7 +291,7 @@ The panel appears in the **Reports** tab as **"Investment Screener"**. It loads 
 
 Default behavior:
 
-- **Market**: `All markets`.
+- **Market**: `All markets`, with `Australia / ASX` as the current first-class populated option.
 - **Exchange / Region / Sector / Industry**: visible but disabled in the current dashboard because the sanitized ranked output does not yet export those fields safely.
 - **Score focus**: `Composite score`.
 - **Weight preset**: `Balanced`.
@@ -301,8 +301,8 @@ Available controls:
 
 | Control | What it does |
 | --- | --- |
-| Market | Filters candidates by the `market` field already present in the sanitized ranked JSON. Current UI options are US, Japan/`JP`, and Switzerland/`CH`; the API also accepts any plain label matching the validation regex for future exports. |
-| Exchange / Region / Sector / Industry | Disabled until those fields are present in the sanitized ranked export. The backend accepts those query keys only to return a clear unsupported-filter error instead of pretending an empty result is meaningful. |
+| Market | Filters candidates by the `market` field already present in the sanitized ranked JSON. Current UI options are `All markets` and `Australia / ASX`; US, Japan, and Switzerland are not shown as active choices until the mounted dashboard export actually contains those markets. The API still accepts any plain label matching the validation regex for future exports. |
+| Exchange / Region / Sector / Industry | Disabled with coming-later copy until those fields are present in the sanitized ranked export. The backend accepts those query keys only to return a clear unsupported-filter error instead of pretending an empty result is meaningful. |
 | Score focus | Re-sorts the already-sanitized candidates by a public sub-score. Supported safe values are `composite`/default, `quality`, `valuation`, `growth`, `graham_safety`, `durability`, and `risk_adjustments`. |
 | Weight preset | Applies the same public sub-score sort as a preset tilt. Supported safe values are `balanced`/default, `quality`, `valuation`, `growth`, `graham_safety`, `durability`, and `risk_adjustments`. |
 | Search | Searches the sanitized candidate universe by ticker, company name, market, or currency using plain text. |
@@ -310,7 +310,7 @@ Available controls:
 | Previous / Next | Pages through the sanitized candidate universe without requiring the generator to emit only a tiny top-N list. |
 | Reset filters | Clears search, restores All markets, Composite score, Balanced weight, and Top 6 page size, then refreshes the first page. |
 
-The panel renders ranked candidates with ticker, name, market/currency, score, selected risk flags, caveats, generated timestamp, data-as-of timestamp, limitations, and links to the committed investment screener product docs.
+The panel renders ranked candidates with ticker, name, market/currency, score, selected risk flags, caveats, compact sanitized provenance where available, generated timestamp, data-as-of timestamp, visible applied filter state, limitations, and links to the committed investment screener product docs. Fixture output is explicitly labelled as sample data, not a proven ASX scrape/backfill.
 
 ### Dashboard API filters and validation
 
