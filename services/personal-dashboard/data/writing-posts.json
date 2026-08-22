@@ -1,0 +1,27 @@
+{
+  "posts": [
+    {
+      "post_id": "dashboard-writing-mvp",
+      "title": "Dashboard writing MVP",
+      "status": "draft",
+      "tags": ["dashboard", "drafts", "local-first"],
+      "body_markdown": "# Dashboard writing MVP\n\nA read-only Blog / Drafts surface for keeping writing ideas visible inside the private dashboard without wiring in the old backoffice stack.\n\n## Deferred write work\n\nCreate, edit, publish, delete, and attachment upload stay deferred until storage, backup, path allowlisting, and publishing semantics are reviewed.",
+      "attachments": [],
+      "created_at": "2026-08-22T00:00:00.000Z",
+      "updated_at": "2026-08-22T00:00:00.000Z"
+    },
+    {
+      "post_id": "safe-import-notes",
+      "title": "Safe import notes from old personal backoffice",
+      "status": "published",
+      "tags": ["reference", "safety"],
+      "body_markdown": "# Safe import notes\n\nUseful UI ideas: post cards, tags, draft/published badges, selected-post preview, and attachment metadata. Unsafe imports rejected: old auth client, GraphQL localhost calls, Mongo counters, and remote file upload/delete plumbing.",
+      "attachments": [
+        { "id": "wireframe", "display_name": "writing-panel-wireframe.txt", "content_type": "text/plain", "size": 512, "url": "/assets/writing/writing-panel-wireframe.txt" }
+      ],
+      "created_at": "2026-08-21T00:00:00.000Z",
+      "updated_at": "2026-08-21T00:00:00.000Z",
+      "published_at": "2026-08-21T00:00:00.000Z"
+    }
+  ]
+}

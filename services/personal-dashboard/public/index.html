@@ -70,6 +70,35 @@
           </div>
         </section>
 
+        <section class="panel" id="writing-panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Blog / Drafts</h2>
+              <p class="muted board-message">Read-only writing surface from committed sample posts. Publish, delete, edit, and attachment upload are deliberately deferred until storage is reviewed.</p>
+            </div>
+            <div class="panel-actions">
+              <label class="inline-control" for="writing-status-filter">
+                Status
+                <select id="writing-status-filter" name="writing_status">
+                  <option value="all">All</option>
+                  <option value="draft">Drafts</option>
+                  <option value="published">Published</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </label>
+              <button id="refresh-writing-posts" type="button">Refresh</button>
+            </div>
+          </div>
+          <div class="writing-layout">
+            <div id="writing-posts-list" class="writing-posts-list" aria-live="polite">
+              <p class="muted">Loading writing drafts…</p>
+            </div>
+            <article id="writing-post-preview" class="writing-post-preview" aria-live="polite">
+              <p class="muted">Select a draft or post to preview sanitized Markdown.</p>
+            </article>
+          </div>
+        </section>
+
         <section class="panel" id="docs-panel">
           <div class="panel-heading">
             <div>

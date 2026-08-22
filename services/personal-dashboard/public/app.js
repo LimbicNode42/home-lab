@@ -28,6 +28,10 @@ const docReaderContent = document.querySelector('#doc-reader-content');
 const closeDocReaderButton = document.querySelector('#close-doc-reader');
 const docsSearch = document.querySelector('#docs-search');
 const refreshDocsButton = document.querySelector('#refresh-docs');
+const writingPostsList = document.querySelector('#writing-posts-list');
+const writingPostPreview = document.querySelector('#writing-post-preview');
+const writingStatusFilter = document.querySelector('#writing-status-filter');
+const refreshWritingPostsButton = document.querySelector('#refresh-writing-posts');
 const kanbanPanel = document.querySelector('#kanban-panel');
 const kanbanBoard = document.querySelector('#kanban-board');
 const kanbanMessage = document.querySelector('#kanban-message');
@@ -220,6 +224,7 @@ async function loadTabData(tabId) {
     await refreshKanban();
   } else if (tabId === 'knowledge') {
     await refreshEpics();
+    await refreshWritingPosts();
     await refreshDocs();
   } else if (tabId === 'reports') {
     await refreshFinnick();
@@ -813,6 +818,107 @@ if (investmentNextPageButton) {
     refreshInvestmentScreener();
   });
 }
+
+
+function writingRequestPath() {
+  const status = writingStatusFilter?.value || 'all';
+  return `/api/writing/posts?status=${encodeURIComponent(status)}`;
+}
+
+function writingStatusBadgeClass(status) {
+  if (status === 'published') return 'badge up';
+  if (status === 'draft') return 'badge neutral';
+  if (status === 'archived') return 'badge down';
+  return 'badge neutral';
+}
+
+function writingMeta(post) {
+  return [
+    post.updated_at ? `updated ${formatDateTime(post.updated_at)}` : null,
+    Array.isArray(post.tags) && post.tags.length ? `tags: ${post.tags.join(', ')}` : null,
+    Number.isInteger(post.attachment_count) && post.attachment_count > 0 ? `${post.attachment_count} attachment${post.attachment_count === 1 ? '' : 's'}` : null
+  ].filter(Boolean).join(' · ');
+}
+
+function renderWritingPostCard(post) {
+  const button = el('button', { className: 'entry-view-button', type: 'button', text: 'Preview' });
+  button.addEventListener('click', () => loadWritingPost(post.post_id));
+  return el('article', { className: 'writing-post-card' }, [
+    el('div', { className: 'personal-entry-heading' }, [
+      el('strong', { text: post.title || '(untitled post)' }),
+      button
+    ]),
+    el('div', { className: writingStatusBadgeClass(post.status), text: post.status || 'unknown' }),
+    el('p', { className: 'muted personal-entry-meta', text: writingMeta(post) }),
+    el('p', { text: post.preview || 'No preview available.' })
+  ]);
+}
+
+function renderWritingPostPreview(post) {
+  if (!writingPostPreview) return;
+  const tags = Array.isArray(post.tags) && post.tags.length
+    ? el('div', { className: 'writing-tags' }, post.tags.map((tag) => el('span', { className: 'badge neutral', text: tag })))
+    : el('p', { className: 'muted', text: 'No tags.' });
+  const attachments = Array.isArray(post.attachments) && post.attachments.length
+    ? el('ul', { className: 'writing-attachments' }, post.attachments.map((attachment) => el('li', {}, [
+      el('a', { href: attachment.url, text: attachment.display_name, rel: 'noopener noreferrer', target: '_blank' }),
+      el('span', { className: 'muted', text: ` ${attachment.content_type} · ${attachment.size} bytes` })
+    ])))
+    : el('p', { className: 'muted', text: 'No attachments exposed for this post.' });
+  writingPostPreview.replaceChildren(el('div', { className: 'writing-post-detail' }, [
+    el('div', { className: 'personal-entry-heading' }, [
+      el('h3', { text: post.title || '(untitled post)' }),
+      el('span', { className: writingStatusBadgeClass(post.status), text: post.status || 'unknown' })
+    ]),
+    el('p', { className: 'muted', text: [post.updated_at ? `Updated ${formatDateTime(post.updated_at)}` : null, post.published_at ? `published ${formatDateTime(post.published_at)}` : null, post.storage].filter(Boolean).join(' · ') }),
+    tags,
+    renderMarkdownDocument(post.body_markdown || ''),
+    el('h4', { text: 'Attachments' }),
+    attachments,
+    el('p', { className: 'muted writing-storage-note', text: 'Read-only MVP: create/edit/publish/delete are deferred until storage and backup behavior are reviewed.' })
+  ]));
+}
+
+async function loadWritingPost(postId) {
+  if (!postId || !writingPostPreview) return;
+  writingPostPreview.replaceChildren(el('p', { className: 'muted', text: 'Loading writing preview…' }));
+  try {
+    const data = await getJson(`/api/writing/posts/${encodeURIComponent(postId)}`);
+    renderWritingPostPreview(data.post);
+  } catch (error) {
+    writingPostPreview.replaceChildren(el('p', { className: 'error', text: `Writing preview unavailable: ${error.message.replace(/\/[^\s]+/g, '[redacted]')}` }));
+  }
+}
+
+async function refreshWritingPosts() {
+  if (!writingPostsList) return;
+  if (refreshWritingPostsButton) refreshWritingPostsButton.disabled = true;
+  try {
+    const data = await getJson(writingRequestPath());
+    const posts = Array.isArray(data.posts) ? data.posts : [];
+    writingPostsList.replaceChildren();
+    if (posts.length === 0) {
+      writingPostsList.append(el('p', { className: 'muted', text: 'No writing posts match this filter.' }));
+    } else {
+      writingPostsList.append(...posts.map(renderWritingPostCard));
+    }
+    if (writingPostPreview && posts.length && !writingPostPreview.dataset.loaded) {
+      writingPostPreview.dataset.loaded = 'true';
+      await loadWritingPost(posts[0].post_id);
+    }
+  } catch (error) {
+    writingPostsList.replaceChildren(el('p', { className: 'error', text: `Writing posts unavailable: ${error.message}` }));
+  } finally {
+    if (refreshWritingPostsButton) refreshWritingPostsButton.disabled = false;
+  }
+}
+
+if (refreshWritingPostsButton) refreshWritingPostsButton.addEventListener('click', refreshWritingPosts);
+if (writingStatusFilter) writingStatusFilter.addEventListener('change', () => {
+  if (writingPostPreview) delete writingPostPreview.dataset.loaded;
+  refreshWritingPosts();
+});
+
 
 let selectedDocId = null;
 let selectedDocPath = null;

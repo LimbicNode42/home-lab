@@ -770,6 +770,141 @@ function sanitizeRuntimeDocContent(content) {
 }
 
 
+const DEFAULT_WRITING_POSTS_FILE = resolve(__dirname, '..', 'data', 'writing-posts.json');
+const WRITING_POST_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,79}$/;
+const WRITING_STATUS_VALUES = new Set(['draft', 'published', 'archived']);
+const WRITING_STATUS_FILTERS = new Set(['all', 'draft', 'published', 'archived']);
+const WRITING_BODY_MAX_CHARS = 40 * 1024;
+const WRITING_TAG_MAX_COUNT = 12;
+const WRITING_ATTACHMENT_CONTENT_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'application/pdf', 'text/plain']);
+const WRITING_ATTACHMENT_URL_PATTERN = /^\/assets\/writing\/[a-z0-9][a-z0-9._/-]{0,180}$/i;
+
+function stripUnsafeMarkdown(value) {
+  return String(value ?? '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/\bon[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/javascript\s*:/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/[\u0000-\u001f\u007f]/g, (char) => (char === '\n' || char === '\r' || char === '\t') ? char : '')
+    .slice(0, WRITING_BODY_MAX_CHARS)
+    .trim();
+}
+
+function normalizeWritingTag(value) {
+  const text = safeText(value, null, 40);
+  if (!text || !/^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,39}$/u.test(text)) return null;
+  return text;
+}
+
+function writingPreview(markdown) {
+  return stripUnsafeMarkdown(markdown)
+    .replace(/[`*_#>\[\]()]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 220);
+}
+
+function sanitizeWritingAttachment(attachment) {
+  if (!attachment || typeof attachment !== 'object' || Array.isArray(attachment)) return null;
+  const id = safeText(attachment.id, null, 80);
+  const displayName = safeText(attachment.display_name ?? attachment.name, null, 120);
+  const contentType = safeText(attachment.content_type, null, 80);
+  const size = safeInteger(attachment.size);
+  const url = safeText(attachment.url, null, 220);
+  if (!id || !/^[a-z0-9][a-z0-9_-]{0,79}$/i.test(id)) return null;
+  if (!displayName || displayName.includes('/') || displayName.includes('\\') || displayName.includes('..')) return null;
+  if (!contentType || !WRITING_ATTACHMENT_CONTENT_TYPES.has(contentType.toLowerCase())) return null;
+  if (!Number.isInteger(size) || size < 0 || size > 25 * 1024 * 1024) return null;
+  if (!url || !WRITING_ATTACHMENT_URL_PATTERN.test(url) || url.includes('..')) return null;
+  return { id, display_name: displayName, content_type: contentType.toLowerCase(), size, url };
+}
+
+function sanitizeWritingPost(rawPost) {
+  if (!rawPost || typeof rawPost !== 'object' || Array.isArray(rawPost)) return null;
+  const postId = safeText(rawPost.post_id ?? rawPost.id, null, 80);
+  if (!postId || !WRITING_POST_ID_PATTERN.test(postId)) return null;
+  const title = safeText(rawPost.title, 'Untitled draft', 160);
+  const status = WRITING_STATUS_VALUES.has(rawPost.status) ? rawPost.status : 'draft';
+  const body = stripUnsafeMarkdown(rawPost.body_markdown ?? rawPost.text ?? rawPost.body ?? '');
+  const tags = [];
+  for (const rawTag of Array.isArray(rawPost.tags) ? rawPost.tags : []) {
+    const tag = normalizeWritingTag(rawTag);
+    if (tag && !tags.includes(tag)) tags.push(tag);
+    if (tags.length >= WRITING_TAG_MAX_COUNT) break;
+  }
+  const attachments = (Array.isArray(rawPost.attachments) ? rawPost.attachments : [])
+    .map(sanitizeWritingAttachment)
+    .filter(Boolean)
+    .slice(0, 12);
+  return {
+    post_id: postId,
+    title,
+    status,
+    tags,
+    preview: writingPreview(body),
+    body_markdown: body,
+    attachments,
+    created_at: safeIsoDate(rawPost.created_at),
+    updated_at: safeIsoDate(rawPost.updated_at),
+    published_at: status === 'published' ? safeIsoDate(rawPost.published_at ?? rawPost.updated_at) : null,
+    storage: 'read-only committed fixture'
+  };
+}
+
+async function loadWritingPosts(writingPostsFile) {
+  try {
+    const parsed = JSON.parse(await readFile(writingPostsFile, 'utf8'));
+    const entries = Array.isArray(parsed?.posts) ? parsed.posts : (Array.isArray(parsed) ? parsed : []);
+    return entries.map(sanitizeWritingPost).filter(Boolean).sort((left, right) => String(right.updated_at ?? '').localeCompare(String(left.updated_at ?? '')));
+  } catch {
+    return [];
+  }
+}
+
+function writingCounts(posts) {
+  return {
+    all: posts.length,
+    draft: posts.filter((post) => post.status === 'draft').length,
+    published: posts.filter((post) => post.status === 'published').length,
+    archived: posts.filter((post) => post.status === 'archived').length
+  };
+}
+
+function writingListCard(post) {
+  const { body_markdown, attachments, ...card } = post;
+  return { ...card, attachment_count: attachments.length };
+}
+
+async function readWritingPosts({ writingPostsFile, searchParams }) {
+  const status = searchParams.get('status') ?? 'all';
+  if (!WRITING_STATUS_FILTERS.has(status)) {
+    return { statusCode: 400, payload: { error: 'invalid_writing_status_filter', message: 'Writing status must be one of all, draft, published, or archived' } };
+  }
+  const posts = await loadWritingPosts(writingPostsFile);
+  const filtered = status === 'all' ? posts : posts.filter((post) => post.status === status);
+  return {
+    statusCode: 200,
+    payload: {
+      posts: filtered.map(writingListCard),
+      status,
+      counts: writingCounts(posts),
+      mode: 'read-only',
+      storage: 'committed fixture'
+    }
+  };
+}
+
+async function readWritingPost({ writingPostsFile, postId }) {
+  if (!WRITING_POST_ID_PATTERN.test(postId)) {
+    return { statusCode: 404, payload: { error: 'writing_post_not_found' } };
+  }
+  const posts = await loadWritingPosts(writingPostsFile);
+  const post = posts.find((candidate) => candidate.post_id === postId);
+  if (!post) return { statusCode: 404, payload: { error: 'writing_post_not_found', message: 'Writing post was not found' } };
+  return { statusCode: 200, payload: { post, mode: 'read-only' } };
+}
+
+
 const INVESTMENT_SCREENER_DISCLAIMER = 'Informational screener output only; not financial advice or a trading recommendation.';
 const INVESTMENT_SCREENER_DEFAULT_PAGE_SIZE = 25;
 const INVESTMENT_SCREENER_MAX_PAGE_SIZE = 100;
@@ -1698,6 +1833,9 @@ export async function createApp(options = {}) {
     : null;
   const epicDocsIndexPath = options.epicDocsIndexPath ?? process.env.EPIC_DOCS_INDEX_PATH ?? DEFAULT_EPIC_DOCS_INDEX;
   const repoDocsRoot = options.repoDocsRoot ?? process.env.REPO_DOCS_ROOT ?? DEFAULT_REPO_DOCS_ROOT;
+  const writingPostsFile = Object.prototype.hasOwnProperty.call(options, 'writingPostsFile')
+    ? options.writingPostsFile
+    : (process.env.WRITING_POSTS_FILE ?? DEFAULT_WRITING_POSTS_FILE);
   const personalDataDatabaseUrl = Object.prototype.hasOwnProperty.call(options, 'personalDataDatabaseUrl')
     ? options.personalDataDatabaseUrl
     : (process.env.PERSONAL_DASHBOARD_DATABASE_URL ?? null);
@@ -1769,6 +1907,17 @@ export async function createApp(options = {}) {
 
       if (request.method === 'GET' && url.pathname === '/api/investment-screener/ranked') {
         const result = await readInvestmentScreenerRanked({ rankedFile: investmentScreenerRankedFile, historyPool: investmentScreenerHistoryPool, searchParams: url.searchParams });
+        return json(response, result.statusCode, result.payload);
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/writing/posts') {
+        const result = await readWritingPosts({ writingPostsFile, searchParams: url.searchParams });
+        return json(response, result.statusCode, result.payload);
+      }
+
+      const writingPostMatch = /^\/api\/writing\/posts\/([^/]+)$/.exec(url.pathname);
+      if (request.method === 'GET' && writingPostMatch) {
+        const result = await readWritingPost({ writingPostsFile, postId: decodeURIComponent(writingPostMatch[1]) });
         return json(response, result.statusCode, result.payload);
       }
 
