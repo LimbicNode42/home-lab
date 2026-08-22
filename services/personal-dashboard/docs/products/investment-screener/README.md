@@ -41,8 +41,8 @@ Do not use it as the final reason to buy, sell, hold, size, or time a position. 
 ## How to use it
 
 1. Open the home dashboard.
-2. Go to the Reports tab.
-3. Find the Investment Screener panel.
+2. Go to the Investment Screener tab.
+3. Review the Investment Screener panel.
 4. Check the generated timestamp and data-as-of value.
 5. Start with the default Top 6 composite view.
 6. Read every caveat, risk flag, and limitation shown for a candidate.

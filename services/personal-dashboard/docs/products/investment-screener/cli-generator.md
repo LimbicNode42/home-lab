@@ -47,7 +47,7 @@ Use the generator when the dashboard output is stale, missing, or needs a refres
 4. Verify that both ranked JSON and report outputs were produced.
 5. Check that the ranked JSON is an object with `candidates`, not a raw array or internal scorer dump.
 6. Copy or publish only sanitized outputs into the dashboard handoff location through the approved deployment flow.
-7. Refresh the dashboard Reports tab and confirm the timestamps changed.
+7. Refresh the dashboard Investment Screener tab and confirm the timestamps changed.
 
 ## ASX and historical mode
 

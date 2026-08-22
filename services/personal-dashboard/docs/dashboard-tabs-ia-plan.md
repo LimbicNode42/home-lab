@@ -141,6 +141,9 @@ Wrap existing panels into tab panels:
 
 <section id="panel-reports" class="tab-panel" role="tabpanel" aria-labelledby="tab-reports" data-tab-panel="reports" hidden>
   <!-- existing Finnick panel -->
+</section>
+
+<section id="panel-investment-screener" class="tab-panel" role="tabpanel" aria-labelledby="tab-investment-screener" data-tab-panel="investment-screener" hidden>
   <!-- existing Investment Screener panel -->
 </section>
 ```
@@ -150,14 +153,15 @@ Recommended panel order after wrapping:
 - Overview: Service status, Links.
 - Work: Kanban.
 - Knowledge: Completed Epics, Documentation.
-- Reports: Finnick, Investment Screener.
+- Reports: Finnick.
+- Investment Screener: latest screener output and controls.
 
 ### `public/app.js`
 
 Add tab state near the existing query selectors:
 
 ```js
-const TAB_IDS = ['overview', 'work', 'knowledge', 'reports'];
+const TAB_IDS = ['overview', 'work', 'knowledge', 'reports', 'investment-screener', 'diary', 'goals'];
 const DEFAULT_TAB_ID = 'overview';
 const tabs = new Map(TAB_IDS.map((id) => [id, document.querySelector(`#tab-${id}`)]));
 const tabPanels = new Map(TAB_IDS.map((id) => [id, document.querySelector(`#panel-${id}`)]));
@@ -375,7 +379,8 @@ Verification:
 - `/` selects Overview.
 - `/#work` selects Work and loads Kanban.
 - `/#knowledge` selects Knowledge and loads epics/docs.
-- `/#reports` selects Reports and loads Finnick/investment screener.
+- `/#reports` selects Reports and loads Finnick.
+- `/#investment-screener` selects Investment Screener and loads screener output.
 - Browser Back/Forward changes selected tab.
 - No console errors during tab changes.
 
@@ -395,7 +400,7 @@ Steps:
 
 Verification:
 
-- Desktop: four tabs visible in one row at normal widths.
+- Desktop: tab strip remains usable at normal widths.
 - Mobile: tab strip scrolls horizontally; tap targets remain usable.
 - Keyboard focus ring is visible in dark theme.
 
@@ -432,7 +437,7 @@ Files:
 Steps:
 
 1. Add a short `Dashboard navigation` section near `What is included` or before panel-specific sections.
-2. Document the four tabs and their contents.
+2. Document the tabs and their contents.
 3. Update manual browser regression checklist to include:
    - default Overview load;
    - direct hash load for each tab;
@@ -456,8 +461,8 @@ Expected: full Node test suite passes. The wrapper should use Node 22 if the hos
 
 Add/adjust source-level frontend tests:
 
-- `index.html` contains the tablist and four tab panels.
-- `app.js` contains `TAB_IDS` with exactly `overview`, `work`, `knowledge`, `reports`.
+- `index.html` contains the tablist and expected tab panels.
+- `app.js` contains `TAB_IDS` with exactly `overview`, `work`, `knowledge`, `reports`, `investment-screener`, `diary`, and `goals`.
 - `app.js` uses hash navigation and `aria-selected` updates.
 - Existing external/generated links keep `rel="noreferrer noopener"`.
 - Existing docs viewer still uses `/api/docs/:id`, not browser-supplied paths.
@@ -471,13 +476,13 @@ DASHBOARD_AUTH_MODE=disabled DASHBOARD_ALLOW_DISABLED_AUTH=true DASHBOARD_CONFIG
 Then verify:
 
 1. Open `http://127.0.0.1:4322/`; Overview is selected.
-2. Click Work, Knowledge, Reports, Overview; only one tab panel is visible each time.
+2. Click Work, Knowledge, Reports, Investment Screener, Overview; only one tab panel is visible each time.
 3. Open `http://127.0.0.1:4322/#work`; Work is selected after reload.
 4. Use ArrowLeft/ArrowRight/Home/End on focused tabs; selected tab and focus update predictably.
 5. Use browser Back/Forward after tab clicks; selected tab tracks URL hash.
 6. In Work tab, read-only Kanban message is visible and mutations are not enabled unless explicitly configured server-side.
 7. In Knowledge tab, Completed Epics and Documentation load; selecting a doc still fetches by opaque id.
-8. In Reports tab, Finnick and Investment Screener load or show their existing safe error states.
+8. In Reports tab, Finnick loads or shows its existing safe error state; in Investment Screener, screener output loads or shows its existing safe error state.
 9. Resize to mobile width; tab strip remains usable and panels do not overflow awkwardly.
 10. DevTools console stays clean during load, tab changes, refresh buttons, and docs selection.
 
