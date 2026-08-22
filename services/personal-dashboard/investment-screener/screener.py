@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import hashlib
 import json
 import os
 import sys
@@ -145,6 +146,16 @@ def load_asx_watchlist(path: Path) -> list[dict]:
     if not isinstance(data, list):
         raise ValueError(f"Watchlist at {path} must be a JSON array; got {type(data)}")
     return data
+
+
+def select_active_asx_tickers(watchlist: list[dict], max_tickers: Optional[int] = None) -> list[str]:
+    """Return active ASX ticker strings from a watchlist, optionally bounded."""
+    tickers = [str(entry["ticker"]) for entry in watchlist if entry.get("active") and entry.get("ticker")]
+    if max_tickers is not None:
+        if max_tickers < 1:
+            raise ValueError("max_tickers must be at least 1")
+        return tickers[:max_tickers]
+    return tickers
 
 
 # ---------------------------------------------------------------------------
@@ -832,16 +843,35 @@ def build_plain_text_report(
 # Yahoo data fetchers
 # ---------------------------------------------------------------------------
 
-def fetch_yahoo_chart_quote(ticker: str) -> dict:
+def _cache_path(cache_dir: Optional[Path], url: str) -> Optional[Path]:
+    if not cache_dir:
+        return None
+    digest = hashlib.sha256(url.encode("utf-8")).hexdigest()
+    return cache_dir / f"{digest}.json"
+
+
+def _fetch_json_url(url: str, timeout: int, cache_dir: Optional[Path] = None) -> dict:
+    path = _cache_path(cache_dir, url)
+    if path and path.exists():
+        with open(path) as fh:
+            return json.load(fh)
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = json.loads(resp.read().decode())
+    if path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, default=str))
+    return data
+
+
+def fetch_yahoo_chart_quote(ticker: str, cache_dir: Optional[Path] = None) -> dict:
     """Fetch current price and basic metadata from Yahoo Finance chart API."""
     url = (
         "https://query1.finance.yahoo.com/v8/finance/chart/"
         + urllib.parse.quote(ticker)
         + "?range=5d&interval=1d"
     )
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=20) as resp:
-        data = json.loads(resp.read().decode())
+    data = _fetch_json_url(url, timeout=20, cache_dir=cache_dir)
     result = (data.get("chart", {}).get("result") or [None])[0]
     if not result:
         raise ValueError(f"No quote returned for {ticker}")
@@ -854,7 +884,7 @@ def fetch_yahoo_chart_quote(ticker: str) -> dict:
     }
 
 
-def fetch_yahoo_timeseries(ticker: str, years: int = 6) -> dict:
+def fetch_yahoo_timeseries(ticker: str, years: int = 6, cache_dir: Optional[Path] = None) -> dict:
     """Fetch annual fundamentals from Yahoo fundamentals-timeseries endpoint."""
     period2 = int(time.time())
     period1 = period2 - int(years * 366 * 24 * 60 * 60)
@@ -866,9 +896,7 @@ def fetch_yahoo_timeseries(ticker: str, years: int = 6) -> dict:
         + "&type=" + types
         + f"&period1={period1}&period2={period2}"
     )
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read().decode())
+    return _fetch_json_url(url, timeout=30, cache_dir=cache_dir)
 
 
 def _timeseries_by_type(timeseries: dict) -> dict[str, list[dict]]:
@@ -910,6 +938,8 @@ def _yahoo_ts_field(
     return FieldValue(
         value=value,
         provenance={
+            "source_family": "yahoo-finance",
+            "provider": "yahoo-finance",
             "source_url": source_url,
             "retrieved_at": retrieved_at,
             "retrieved_from_source_at": retrieved_at,
@@ -918,7 +948,7 @@ def _yahoo_ts_field(
             "yahoo_type": type_name,
             "freshness": (
                 "Yahoo fundamentals-timeseries public data for ASX bootstrap; "
-                "verify against ASX announcements/company reports before acting"
+                "unofficial endpoint; verify against ASX announcements/company reports before acting"
             ),
         },
     )
@@ -949,6 +979,8 @@ def build_company_from_yahoo_timeseries(ticker: str, timeseries: dict, quote: di
         "price": FieldValue(
             quote.get("price"),
             {
+                "source_family": "yahoo-finance",
+                "provider": "yahoo-finance",
                 "source_url": (
                     "https://query1.finance.yahoo.com/v8/finance/chart/"
                     + urllib.parse.quote(ticker)
@@ -957,7 +989,7 @@ def build_company_from_yahoo_timeseries(ticker: str, timeseries: dict, quote: di
                 "retrieved_from_source_at": now,
                 "data_as_of": now[:10],
                 "field_name": "price",
-                "freshness": "Yahoo chart quote; verify before use",
+                "freshness": "Yahoo chart quote from unofficial public endpoint; verify before use",
             },
         ),
         "shares_outstanding": ts_field("shares_outstanding"),
@@ -979,6 +1011,7 @@ def hydrate_companies_from_asx_tickers(
     quote_fetcher: Optional[Callable[[str], dict]] = None,
     timeseries_fetcher: Optional[Callable[[str], dict]] = None,
     sleep_seconds: float = 0.3,
+    cache_dir: Optional[Path] = None,
 ) -> list[dict]:
     """
     Hydrate ASX companies from Yahoo finance data.
@@ -988,8 +1021,10 @@ def hydrate_companies_from_asx_tickers(
     Returns list of company dicts (may be empty if all tickers fail).
     """
     warning_sink = warning_sink or (lambda message: print(message, file=sys.stderr))
-    quote_fetcher = quote_fetcher or fetch_yahoo_chart_quote
-    timeseries_fetcher = timeseries_fetcher or fetch_yahoo_timeseries
+    if quote_fetcher is None:
+        quote_fetcher = lambda symbol: fetch_yahoo_chart_quote(symbol, cache_dir=cache_dir)
+    if timeseries_fetcher is None:
+        timeseries_fetcher = lambda symbol: fetch_yahoo_timeseries(symbol, cache_dir=cache_dir)
 
     companies: list[dict] = []
     for ticker in tickers:
@@ -1001,7 +1036,7 @@ def hydrate_companies_from_asx_tickers(
             companies.append(build_company_from_yahoo_timeseries(symbol, ts, quote))
         except Exception as exc:
             warning_sink(f"WARNING: failed to hydrate {symbol} ASX data: {exc}")
-        if sleep_seconds and tickers.index(ticker) < len(tickers) - 1:
+        if sleep_seconds and ticker != tickers[-1]:
             time.sleep(sleep_seconds)
     return companies
 
@@ -1491,6 +1526,18 @@ def parse_args(argv=None):
         help="Use built-in fixture data instead of live network calls.",
     )
     ap.add_argument(
+        "--max-tickers", type=int, default=None,
+        help="Bound live ASX hydration to the first N active tickers from the watchlist.",
+    )
+    ap.add_argument(
+        "--sleep-seconds", type=float, default=0.3,
+        help="Delay between live provider requests to avoid aggressive scraping.",
+    )
+    ap.add_argument(
+        "--cache-dir", default=None,
+        help="Optional directory for cached provider JSON responses during bounded live runs.",
+    )
+    ap.add_argument(
         "--output-dir", default=None,
         help="Directory to write latest_ranked.json and latest_report.txt.",
     )
@@ -1584,11 +1631,13 @@ def main(argv=None):
         watchlist_path = Path(args.asx_watchlist)
         watchlist_path_str = str(watchlist_path)
         watchlist = load_asx_watchlist(watchlist_path)
-        tickers = [e["ticker"] for e in watchlist if e.get("active")]
+        tickers = select_active_asx_tickers(watchlist, max_tickers=args.max_tickers)
         universe_tickers = list(tickers)
-        print(f"Hydrating {len(tickers)} active ASX tickers from watchlist.", file=sys.stderr)
+        cache_dir = Path(args.cache_dir) if args.cache_dir else None
+        bound = f" (bounded to {args.max_tickers})" if args.max_tickers else ""
+        print(f"Hydrating {len(tickers)} active ASX tickers from watchlist{bound}; sleep_seconds={args.sleep_seconds}.", file=sys.stderr)
         warnings: list[str] = []
-        companies = hydrate_companies_from_asx_tickers(tickers, warning_sink=warnings.append)
+        companies = hydrate_companies_from_asx_tickers(tickers, warning_sink=warnings.append, sleep_seconds=args.sleep_seconds, cache_dir=cache_dir)
         for w in warnings:
             print(w, file=sys.stderr)
         mode = "asx-yahoo-timeseries"
@@ -1596,7 +1645,8 @@ def main(argv=None):
         print(f"Hydrating ASX tickers: {', '.join(args.asx_tickers)}", file=sys.stderr)
         universe_tickers = [normalise_asx_ticker(ticker) for ticker in args.asx_tickers]
         warnings: list[str] = []
-        companies = hydrate_companies_from_asx_tickers(args.asx_tickers, warning_sink=warnings.append)
+        cache_dir = Path(args.cache_dir) if args.cache_dir else None
+        companies = hydrate_companies_from_asx_tickers(args.asx_tickers, warning_sink=warnings.append, sleep_seconds=args.sleep_seconds, cache_dir=cache_dir)
         for w in warnings:
             print(w, file=sys.stderr)
         mode = "asx-yahoo-timeseries"
@@ -1624,7 +1674,14 @@ def main(argv=None):
             source=mode,
             mode=mode,
             universe=universe_tickers,
-            metadata={"output_dir_requested": bool(args.output_dir), "top_n": args.top_n},
+            metadata={
+                "output_dir_requested": bool(args.output_dir),
+                "top_n": args.top_n,
+                "max_tickers": args.max_tickers,
+                "sleep_seconds": args.sleep_seconds,
+                "cache_enabled": bool(args.cache_dir),
+                "source_caveat": "Yahoo Finance public endpoints are unofficial; verify against ASX filings before use.",
+            },
             run_key=args.run_key,
             score_version=args.score_version,
         )

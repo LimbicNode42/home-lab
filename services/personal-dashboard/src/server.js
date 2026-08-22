@@ -777,7 +777,7 @@ const INVESTMENT_SCREENER_DOC_LINKS = [
   { label: 'Interpreting screener results', url: '/api/docs/investment-screener-interpreting-results', doc_id: 'investment-screener-interpreting-results' },
   { label: 'Investment screener operations', url: '/api/docs/investment-screener-operations-limitations', doc_id: 'investment-screener-operations-limitations' }
 ];
-const INVESTMENT_SCREENER_MODE_VALUES = new Set(['fixture', 'live', 'unknown']);
+const INVESTMENT_SCREENER_MODE_VALUES = new Set(['fixture', 'live', 'asx-yahoo-timeseries', 'unknown']);
 const INVESTMENT_SCREENER_FILTERABLE_FIELDS = new Set(['market']);
 const INVESTMENT_SCREENER_UNAVAILABLE_FIELDS = new Set(['exchange', 'region', 'sector', 'industry']);
 const INVESTMENT_SCREENER_METRIC_VALUES = new Set(['composite', 'quality', 'valuation', 'growth', 'graham_safety', 'durability', 'risk_adjustments']);

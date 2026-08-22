@@ -62,12 +62,15 @@ First-cut storage command shape:
 ```bash
 export SCREENER_OUTPUT_DIR="<runtime-output-directory>"
 python3 screener.py --asx-watchlist universe/asx-watchlist.json \
+  --max-tickers 25 \
+  --sleep-seconds 1.0 \
+  --cache-dir "$SCREENER_OUTPUT_DIR/provider-cache" \
   --output-dir "$SCREENER_OUTPUT_DIR" \
   --write-postgres-history \
-  --run-key investment-screener:ASX:monthly:YYYY-MM:<universe-hash>:<config-hash>:<code-version>
+  --run-key investment-screener:ASX:asx-yahoo-timeseries:YYYY-MM:<universe-hash>:<config-hash>:<code-version>
 ```
 
-Use `--database-url-env NAME` only to change which runtime variable holds the Postgres URL; do not place the URL itself in the command, docs, or Git. Render both the output directory and database URL from the deployment environment or secret manager, not from committed examples.
+Use `--max-tickers` for bounded/manual backfills, `--sleep-seconds` for provider throttling, and `--cache-dir` to avoid refetching the same provider JSON during a run or retry. Use `--database-url-env NAME` only to change which runtime variable holds the Postgres URL; do not place the URL itself in the command, docs, or Git. Render both the output directory and database URL from the deployment environment or secret manager, not from committed examples. Real ASX Yahoo bootstrap output is labeled `asx-yahoo-timeseries`, not `fixture`, so the dashboard/API and Postgres can distinguish it from sample data.
 
 ## Filter behavior
 

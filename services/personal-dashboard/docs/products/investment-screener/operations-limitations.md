@@ -56,7 +56,7 @@ Use the monthly run for routine watchlist refresh and latest-dashboard publicati
 1. Review the committed ASX watchlist for obvious stale entries, inactive names, or missing sector labels. Do not silently broaden the universe during a routine monthly run.
 2. Run generator tests or fixture smoke checks before touching runtime artifacts.
 3. Render runtime-only environment variables from the approved secret manager or deployment environment. Do not paste database URLs, passwords, tokens, or local paths into the command, logs, docs, or Git.
-4. Run ASX hydration with a stable monthly run key built from market, cadence, period, universe hash, config hash, and code version.
+4. Run ASX hydration with a stable monthly run key built from market, source mode (`asx-yahoo-timeseries` for the Yahoo bootstrap lane), period, universe hash, config hash, and code version. Use `--max-tickers`, `--sleep-seconds`, and `--cache-dir` for bounded, non-aggressive provider access.
 5. Write Postgres history only when the runtime credential is available and the storage lane has been approved for that environment. A database failure should not require breaking the latest-file dashboard if a valid last export exists.
 6. Validate the generated ranked JSON and plain-text report before publication. Check candidate count, excluded count, limitations, generated timestamp, data-as-of values, and source-quality labels.
 7. Publish the latest files atomically through the approved file handoff: validate temporary outputs first, then replace the current latest pair together.
