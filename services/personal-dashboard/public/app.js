@@ -598,6 +598,59 @@ function updateInvestmentPaginationControls(payload) {
   }
 }
 
+function renderInvestmentSourceCoveragePanel(payload) {
+  const sourceSummary = payload?.source_summary;
+  const coverage = payload?.coverage;
+  if (!sourceSummary && !coverage) return null;
+  const modeLabel = sourceSummary?.mode_label ?? (payload?.mode === 'fixture' ? 'Fixture/sample data' : payload?.mode ?? 'Unknown source mode');
+  const sourceLine = [
+    modeLabel,
+    Array.isArray(sourceSummary?.providers) && sourceSummary.providers.length ? sourceSummary.providers.join(', ') : null,
+    sourceSummary?.universe_source ? `Universe: ${sourceSummary.universe_source}` : null
+  ].filter(Boolean).join(' · ');
+  const coverageText = coverage?.coverage_label
+    ?? (coverage?.denominator == null
+      ? `Denominator unavailable; showing ${coverage?.usable ?? 0} scored candidates.`
+      : `${coverage?.usable ?? 0} / ${coverage.denominator} ${coverage.denominator_label ?? 'universe'} scored${coverage.percent == null ? '' : ` (${coverage.percent}%)`}.`);
+  const freshness = [
+    sourceSummary?.data_as_of ? `Data as of ${formatDateTime(sourceSummary.data_as_of)}` : null,
+    sourceSummary?.latest_retrieved_at ? `retrieved ${formatDateTime(sourceSummary.latest_retrieved_at)}` : null,
+    sourceSummary?.latest_hydrated_at ? `hydrated ${formatDateTime(sourceSummary.latest_hydrated_at)}` : null,
+    payload?.generated_at ? `generated ${formatDateTime(payload.generated_at)}` : null
+  ].filter(Boolean).join(' · ') || 'Freshness: unknown';
+  const caveats = [
+    ...(Array.isArray(sourceSummary?.caveats) ? sourceSummary.caveats : []),
+    ...(Array.isArray(coverage?.caveats) ? coverage.caveats : [])
+  ].filter(Boolean).slice(0, 6);
+  if (payload?.status === 'degraded' || payload?.source === 'ranked_artifact') {
+    caveats.unshift('Coverage degraded — Postgres history is unavailable; coverage is inferred from the sanitized ranked artifact.');
+  }
+  if (payload?.mode === 'fixture' || sourceSummary?.mode === 'fixture') {
+    caveats.unshift('Fixture/sample data — not full ASX market coverage.');
+  }
+  const rows = [
+    el('div', { className: 'investment-source-row', text: `Source: ${sourceLine || 'Unknown source mode'}` }),
+    el('div', { className: 'investment-source-row', text: `Coverage: ${coverageText}` }),
+    el('div', { className: 'investment-source-row', text: `Freshness: ${freshness}` })
+  ];
+  if (caveats.length) {
+    rows.push(el('ul', { className: 'investment-source-caveats' }, caveats.map((item) => el('li', { text: item }))));
+  }
+  if (Array.isArray(coverage?.alternate_denominators) && coverage.alternate_denominators.length) {
+    rows.push(el('div', { className: 'investment-source-row muted', text: `Alternate coverage: ${coverage.alternate_denominators.map((item) => `${item.usable ?? 0} / ${item.denominator ?? '?'} ${item.denominator_label ?? 'alternate denominator'}${item.percent == null ? '' : ` (${item.percent}%)`}`).join(' · ')}` }));
+  }
+  rows.push(el('details', { className: 'investment-source-details' }, [
+    el('summary', { text: 'Source and coverage details' }),
+    el('p', { className: 'muted', text: `Denominator source: ${coverage?.denominator_label ?? 'unknown'} (${coverage?.denominator_status ?? 'unknown'}).` }),
+    el('p', { className: 'muted', text: `Counts: scraped ${coverage?.scraped ?? 'unknown'}, scored ${coverage?.scored ?? 'unknown'}, usable ${coverage?.usable ?? 'unknown'}, excluded ${coverage?.excluded ?? 'unknown'}, missing required fields ${coverage?.missing_required_fields ?? 'unknown'}.` }),
+    el('p', { className: 'muted', text: `Provenance rows: ${sourceSummary?.provenance_rows ?? 'unknown'}, fields: ${sourceSummary?.provenance_fields ?? 'unknown'}.` })
+  ]));
+  return el('section', { className: 'investment-source-panel', 'aria-label': 'Investment screener data provenance and market coverage' }, [
+    el('h3', { text: 'Data source' }),
+    ...rows
+  ]);
+}
+
 function renderInvestmentScreener(payload) {
   if (!investmentScreenerContent) return;
   const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
@@ -616,8 +669,11 @@ function renderInvestmentScreener(payload) {
     children.push(el('div', { className: 'investment-meta muted', text: metaItems.join(' · ') }));
   }
 
+  const sourceCoveragePanel = renderInvestmentSourceCoveragePanel(payload);
+  if (sourceCoveragePanel) children.push(sourceCoveragePanel);
+
   if (payload.mode === 'fixture') {
-    children.push(el('p', { className: 'investment-fixture-warning', text: 'Fixture/sample data only — not a real ASX scrape/backfill.' }));
+    children.push(el('p', { className: 'investment-fixture-warning', text: 'Fixture/sample data only — not a real ASX scrape/backfill. This is not full ASX market coverage.' }));
   }
 
   const appliedFilterSummary = investmentAppliedFilterSummary(payload.applied_filters);

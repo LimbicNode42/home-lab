@@ -95,6 +95,7 @@ test('all API routes require reverse-proxy auth except healthz', async () => {
     { path: '/api/finnick/report' },
     { path: '/api/investment-screener/report' },
     { path: '/api/investment-screener/ranked' },
+    { path: '/api/investment-screener/coverage' },
     { path: '/api/epics' },
     { path: '/api/docs' },
     { path: '/api/docs/dashboard-readme' },
@@ -322,7 +323,7 @@ test('GET /api/investment-screener/ranked returns representative sanitized ranke
     const response = await fetch(`${server.baseUrl}/api/investment-screener/ranked`);
     const body = await response.json();
     assert.equal(response.status, 200);
-    assert.deepEqual(Object.keys(body), ['mode', 'generated_at', 'data_as_of', 'disclaimer', 'limitations', 'candidates', 'excluded', 'doc_links']);
+    assert.deepEqual(Object.keys(body), ['mode', 'generated_at', 'data_as_of', 'disclaimer', 'limitations', 'candidates', 'excluded', 'doc_links', 'source_summary', 'coverage']);
     assert.equal(body.mode, 'fixture');
     assert.equal(body.data_as_of, new Date('2026-08-08').toISOString());
     assert.ok(body.disclaimer.includes('not financial advice'));
@@ -335,6 +336,228 @@ test('GET /api/investment-screener/ranked returns representative sanitized ranke
       { label: 'Interpreting screener results', url: '/api/docs/investment-screener-interpreting-results', doc_id: 'investment-screener-interpreting-results' },
       { label: 'Investment screener operations', url: '/api/docs/investment-screener-operations-limitations', doc_id: 'investment-screener-operations-limitations' }
     ]);
+  } finally {
+    await server.close();
+  }
+});
+
+
+test('GET /api/investment-screener/coverage returns degraded fixture provenance from ranked artifact', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'investment-coverage-fixture-'));
+  const rankedPath = join(dir, 'latest_ranked.json');
+  await writeFile(rankedPath, JSON.stringify({
+    mode: 'fixture',
+    generated_at: '2026-08-22T08:00:00Z',
+    data_as_of: '2026-08-21',
+    candidates: [
+      { rank: 1, ticker: 'BHP.AX', name: 'BHP Group', market: 'ASX', currency: 'AUD', score: 88 },
+      { rank: 2, ticker: 'CSL.AX', name: 'CSL Limited', market: 'ASX', currency: 'AUD', score: 86 },
+      { rank: 3, ticker: 'CBA.AX', name: 'Commonwealth Bank', market: 'ASX', currency: 'AUD', score: 82 }
+    ]
+  }), 'utf8');
+
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerRankedFile: rankedPath });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/investment-screener/coverage?market=ASX`);
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+    assert.equal(response.status, 200);
+    assert.equal(body.status, 'degraded');
+    assert.equal(body.source, 'ranked_artifact');
+    assert.equal(body.source_summary.mode, 'fixture');
+    assert.equal(body.source_summary.mode_label, 'Fixture/sample data');
+    assert.equal(body.coverage.market, 'ASX');
+    assert.equal(body.coverage.denominator, 3);
+    assert.equal(body.coverage.denominator_status, 'sample');
+    assert.equal(body.coverage.usable, 3);
+    assert.equal(body.coverage.percent, 100);
+    assert.match(body.coverage.coverage_label, /fixture sample companies/i);
+    assert.match(body.coverage.coverage_label, /not full ASX market coverage/i);
+    assert.equal(body.coverage.alternate_denominators[0].denominator, 10);
+    assert.equal(serialized.includes('/root/'), false);
+    assert.equal(serialized.includes('DATABASE_URL'), false);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+
+test('GET /api/investment-screener/ranked embeds compact source summary and coverage', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'investment-ranked-coverage-'));
+  const rankedPath = join(dir, 'latest_ranked.json');
+  await writeFile(rankedPath, JSON.stringify({
+    mode: 'fixture',
+    generated_at: '2026-08-22T08:00:00Z',
+    data_as_of: '2026-08-21',
+    candidates: [
+      { rank: 1, ticker: 'BHP.AX', name: 'BHP Group', market: 'ASX', currency: 'AUD', score: 88 },
+      { rank: 2, ticker: 'CSL.AX', name: 'CSL Limited', market: 'ASX', currency: 'AUD', score: 86 }
+    ]
+  }), 'utf8');
+
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerRankedFile: rankedPath });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/investment-screener/ranked?market=ASX&limit=10`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.source_summary.mode_label, 'Fixture/sample data');
+    assert.equal(body.coverage.denominator_status, 'sample');
+    assert.match(body.coverage.coverage_label, /not full ASX market coverage/i);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+
+test('GET /api/investment-screener/coverage clamps inconsistent artifact counts and sanitizes metadata', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'investment-coverage-sanitize-'));
+  const rankedPath = join(dir, 'latest_ranked.json');
+  await writeFile(rankedPath, JSON.stringify({
+    mode: 'asx-yahoo-timeseries',
+    generated_at: '2026-08-22T08:00:00Z',
+    data_as_of: '2026-08-21',
+    source_summary: {
+      providers: ['yahoo-finance', '/root/private'],
+      caveats: ['Yahoo Finance public endpoints are unofficial.', 'DATABASE_URL=postgres://secret']
+    },
+    coverage: {
+      market: 'ASX',
+      denominator: 2,
+      denominator_label: 'configured ASX bootstrap watchlist',
+      usable: 5,
+      scraped: 5,
+      scored: 5,
+      excluded: 7,
+      failed: 8,
+      stale: 9,
+      missing_required_fields: 10,
+      caveats: ['safe caveat', 'raw SQL SELECT * FROM /root/private']
+    },
+    candidates: [
+      { rank: 1, ticker: 'BHP.AX', name: 'BHP Group', market: 'ASX', currency: 'AUD', score: 88 }
+    ]
+  }), 'utf8');
+
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerRankedFile: rankedPath });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/investment-screener/coverage?market=ASX`);
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+    assert.equal(response.status, 200);
+    assert.equal(body.coverage.usable, 2);
+    assert.equal(body.coverage.scraped, 2);
+    assert.equal(body.coverage.scored, 2);
+    assert.equal(body.coverage.excluded, 2);
+    assert.equal(body.coverage.failed, 2);
+    assert.equal(body.coverage.stale, 2);
+    assert.equal(body.coverage.missing_required_fields, 2);
+    assert.equal(body.coverage.percent, 100);
+    assert.equal(body.coverage.coverage_inconsistent, true);
+    assert.deepEqual(body.source_summary.providers, ['yahoo-finance']);
+    assert.deepEqual(body.coverage.caveats, ['safe caveat', 'Postgres coverage history unavailable; coverage inferred from sanitized ranked artifact.', 'Coverage counts exceeded the denominator and were clamped for display.']);
+    for (const forbidden of ['/root/', 'postgres://secret', 'DATABASE_URL', 'raw SQL']) {
+      assert.equal(serialized.includes(forbidden), false, `coverage response leaked ${forbidden}`);
+    }
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+
+test('GET /api/investment-screener/coverage clamps artifact fallback candidate counts to configured universe denominator', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'investment-coverage-over-universe-'));
+  const rankedPath = join(dir, 'latest_ranked.json');
+  const candidates = Array.from({ length: 12 }, (_unused, index) => ({
+    rank: index + 1,
+    ticker: `ASX${String(index + 1).padStart(2, '0')}.AX`,
+    name: `ASX Test ${index + 1}`,
+    market: 'ASX',
+    currency: 'AUD',
+    score: 90 - index
+  }));
+  await writeFile(rankedPath, JSON.stringify({
+    mode: 'asx-yahoo-timeseries',
+    generated_at: '2026-08-22T08:00:00Z',
+    data_as_of: '2026-08-21',
+    candidates
+  }), 'utf8');
+
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerRankedFile: rankedPath });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/investment-screener/coverage?market=ASX`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.coverage.denominator, 10);
+    assert.equal(body.coverage.usable, 10);
+    assert.equal(body.coverage.percent, 100);
+    assert.equal(body.coverage.coverage_inconsistent, true);
+    assert.match(body.coverage.coverage_label, /^10 \/ 10 configured ASX bootstrap watchlist/);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+
+test('GET /api/investment-screener/coverage prefers Postgres latest completed market run when available', async () => {
+  const queries = [];
+  const investmentScreenerHistoryPool = {
+    async query(sql, params) {
+      queries.push({ sql, params });
+      return { rows: [{
+        run_key: 'investment-screener:ASX:asx-yahoo-timeseries:test',
+        mode: 'asx-yahoo-timeseries',
+        market: 'ASX',
+        started_at: '2026-08-22T10:00:00.000Z',
+        completed_at: '2026-08-22T10:05:00.000Z',
+        universe_version: 'sha256:test',
+        source_mix: { providers: ['yahoo-finance'], universe: ['BHP.AX', 'CSL.AX', 'CBA.AX', 'WES.AX'] },
+        usable: '3',
+        scored: '4',
+        excluded: '1',
+        scraped: '4',
+        missing_required_fields: '1',
+        provenance_rows: '12',
+        provenance_fields: '6',
+        source_families: ['yahoo-finance'],
+        latest_retrieved_at: '2026-08-22T10:04:00.000Z',
+        data_as_of: '2025-06-30'
+      }] };
+    }
+  };
+
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerRankedFile: null, investmentScreenerHistoryPool });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/investment-screener/coverage?market=ASX`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.status, 'ok');
+    assert.equal(body.source, 'postgres');
+    assert.equal(body.source_summary.mode, 'asx-yahoo-timeseries');
+    assert.deepEqual(body.source_summary.source_families, ['yahoo-finance']);
+    assert.equal(body.source_summary.provenance_rows, 12);
+    assert.equal(body.coverage.denominator, 10);
+    assert.equal(body.coverage.usable, 3);
+    assert.equal(body.coverage.scored, 4);
+    assert.equal(body.coverage.scraped, 4);
+    assert.equal(body.coverage.excluded, 1);
+    assert.equal(body.coverage.missing_required_fields, 1);
+    assert.equal(body.coverage.percent, 30);
+    assert.equal(body.coverage.window.run_key, 'investment-screener:ASX:asx-yahoo-timeseries:test');
+    assert.equal(queries[0].params[0], 'ASX');
   } finally {
     await server.close();
   }

@@ -87,3 +87,23 @@ test('dashboard investment screener exposes search and pagination controls for b
   assert.match(appSource, /function updateInvestmentPaginationControls\(/);
   assert.match(appSource, /payload\.pagination/);
 });
+
+
+test('dashboard investment screener renders source and coverage panel details', () => {
+  assert.match(appSource, /function renderInvestmentSourceCoveragePanel\(/);
+  assert.match(appSource, /payload\?\.source_summary/);
+  assert.match(appSource, /payload\?\.coverage/);
+  assert.match(appSource, /Data source/);
+  assert.match(appSource, /Coverage:/);
+  assert.match(appSource, /Freshness:/);
+  assert.match(appSource, /denominator_label/);
+});
+
+
+test('dashboard investment screener renders fixture and degraded coverage caveats honestly', () => {
+  assert.match(appSource, /Fixture\/sample data/);
+  assert.match(appSource, /not full ASX market coverage/);
+  assert.match(appSource, /Coverage degraded/);
+  assert.match(appSource, /Postgres history is unavailable/);
+  assert.match(appSource, /alternate_denominators/);
+});
