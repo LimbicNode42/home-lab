@@ -30,10 +30,12 @@ from screener import (
     build_company_from_yahoo_timeseries,
     build_dashboard_ranked_export,
     hydrate_companies_from_asx_tickers,
+    select_active_asx_tickers,
     insert_screener_run,
     load_config,
     load_asx_watchlist,
     normalise_asx_ticker,
+    parse_args,
     rank_companies,
     score_company,
 )
@@ -623,6 +625,45 @@ class TestLoadAsxWatchlist(unittest.TestCase):
         tickers = [e["ticker"] for e in entries if e.get("active")]
         self.assertIsInstance(tickers, list)
         self.assertGreater(len(tickers), 0)
+
+
+# ---------------------------------------------------------------------------
+# 7. Bounded real ASX hydration command behavior
+# ---------------------------------------------------------------------------
+
+
+class TestBoundedAsxHydrationCli(unittest.TestCase):
+
+    def test_cli_exposes_max_tickers_and_sleep_seconds_for_bounded_live_runs(self):
+        args = parse_args([
+            "--asx-watchlist", str(WATCHLIST_PATH),
+            "--max-tickers", "2",
+            "--sleep-seconds", "0.75",
+        ])
+
+        self.assertEqual(args.max_tickers, 2)
+        self.assertEqual(args.sleep_seconds, 0.75)
+
+    def test_select_active_asx_tickers_honors_max_tickers(self):
+        entries = [
+            {"ticker": "BHP.AX", "active": True},
+            {"ticker": "CBA.AX", "active": True},
+            {"ticker": "CSL.AX", "active": True},
+        ]
+
+        self.assertEqual(
+            select_active_asx_tickers(entries, max_tickers=2),
+            ["BHP.AX", "CBA.AX"],
+        )
+
+    def test_yahoo_hydrated_fields_carry_provider_source_family(self):
+        quote = {"price": 65.16, "currency": "AUD", "exchange": "ASX", "name": "BHP Group"}
+        hydrated = build_company_from_yahoo_timeseries("BHP.AX", bhp_timeseries_fixture(), quote)
+
+        self.assertEqual(hydrated["revenue"].provenance["source_family"], "yahoo-finance")
+        self.assertEqual(hydrated["price"].provenance["source_family"], "yahoo-finance")
+        self.assertIn("unofficial", hydrated["revenue"].provenance["freshness"].lower())
+
 
 
 if __name__ == "__main__":

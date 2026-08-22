@@ -340,6 +340,43 @@ test('GET /api/investment-screener/ranked returns representative sanitized ranke
   }
 });
 
+
+test('GET /api/investment-screener/ranked preserves bounded ASX Yahoo source mode', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'investment-ranked-asx-mode-'));
+  const rankedPath = join(dir, 'latest_ranked.json');
+  await writeFile(rankedPath, JSON.stringify({
+    mode: 'asx-yahoo-timeseries',
+    generated_at: '2026-08-22T09:00:00Z',
+    data_as_of: '2026-08-21',
+    limitations: ['Yahoo Finance public endpoints are unofficial and bounded; verify against ASX filings.'],
+    candidates: [{
+      rank: 1,
+      ticker: 'BHP.AX',
+      name: 'BHP Group',
+      market: 'ASX',
+      currency: 'AUD',
+      score: 88,
+      sub_scores: { quality: 20 },
+      sanitized_provenance_summary: '2 source(s); data_as_of=2026-08-21; retrieved_at=2026-08-22T08:00:00Z'
+    }]
+  }), 'utf8');
+
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerRankedFile: rankedPath });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/investment-screener/ranked?market=ASX`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.mode, 'asx-yahoo-timeseries');
+    assert.equal(body.candidates[0].ticker, 'BHP.AX');
+    assert.equal(body.limitations.some((item) => item.includes('unofficial')), true);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('GET /api/investment-screener/ranked strips paths, diagnostics, metadata, and secret-shaped values', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'investment-ranked-leak-'));
   const rankedPath = join(dir, 'latest_ranked.json');
