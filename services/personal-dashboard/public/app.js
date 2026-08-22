@@ -198,7 +198,7 @@ async function refreshStatus() {
   }
 }
 
-const TAB_IDS = ['overview', 'work', 'knowledge', 'reports', 'diary', 'goals'];
+const TAB_IDS = ['overview', 'work', 'knowledge', 'reports', 'investment-screener', 'diary', 'goals'];
 const DEFAULT_TAB_ID = 'overview';
 const tabs = new Map(TAB_IDS.map((id) => [id, document.querySelector(`#tab-${id}`)]));
 const tabPanels = new Map(TAB_IDS.map((id) => [id, document.querySelector(`#panel-${id}`)]));
@@ -232,6 +232,7 @@ async function loadTabData(tabId) {
     await refreshDocs();
   } else if (tabId === 'reports') {
     await refreshFinnick();
+  } else if (tabId === 'investment-screener') {
     await refreshInvestmentScreener();
   } else if (tabId === 'diary') {
     await refreshDiaryEntries();

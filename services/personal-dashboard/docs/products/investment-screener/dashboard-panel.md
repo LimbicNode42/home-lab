@@ -9,7 +9,7 @@ Current state: the panel displays the latest file-backed artifacts (`latest_rank
 ## Who it is for
 
 - Ben, when reviewing the latest shortlist.
-- Authenticated dashboard users Ben permits to see the Reports tab.
+- Authenticated dashboard users Ben permits to see the Investment Screener tab.
 - Operators checking whether the latest export is present and readable.
 
 ## When to use it
@@ -21,7 +21,7 @@ Use the plain-text report only as a fallback or when comparing output outside th
 ## How to use it
 
 1. Open the dashboard.
-2. Select the Reports tab.
+2. Select the Investment Screener tab.
 3. Review the Investment Screener panel.
 4. Check generated time and data-as-of time.
 5. Start with the default Top 6 composite view.
@@ -77,7 +77,7 @@ The card score is a prompt for attention, not a decision. A candidate with a hig
 
 For panel verification:
 
-1. Open the Reports tab.
+1. Open the Investment Screener tab.
 2. Confirm either candidate cards or a safe empty/error state appears.
 3. Use Refresh and confirm the panel does not throw browser errors.
 4. Change Market, Score focus, Weight preset, and Suggestions.

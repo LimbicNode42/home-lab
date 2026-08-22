@@ -122,12 +122,13 @@ Then open `http://127.0.0.1:4322`.
 
 ## Dashboard navigation
 
-The dashboard is organised into six hash-backed tabs. `/` defaults to Overview; direct links such as `/#work`, `/#knowledge`, `/#reports`, `/#diary`, and `/#goals` select the matching tab without adding server routes.
+The dashboard is organised into seven hash-backed tabs. `/` defaults to Overview; direct links such as `/#work`, `/#knowledge`, `/#reports`, `/#investment-screener`, `/#diary`, and `/#goals` select the matching tab without adding server routes.
 
 - **Overview**: service status and configured household links.
 - **Work**: the Kanban board, still read-only unless the server explicitly enables the mutation bridge.
 - **Knowledge**: completed epics first, then the approved documentation viewer.
-- **Reports**: Finnick daily betting output and investment screener output.
+- **Reports**: Finnick daily betting output.
+- **Investment Screener**: latest generated value-growth screener output, promoted to its own top-level destination because it is a full feature rather than a report subpage.
 - **Diary**: private diary entries backed by the shared critical Postgres service.
 - **Goals**: private goal tracking backed by the same Postgres personal-data store, with stable goal ids and status/timestamp fields for later diary comparison work. There is no LLM assessment/scoring in the MVP.
 
@@ -278,7 +279,7 @@ Human-facing Investment Screener docs now live under `services/personal-dashboar
 | --- | --- |
 | [Product guide](./docs/products/investment-screener/README.md) | What the screener is for, who should use it, and the deliverable map. |
 | [CLI and generator](./docs/products/investment-screener/cli-generator.md) | How the generator artifact produces safe ranked JSON and report outputs. |
-| [Dashboard panel](./docs/products/investment-screener/dashboard-panel.md) | How to use the Reports-tab panel and understand its controls. |
+| [Dashboard panel](./docs/products/investment-screener/dashboard-panel.md) | How to use the top-level Investment Screener panel and understand its controls. |
 | [Interpreting results](./docs/products/investment-screener/interpreting-results.md) | How to read scores, filters, risk flags, caveats, and suggestion counts. |
 | [Historical pipeline architecture](./docs/products/investment-screener/historical-pipeline-architecture.md) | ASX-first universe, data sources, Postgres history, recurrence, and dashboard evolution contract. |
 | [Operations and limitations](./docs/products/investment-screener/operations-limitations.md) | Runbook, trust boundaries, troubleshooting, and future improvements. |
@@ -287,7 +288,7 @@ The sections below remain the implementation/API notes for maintainers; the prod
 
 ### User-facing location and controls
 
-The panel appears in the **Reports** tab as **"Investment Screener"**. It loads automatically when the Reports tab is opened and has a manual **Refresh** button.
+The panel appears in its own top-level **Investment Screener** tab. It loads automatically when that tab is opened and has a manual **Refresh** button.
 
 Default behavior:
 
@@ -440,7 +441,7 @@ npm test
 DASHBOARD_AUTH_MODE=disabled DASHBOARD_ALLOW_DISABLED_AUTH=true DASHBOARD_CONFIG_FILE=./config/dashboard.public.example.json npm start
 ```
 
-Manual UI regression: open `/#reports`, confirm the Investment Screener panel loads or shows the safe empty/error state, change Market / Score focus / Weight preset / Suggestions, use Reset filters, and confirm no browser console errors.
+Manual UI regression: open `/#investment-screener`, confirm the Investment Screener panel loads or shows the safe empty/error state, change Market / Score focus / Weight preset / Suggestions, use Reset filters, and confirm no browser console errors.
 
 ### Approval-gated deployment notes
 
@@ -542,14 +543,14 @@ Use this for UI-only behavior that the Node built-in test harness cannot prove r
 
 1. Start a local candidate only, without live deployment: `DASHBOARD_AUTH_MODE=disabled DASHBOARD_ALLOW_DISABLED_AUTH=true DASHBOARD_CONFIG_FILE=./config/dashboard.public.example.json npm start`.
 2. Open `/` and confirm **Overview** is selected with Service status and Links visible.
-3. Open `/#work`, `/#knowledge`, and `/#reports` directly; confirm each tab is selected after reload and only its panel group is visible.
+3. Open `/#work`, `/#knowledge`, `/#reports`, and `/#investment-screener` directly; confirm each tab is selected after reload and only its panel group is visible.
 4. Use ArrowLeft/ArrowRight/Home/End on focused tabs; confirm focus and selected tab move predictably.
 5. Confirm the mobile/narrow viewport keeps the tab strip horizontally scrollable and panel content readable.
 6. In Work, confirm the Kanban panel initially renders compactly, the **Expand board** / **Compact board** control toggles with `aria-expanded`, and the preference persists across reload via `localStorage`.
 7. Collapse and expand at least one Kanban lane; confirm its count/title remain visible, cards hide/show by keyboard-operable buttons, and the lane preference persists across reload.
 8. Confirm read-only mode is visible and card move controls remain disabled unless the server explicitly reports mutations enabled.
 9. In Knowledge, confirm Completed Epics and Documentation load; selecting a document still fetches by opaque manifest id, and the docs search box filters the approved list with a clear no-match state.
-10. In Reports, confirm Finnick and Investment Screener load or show their existing safe empty/error states.
+10. In Reports, confirm Finnick loads or shows its existing safe empty/error state; in Investment Screener, confirm the screener loads or shows its existing safe empty/error state.
 11. With browser devtools open, confirm no console errors during initial load, tab changes, Kanban expand/collapse, docs selection, status refresh, and report refreshes.
 
 ## Secret handling

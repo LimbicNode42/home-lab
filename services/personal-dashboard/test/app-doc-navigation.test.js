@@ -169,7 +169,7 @@ function createHarness() {
     nodesById.set(id, node);
     body.append(node);
   }
-  for (const id of ['overview', 'work', 'knowledge', 'reports']) {
+  for (const id of ['overview', 'work', 'knowledge', 'reports', 'investment-screener', 'diary', 'goals']) {
     const tab = new FakeNode('a');
     tab.ownerDocument = document;
     tab.setAttribute('id', `tab-${id}`);
