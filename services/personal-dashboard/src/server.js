@@ -904,6 +904,182 @@ async function readWritingPost({ writingPostsFile, postId }) {
   return { statusCode: 200, payload: { post, mode: 'read-only' } };
 }
 
+const DEFAULT_DATASETS_ROOT = resolve(__dirname, '..', 'datasets');
+const DEFAULT_DATASET_REGISTRY = [
+  {
+    dataset_id: 'aseprite',
+    display_name: 'Aseprite command pairs',
+    description: 'Small source/instruction/output examples for Aseprite workflow curation.',
+    schema_version: 'source-instruction-output/v1',
+    mode: 'read-only',
+    file: 'aseprite.jsonl'
+  }
+];
+const DATASET_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const DATASET_SCHEMA_VERSION_PATTERN = /^[a-z0-9][a-z0-9._/-]{0,79}$/i;
+const DATASET_TEXT_MAX_CHARS = 12 * 1024;
+const DATASET_DEFAULT_LIMIT = 20;
+const DATASET_MAX_LIMIT = 100;
+
+function normalizeDatasetFile(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.startsWith('/') || trimmed.includes('\0')) return null;
+  const normalized = normalize(trimmed).split(sep).join('/');
+  if (normalized === '.' || normalized.startsWith('../') || normalized === '..') return null;
+  if (normalized.includes('/') || normalized.includes('..')) return null;
+  if (normalized.startsWith('.') || extname(normalized).toLowerCase() !== '.jsonl') return null;
+  return normalized;
+}
+
+function datasetRegistryEntries(registry, datasetsRoot) {
+  const root = resolve(datasetsRoot);
+  const rawEntries = Array.isArray(registry) ? registry : DEFAULT_DATASET_REGISTRY;
+  const entries = [];
+  const seen = new Set();
+  for (const raw of rawEntries) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    const datasetId = safeText(raw.dataset_id ?? raw.id, null, 64);
+    if (!datasetId || !DATASET_ID_PATTERN.test(datasetId) || seen.has(datasetId)) continue;
+    const file = normalizeDatasetFile(raw.file ?? raw.path ?? raw.source);
+    if (!file) continue;
+    const absolutePath = resolve(root, file);
+    const relativePath = relative(root, absolutePath);
+    if (relativePath.startsWith('..') || relativePath.startsWith('/') || relativePath === '') continue;
+    const schemaVersion = safeText(raw.schema_version, 'source-instruction-output/v1', 80);
+    if (!schemaVersion || !DATASET_SCHEMA_VERSION_PATTERN.test(schemaVersion)) continue;
+    seen.add(datasetId);
+    entries.push({
+      dataset_id: datasetId,
+      display_name: safeText(raw.display_name ?? raw.title, datasetId, 120),
+      description: safeText(raw.description, 'Curated source/instruction/output examples.', 280),
+      schema_version: schemaVersion,
+      mode: 'read-only',
+      absolutePath
+    });
+  }
+  return entries;
+}
+
+function publicDataset(dataset, extra = {}) {
+  return {
+    dataset_id: dataset.dataset_id,
+    display_name: dataset.display_name,
+    description: dataset.description,
+    schema_version: dataset.schema_version,
+    mode: dataset.mode,
+    storage: 'committed fixture',
+    fields: ['source', 'instruction', 'output'],
+    ...extra
+  };
+}
+
+function datasetTextField(value) {
+  const text = safeText(value, null, DATASET_TEXT_MAX_CHARS);
+  return text && text.length <= DATASET_TEXT_MAX_CHARS ? text : null;
+}
+
+function sanitizeDatasetRecord(raw, lineNumber) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const source = datasetTextField(raw.source);
+  const instruction = datasetTextField(raw.instruction);
+  const output = datasetTextField(raw.output);
+  if (!source || !instruction || !output) return null;
+  return { line_number: lineNumber, source, instruction, output };
+}
+
+async function loadDatasetRecords(dataset) {
+  const records = [];
+  let invalidLineCount = 0;
+  const content = await readFile(dataset.absolutePath, 'utf8');
+  const lines = content.split(/\r?\n/);
+  for (const [index, line] of lines.entries()) {
+    if (!line.trim()) continue;
+    try {
+      const record = sanitizeDatasetRecord(JSON.parse(line), index + 1);
+      if (!record) {
+        invalidLineCount += 1;
+      } else {
+        records.push(record);
+      }
+    } catch {
+      invalidLineCount += 1;
+    }
+  }
+  return { records, invalidLineCount };
+}
+
+function parseDatasetPagination(searchParams) {
+  const limit = searchParams.get('limit') ?? String(DATASET_DEFAULT_LIMIT);
+  const offset = searchParams.get('offset') ?? '0';
+  const parsedLimit = Number(limit);
+  const parsedOffset = Number(offset);
+  if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > DATASET_MAX_LIMIT) {
+    return { error: 'invalid_dataset_pagination', message: `Dataset limit must be between 1 and ${DATASET_MAX_LIMIT}` };
+  }
+  if (!Number.isInteger(parsedOffset) || parsedOffset < 0 || parsedOffset > 10000) {
+    return { error: 'invalid_dataset_pagination', message: 'Dataset offset must be between 0 and 10000' };
+  }
+  return { limit: parsedLimit, offset: parsedOffset };
+}
+
+async function readDatasetList({ datasetRegistry, datasetsRoot }) {
+  const datasets = [];
+  for (const dataset of datasetRegistryEntries(datasetRegistry, datasetsRoot)) {
+    try {
+      const loaded = await loadDatasetRecords(dataset);
+      datasets.push(publicDataset(dataset, {
+        record_count: loaded.records.length,
+        invalid_line_count: loaded.invalidLineCount
+      }));
+    } catch {
+      datasets.push(publicDataset(dataset, {
+        record_count: null,
+        unavailable: true
+      }));
+    }
+  }
+  return { statusCode: 200, payload: { datasets, mode: 'read-only', storage: 'committed fixture' } };
+}
+
+async function readDatasetRecords({ datasetRegistry, datasetsRoot, datasetId, searchParams }) {
+  if (!DATASET_ID_PATTERN.test(datasetId)) {
+    return { statusCode: 404, payload: { error: 'dataset_not_found' } };
+  }
+  const dataset = datasetRegistryEntries(datasetRegistry, datasetsRoot).find((entry) => entry.dataset_id === datasetId);
+  if (!dataset) return { statusCode: 404, payload: { error: 'dataset_not_found', message: 'Dataset was not found' } };
+  const pagination = parseDatasetPagination(searchParams);
+  if (pagination.error) return { statusCode: 400, payload: pagination };
+  try {
+    const loaded = await loadDatasetRecords(dataset);
+    if (loaded.invalidLineCount > 0) {
+      return {
+        statusCode: 422,
+        payload: {
+          error: 'invalid_dataset_jsonl',
+          message: 'Dataset contains invalid JSONL records and was not served.',
+          invalid_line_count: loaded.invalidLineCount
+        }
+      };
+    }
+    const page = loaded.records.slice(pagination.offset, pagination.offset + pagination.limit);
+    const nextOffset = pagination.offset + page.length < loaded.records.length ? pagination.offset + page.length : null;
+    const previousOffset = pagination.offset > 0 ? Math.max(0, pagination.offset - pagination.limit) : null;
+    return {
+      statusCode: 200,
+      payload: {
+        dataset: publicDataset(dataset, { record_count: loaded.records.length }),
+        records: page,
+        pagination: { ...pagination, total: loaded.records.length, next_offset: nextOffset, previous_offset: previousOffset },
+        mode: 'read-only'
+      }
+    };
+  } catch {
+    return { statusCode: 404, payload: { error: 'dataset_not_found', message: 'Dataset records are unavailable' } };
+  }
+}
+
+
 
 const INVESTMENT_SCREENER_DISCLAIMER = 'Informational screener output only; not financial advice or a trading recommendation.';
 const INVESTMENT_SCREENER_DEFAULT_PAGE_SIZE = 25;
@@ -1836,6 +2012,12 @@ export async function createApp(options = {}) {
   const writingPostsFile = Object.prototype.hasOwnProperty.call(options, 'writingPostsFile')
     ? options.writingPostsFile
     : (process.env.WRITING_POSTS_FILE ?? DEFAULT_WRITING_POSTS_FILE);
+  const datasetsRoot = Object.prototype.hasOwnProperty.call(options, 'datasetsRoot')
+    ? options.datasetsRoot
+    : (process.env.DATASETS_ROOT ?? DEFAULT_DATASETS_ROOT);
+  const datasetRegistry = Object.prototype.hasOwnProperty.call(options, 'datasetRegistry')
+    ? options.datasetRegistry
+    : DEFAULT_DATASET_REGISTRY;
   const personalDataDatabaseUrl = Object.prototype.hasOwnProperty.call(options, 'personalDataDatabaseUrl')
     ? options.personalDataDatabaseUrl
     : (process.env.PERSONAL_DASHBOARD_DATABASE_URL ?? null);
@@ -1918,6 +2100,25 @@ export async function createApp(options = {}) {
       const writingPostMatch = /^\/api\/writing\/posts\/([^/]+)$/.exec(url.pathname);
       if (request.method === 'GET' && writingPostMatch) {
         const result = await readWritingPost({ writingPostsFile, postId: decodeURIComponent(writingPostMatch[1]) });
+        return json(response, result.statusCode, result.payload);
+      }
+
+      if (url.pathname === '/api/datasets') {
+        if (request.method !== 'GET') return json(response, 405, { error: 'method_not_allowed' });
+        const result = await readDatasetList({ datasetRegistry, datasetsRoot });
+        return json(response, result.statusCode, result.payload);
+      }
+
+      const datasetRecordsMatch = /^\/api\/datasets\/([^/]+)\/records$/.exec(url.pathname);
+      if (datasetRecordsMatch) {
+        if (request.method === 'POST') {
+          return json(response, 405, {
+            error: 'dataset_append_disabled',
+            message: 'Dataset append/create are deferred until storage, locking, backups, and restore behavior are reviewed.'
+          });
+        }
+        if (request.method !== 'GET') return json(response, 405, { error: 'method_not_allowed' });
+        const result = await readDatasetRecords({ datasetRegistry, datasetsRoot, datasetId: decodeURIComponent(datasetRecordsMatch[1]), searchParams: url.searchParams });
         return json(response, result.statusCode, result.payload);
       }
 
