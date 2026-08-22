@@ -99,6 +99,24 @@
           </div>
         </section>
 
+        <section class="panel" id="datasets-panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Dataset Curation</h2>
+              <p class="muted board-message">Read-only source/instruction/output workbench from allowlisted JSONL fixtures. Append/create are deferred until storage, locking, backups, and restore behavior are reviewed.</p>
+            </div>
+            <button id="refresh-datasets" type="button">Refresh</button>
+          </div>
+          <div class="datasets-layout">
+            <div id="datasets-list" class="datasets-list" aria-live="polite">
+              <p class="muted">Loading datasets…</p>
+            </div>
+            <article id="dataset-records-preview" class="dataset-records-preview" aria-live="polite">
+              <p class="muted">Select a dataset to preview curated examples.</p>
+            </article>
+          </div>
+        </section>
+
         <section class="panel" id="docs-panel">
           <div class="panel-heading">
             <div>

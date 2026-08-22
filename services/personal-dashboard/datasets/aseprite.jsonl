@@ -1,0 +1,3 @@
+{"source":"aseprite-docs","instruction":"Create a small idle sprite canvas.","output":"Open File > New, set the sprite size to 32 by 32 pixels, and enable the pixel grid before drawing."}
+{"source":"pixel-art-notes","instruction":"Export a transparent sprite sheet.","output":"Use File > Export Sprite Sheet, choose RGBA output, and review the preview before saving the generated sheet."}
+{"source":"workflow-notes","instruction":"Keep animation frames organized for a walk cycle.","output":"Name tags for idle and walk states, keep frame durations consistent, and export from the tagged range."}

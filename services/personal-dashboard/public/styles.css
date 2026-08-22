@@ -453,3 +453,34 @@ h2, h3 { margin-top: 0; }
 .inline-control { display: inline-flex; align-items: center; gap: 0.45rem; color: #9aa7b4; }
 .inline-control select { border: 1px solid #3b4658; border-radius: 0.55rem; padding: 0.45rem; color: #e6edf3; background: #111827; }
 @media (max-width: 760px) { .writing-layout { grid-template-columns: 1fr; } }
+
+.datasets-layout {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(240px, 0.9fr) minmax(0, 1.3fr);
+}
+
+.datasets-list,
+.dataset-record-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.dataset-card,
+.dataset-record-card,
+.dataset-records-preview {
+  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.24));
+  border-radius: 0.9rem;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.38);
+}
+
+.dataset-record-card h4 {
+  margin: 0.35rem 0;
+}
+
+@media (max-width: 760px) {
+  .datasets-layout {
+    grid-template-columns: 1fr;
+  }
+}

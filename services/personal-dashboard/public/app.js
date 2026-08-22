@@ -32,6 +32,9 @@ const writingPostsList = document.querySelector('#writing-posts-list');
 const writingPostPreview = document.querySelector('#writing-post-preview');
 const writingStatusFilter = document.querySelector('#writing-status-filter');
 const refreshWritingPostsButton = document.querySelector('#refresh-writing-posts');
+const datasetsList = document.querySelector('#datasets-list');
+const datasetRecordsPreview = document.querySelector('#dataset-records-preview');
+const refreshDatasetsButton = document.querySelector('#refresh-datasets');
 const kanbanPanel = document.querySelector('#kanban-panel');
 const kanbanBoard = document.querySelector('#kanban-board');
 const kanbanMessage = document.querySelector('#kanban-message');
@@ -225,6 +228,7 @@ async function loadTabData(tabId) {
   } else if (tabId === 'knowledge') {
     await refreshEpics();
     await refreshWritingPosts();
+    await refreshDatasets();
     await refreshDocs();
   } else if (tabId === 'reports') {
     await refreshFinnick();
@@ -917,6 +921,95 @@ if (refreshWritingPostsButton) refreshWritingPostsButton.addEventListener('click
 if (writingStatusFilter) writingStatusFilter.addEventListener('change', () => {
   if (writingPostPreview) delete writingPostPreview.dataset.loaded;
   refreshWritingPosts();
+});
+
+
+function renderDatasetCard(dataset) {
+  const button = el('button', { className: 'entry-view-button', type: 'button', text: 'Preview' });
+  button.addEventListener('click', () => loadDatasetRecords(dataset.dataset_id));
+  const meta = [
+    dataset.schema_version,
+    dataset.mode,
+    Number.isInteger(dataset.record_count) ? `${dataset.record_count} record${dataset.record_count === 1 ? '' : 's'}` : 'records unavailable',
+    dataset.invalid_line_count ? `${dataset.invalid_line_count} invalid line${dataset.invalid_line_count === 1 ? '' : 's'}` : null
+  ].filter(Boolean).join(' · ');
+  return el('article', { className: 'dataset-card' }, [
+    el('div', { className: 'personal-entry-heading' }, [
+      el('strong', { text: dataset.display_name || dataset.dataset_id }),
+      button
+    ]),
+    el('p', { className: 'muted personal-entry-meta', text: meta }),
+    el('p', { text: dataset.description || 'Curated examples.' })
+  ]);
+}
+
+function renderDatasetRecord(record) {
+  return el('article', { className: 'dataset-record-card' }, [
+    el('div', { className: 'muted personal-entry-meta', text: `Line ${record.line_number} · source: ${record.source}` }),
+    el('h4', { text: record.instruction }),
+    el('p', { text: record.output })
+  ]);
+}
+
+function datasetErrorMessage(error) {
+  const message = String(error?.message ?? 'Dataset unavailable');
+  if (message.includes('422')) return 'Dataset contains invalid JSONL and is not being served until it is repaired.';
+  if (message.includes('404')) return 'Dataset is not registered in the server-side allowlist.';
+  if (message.includes('405')) return 'Dataset append/create are deferred until storage, locking, backups, and restore behavior are reviewed.';
+  return message.replace(/\/[^\s]+/g, '[redacted]');
+}
+
+async function loadDatasetRecords(datasetId) {
+  if (!datasetId || !datasetRecordsPreview) return;
+  datasetRecordsPreview.replaceChildren(el('p', { className: 'muted', text: 'Loading dataset records…' }));
+  try {
+    const data = await getJson(`/api/datasets/${encodeURIComponent(datasetId)}/records?limit=20&offset=0`);
+    const records = Array.isArray(data.records) ? data.records : [];
+    const dataset = data.dataset || {};
+    const children = [
+      el('div', { className: 'personal-entry-heading' }, [
+        el('h3', { text: dataset.display_name || dataset.dataset_id || 'Dataset' }),
+        el('span', { className: 'badge neutral', text: data.mode || 'read-only' })
+      ]),
+      el('p', { className: 'muted', text: 'Schema: source, instruction, output. Append/create are deferred pending reviewed storage and backup behavior.' })
+    ];
+    if (records.length === 0) {
+      children.push(el('p', { className: 'muted', text: 'No records available in this dataset.' }));
+    } else {
+      children.push(el('div', { className: 'dataset-record-list' }, records.map(renderDatasetRecord)));
+    }
+    datasetRecordsPreview.replaceChildren(el('div', { className: 'dataset-detail' }, children));
+  } catch (error) {
+    datasetRecordsPreview.replaceChildren(el('p', { className: 'error', text: `Dataset preview unavailable: ${datasetErrorMessage(error)}` }));
+  }
+}
+
+async function refreshDatasets() {
+  if (!datasetsList) return;
+  if (refreshDatasetsButton) refreshDatasetsButton.disabled = true;
+  try {
+    const data = await getJson('/api/datasets');
+    const datasets = Array.isArray(data.datasets) ? data.datasets : [];
+    datasetsList.replaceChildren();
+    if (datasets.length === 0) {
+      datasetsList.append(el('p', { className: 'muted', text: 'No allowlisted datasets are configured.' }));
+    } else {
+      datasetsList.append(...datasets.map(renderDatasetCard));
+    }
+    if (datasetRecordsPreview && datasets.length && !datasetRecordsPreview.dataset.loaded) {
+      datasetRecordsPreview.dataset.loaded = 'true';
+      await loadDatasetRecords(datasets[0].dataset_id);
+    }
+  } catch (error) {
+    datasetsList.replaceChildren(el('p', { className: 'error', text: `Datasets unavailable: ${datasetErrorMessage(error)}` }));
+  } finally {
+    if (refreshDatasetsButton) refreshDatasetsButton.disabled = false;
+  }
+}
+
+if (refreshDatasetsButton) refreshDatasetsButton.addEventListener('click', () => {
+  if (datasetRecordsPreview) delete datasetRecordsPreview.dataset.loaded;
+  refreshDatasets();
 });
 
 
