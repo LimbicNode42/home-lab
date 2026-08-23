@@ -15,10 +15,12 @@ PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR=${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/va
 FINNICK_REPORT_HOST_DIR=${FINNICK_REPORT_HOST_DIR:-/mnt/nas/services/personal-dashboard/finnick}
 INVESTMENT_SCREENER_HOST_DIR=${INVESTMENT_SCREENER_HOST_DIR:-/mnt/nas/services/personal-dashboard/investment-screener}
 KANBAN_DB_HOST_DIR=${KANBAN_DB_HOST_DIR:-/mnt/nas/services/personal-dashboard/kanban}
+HOMELAB_HEALTH_HOST_DIR=${HOMELAB_HEALTH_HOST_DIR:-/mnt/nas/services/personal-dashboard/homelab-health}
 FINNICK_REPORT_HOST_PATH=$FINNICK_REPORT_HOST_DIR/latest_report.txt
 INVESTMENT_SCREENER_REPORT_HOST_PATH=$INVESTMENT_SCREENER_HOST_DIR/latest_report.txt
 INVESTMENT_SCREENER_RANKED_HOST_PATH=$INVESTMENT_SCREENER_HOST_DIR/latest_ranked.json
 KANBAN_DB_HOST_PATH=$KANBAN_DB_HOST_DIR/kanban.db
+HOMELAB_HEALTH_HOST_PATH=$HOMELAB_HEALTH_HOST_DIR/latest_report.txt
 PERSONAL_DASHBOARD_ENV_FILE=${PERSONAL_DASHBOARD_ENV_FILE:-/root/.hermes/rendered/personal-dashboard.env}
 
 # Source an operator-local rendered secret file when present. This keeps the
@@ -74,11 +76,17 @@ if [ ! -f "$KANBAN_DB_HOST_PATH" ]; then
   printf '%s\n' "Refusing to recreate $CONTAINER; the dashboard must remain read-only against an explicit DB file." >&2
   exit 1
 fi
+if [ ! -f "$HOMELAB_HEALTH_HOST_PATH" ]; then
+  printf '%s\n' "Homelab health report bind source is missing or not a regular file: $HOMELAB_HEALTH_HOST_PATH" >&2
+  printf '%s\n' "Refusing to recreate $CONTAINER; the directory bind must contain this expected file." >&2
+  exit 1
+fi
 
 PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR="$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR" \
 FINNICK_REPORT_HOST_DIR="$FINNICK_REPORT_HOST_DIR" \
 INVESTMENT_SCREENER_HOST_DIR="$INVESTMENT_SCREENER_HOST_DIR" \
 KANBAN_DB_HOST_DIR="$KANBAN_DB_HOST_DIR" \
+HOMELAB_HEALTH_HOST_DIR="$HOMELAB_HEALTH_HOST_DIR" \
 APP_DIR="$APP_DIR" \
   "$APP_DIR/scripts/sync-runtime-snapshots.sh"
 
@@ -114,6 +122,7 @@ docker run -d \
   -e INVESTMENT_SCREENER_REPORT_FILE=/app/investment-screener/latest_report.txt \
   -e INVESTMENT_SCREENER_RANKED_FILE=/app/investment-screener/latest_ranked.json \
   -e INVESTMENT_SCREENER_DATA_ROOT=/app \
+  -e HOMELAB_HEALTH_REPORT_FILE=/app/homelab-health/latest_report.txt \
   -e DASHBOARD_AUTH_MODE=${DASHBOARD_AUTH_MODE:-reverse-proxy} \
   -e DASHBOARD_PROXY_USER_HEADER=${DASHBOARD_PROXY_USER_HEADER:-cf-access-authenticated-user-email} \
   -e DASHBOARD_STATUS_CACHE_TTL_MS=${DASHBOARD_STATUS_CACHE_TTL_MS:-30000} \
@@ -126,6 +135,7 @@ docker run -d \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/finnick,target=/app/finnick,readonly" \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/investment-screener,target=/app/investment-screener,readonly" \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/kanban,target=/app/kanban,readonly" \
+  --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/homelab-health,target=/app/homelab-health,readonly" \
   "$IMAGE"
 
 docker network connect "$DB_NETWORK" "$CONTAINER"

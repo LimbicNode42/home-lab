@@ -2057,6 +2057,9 @@ export async function createApp(options = {}) {
   const finnickReportFile = Object.prototype.hasOwnProperty.call(options, 'finnickReportFile')
     ? options.finnickReportFile
     : (process.env.FINNICK_REPORT_FILE ?? null);
+  const homelabHealthReportFile = Object.prototype.hasOwnProperty.call(options, 'homelabHealthReportFile')
+    ? options.homelabHealthReportFile
+    : (process.env.HOMELAB_HEALTH_REPORT_FILE ?? null);
   const investmentScreenerReportFile = Object.prototype.hasOwnProperty.call(options, 'investmentScreenerReportFile')
     ? options.investmentScreenerReportFile
     : (process.env.INVESTMENT_SCREENER_REPORT_FILE ?? null);
@@ -2149,6 +2152,55 @@ export async function createApp(options = {}) {
             return json(response, 404, { error: 'report_not_found', message: 'No Finnick report has been generated yet' });
           }
           return json(response, 502, { error: 'report_read_error', message: 'Unable to read Finnick report' });
+        }
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/homelab/health') {
+        if (!homelabHealthReportFile) {
+          return json(response, 503, { error: 'not_configured', message: 'HOMELAB_HEALTH_REPORT_FILE is not set' });
+        }
+        try {
+          const info = await stat(homelabHealthReportFile);
+          if (!info.isFile()) {
+            return json(response, 404, { error: 'not_found', message: 'No report yet — check back after the 08:00 AEST cron runs.' });
+          }
+          const fetched_at = new Date().toISOString();
+          const age_hours = (Date.now() - info.mtimeMs) / 3_600_000;
+          const raw = await readFile(homelabHealthReportFile, 'utf8');
+          const content = raw.trim();
+          if (!content) {
+            return json(response, 200, {
+              state: 'empty',
+              content: '',
+              generated_at: null,
+              fetched_at,
+              alert_count: null,
+              age_hours: Math.round(age_hours * 10) / 10
+            });
+          }
+          // Parse generated_at from first line: "Homelab health report - <ISO8601>"
+          const firstLine = content.split('\n')[0] ?? '';
+          const genMatch = firstLine.match(/Homelab health report\s*-\s*(\S+)/i);
+          const generated_at = genMatch ? genMatch[1] : null;
+          // Parse alert_count from Summary section: "- Alerts: N"
+          const alertMatch = content.match(/^\s*-\s*Alerts:\s*(\d+)/m);
+          const alert_count = alertMatch ? parseInt(alertMatch[1], 10) : null;
+          const stale = age_hours >= 26;
+          const degraded = !stale && typeof alert_count === 'number' && alert_count > 0;
+          const state = stale ? 'stale' : degraded ? 'degraded' : 'ok';
+          return json(response, 200, {
+            state,
+            content,
+            generated_at,
+            fetched_at,
+            alert_count,
+            age_hours: Math.round(age_hours * 10) / 10
+          });
+        } catch (err) {
+          if (err.code === 'ENOENT') {
+            return json(response, 404, { error: 'not_found', message: 'No report yet — check back after the 08:00 AEST cron runs.' });
+          }
+          return json(response, 502, { error: 'read_error', message: 'Unable to read homelab health report.' });
         }
       }
 
