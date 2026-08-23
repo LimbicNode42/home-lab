@@ -202,7 +202,7 @@ async function refreshStatus() {
   }
 }
 
-const TAB_IDS = ['overview', 'work', 'knowledge', 'reports', 'investment-screener', 'diary', 'goals'];
+const TAB_IDS = ['overview', 'work', 'knowledge', 'reports', 'investment-screener', 'diary-goals'];
 const DEFAULT_TAB_ID = 'overview';
 const tabs = new Map(TAB_IDS.map((id) => [id, document.querySelector(`#tab-${id}`)]));
 const tabPanels = new Map(TAB_IDS.map((id) => [id, document.querySelector(`#panel-${id}`)]));
@@ -210,6 +210,7 @@ const loadedTabs = new Set();
 
 function tabIdFromHash(hash = window.location.hash) {
   const id = String(hash || '').replace(/^#/, '').toLowerCase();
+  if (id === 'diary' || id === 'goals') return 'diary-goals';
   return TAB_IDS.includes(id) ? id : null;
 }
 
@@ -239,9 +240,8 @@ async function loadTabData(tabId) {
     await refreshHomelabHealth();
   } else if (tabId === 'investment-screener') {
     await refreshInvestmentScreener();
-  } else if (tabId === 'diary') {
+  } else if (tabId === 'diary-goals') {
     await refreshDiaryEntries();
-  } else if (tabId === 'goals') {
     await refreshGoals();
   }
 }
