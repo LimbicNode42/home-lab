@@ -21,8 +21,7 @@
           <a id="tab-knowledge" class="dashboard-tab" role="tab" href="#knowledge" aria-controls="panel-knowledge" aria-selected="false" tabindex="-1">Knowledge</a>
           <a id="tab-reports" class="dashboard-tab" role="tab" href="#reports" aria-controls="panel-reports" aria-selected="false" tabindex="-1">Reports</a>
           <a id="tab-investment-screener" class="dashboard-tab" role="tab" href="#investment-screener" aria-controls="panel-investment-screener" aria-selected="false" tabindex="-1">Investment Screener</a>
-          <a id="tab-diary" class="dashboard-tab" role="tab" href="#diary" aria-controls="panel-diary" aria-selected="false" tabindex="-1">Diary</a>
-          <a id="tab-goals" class="dashboard-tab" role="tab" href="#goals" aria-controls="panel-goals" aria-selected="false" tabindex="-1">Goals</a>
+          <a id="tab-diary-goals" class="dashboard-tab" role="tab" href="#diary-goals" aria-controls="panel-diary-goals" aria-selected="false" tabindex="-1">Diary &amp; Goals</a>
         </div>
       </nav>
 
@@ -260,55 +259,8 @@
         </section>
       </section>
 
-      <section id="panel-diary" class="tab-panel" role="tabpanel" aria-labelledby="tab-diary" data-tab-panel="diary" hidden>
-        <section class="panel" id="diary-panel">
-          <div class="panel-heading">
-            <div>
-              <h2>Diary</h2>
-              <p class="muted board-message">Diary entries can be created and viewed here. Editing and deleting are not part of this MVP.</p>
-            </div>
-            <button id="refresh-diary" type="button">Refresh</button>
-          </div>
-
-          <form id="diary-entry-form" class="personal-data-form" aria-label="Create diary entry">
-            <label>
-              Entry date
-              <input id="diary-entry-date" name="entry_date" type="date" autocomplete="off">
-            </label>
-            <label>
-              Title <span class="muted">optional</span>
-              <input id="diary-entry-title" name="title" type="text" maxlength="160" autocomplete="off">
-            </label>
-            <label>
-              Mood <span class="muted">optional</span>
-              <input id="diary-entry-mood" name="mood" type="text" maxlength="64" autocomplete="off">
-            </label>
-            <label class="form-wide">
-              Entry
-              <textarea id="diary-entry-body" name="body" maxlength="20000" required rows="8"></textarea>
-            </label>
-            <div class="form-actions form-wide">
-              <button type="submit">Save diary entry</button>
-              <p id="diary-form-message" class="muted" aria-live="polite"></p>
-            </div>
-          </form>
-
-          <div class="personal-data-layout">
-            <div>
-              <h3>Recent entries</h3>
-              <div id="diary-entry-list" class="personal-entry-list" aria-live="polite">
-                <p class="muted">Loading diary entries…</p>
-              </div>
-            </div>
-            <article id="diary-entry-detail" class="personal-entry-detail" aria-live="polite">
-              <p class="muted">Select an entry to view it. The goblin will not pretend edit/delete exists.</p>
-            </article>
-          </div>
-        </section>
-      </section>
-
-      <section id="panel-goals" class="tab-panel" role="tabpanel" aria-labelledby="tab-goals" data-tab-panel="goals" hidden>
-        <section class="panel" id="goals-panel">
+      <section id="panel-diary-goals" class="tab-panel" role="tabpanel" aria-labelledby="tab-diary-goals" data-tab-panel="diary-goals" hidden>
+        <section class="panel" id="goals-section">
           <div class="panel-heading">
             <div>
               <h2>Goals</h2>
@@ -367,6 +319,51 @@
             </div>
             <article id="goal-detail" class="personal-entry-detail" aria-live="polite">
               <p class="muted">Select a goal to view it.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel" id="diary-section">
+          <div class="panel-heading">
+            <div>
+              <h2>Diary</h2>
+              <p class="muted board-message">Diary entries can be created and viewed here. Editing and deleting are not part of this MVP.</p>
+            </div>
+            <button id="refresh-diary" type="button">Refresh</button>
+          </div>
+
+          <form id="diary-entry-form" class="personal-data-form" aria-label="Create diary entry">
+            <label>
+              Entry date
+              <input id="diary-entry-date" name="entry_date" type="date" autocomplete="off">
+            </label>
+            <label>
+              Title <span class="muted">optional</span>
+              <input id="diary-entry-title" name="title" type="text" maxlength="160" autocomplete="off">
+            </label>
+            <label>
+              Mood <span class="muted">optional</span>
+              <input id="diary-entry-mood" name="mood" type="text" maxlength="64" autocomplete="off">
+            </label>
+            <label class="form-wide">
+              Entry
+              <textarea id="diary-entry-body" name="body" maxlength="20000" required rows="8"></textarea>
+            </label>
+            <div class="form-actions form-wide">
+              <button type="submit">Save diary entry</button>
+              <p id="diary-form-message" class="muted" aria-live="polite"></p>
+            </div>
+          </form>
+
+          <div class="personal-data-layout">
+            <div>
+              <h3>Recent entries</h3>
+              <div id="diary-entry-list" class="personal-entry-list" aria-live="polite">
+                <p class="muted">Loading diary entries…</p>
+              </div>
+            </div>
+            <article id="diary-entry-detail" class="personal-entry-detail" aria-live="polite">
+              <p class="muted">Select an entry to view it. The goblin will not pretend edit/delete exists.</p>
             </article>
           </div>
         </section>
