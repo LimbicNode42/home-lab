@@ -29,6 +29,7 @@ from screener import (
     apply_hard_exclusions,
     build_company_from_yahoo_timeseries,
     build_dashboard_ranked_export,
+    build_file_first_run_payload,
     hydrate_companies_from_asx_tickers,
     select_active_asx_tickers,
     insert_screener_run,
@@ -664,6 +665,52 @@ class TestBoundedAsxHydrationCli(unittest.TestCase):
         self.assertEqual(hydrated["price"].provenance["source_family"], "yahoo-finance")
         self.assertIn("unofficial", hydrated["revenue"].provenance["freshness"].lower())
 
+
+
+class TestFileFirstArtifactPayload(unittest.TestCase):
+
+    def test_build_file_first_run_payload_preserves_non_fixture_yahoo_provenance_and_coverage(self):
+        cfg = load_config(CONFIG_PATH)
+        company = asx_company()
+        for key in scr.RAW_FIELDS:
+            company[key].provenance.update({
+                "source_family": "yahoo-finance",
+                "provider": "yahoo-finance",
+                "freshness": "Yahoo Finance unofficial bootstrap source",
+            })
+        ranked = rank_companies([company], cfg)
+
+        payload = build_file_first_run_payload(
+            ranked,
+            source="yahoo-finance",
+            mode="asx-yahoo-timeseries",
+            universe=["BHP.AX", "CSL.AX"],
+            universe_source="configured ASX bootstrap watchlist",
+            universe_version="sha256:test-watchlist",
+            started_at="2026-08-23T10:00:00Z",
+            completed_at="2026-08-23T10:01:00Z",
+        )
+
+        self.assertEqual(payload["source"], "yahoo-finance")
+        self.assertEqual(payload["mode"], "asx-yahoo-timeseries")
+        self.assertFalse(payload["fixture"])
+        self.assertEqual(payload["universe"]["count"], 2)
+        self.assertEqual(payload["universe"]["source"], "configured ASX bootstrap watchlist")
+        self.assertEqual(payload["scores"][0]["ticker"], "BHP.AX")
+        self.assertEqual(payload["scores"][0]["composite_score"], ranked[0]["composite_score"])
+        self.assertGreaterEqual(len(payload["observations"]), len(scr.RAW_FIELDS))
+        self.assertTrue(any(row["provider"] == "yahoo-finance" for row in payload["provenance"]))
+        self.assertEqual(payload["coverage"]["denominator_status"], "known_sample_universe")
+        self.assertTrue(any("unofficial" in caveat.lower() for caveat in payload["source_caveats"]))
+
+    def test_cli_exposes_file_first_run_payload_output_without_requiring_postgres(self):
+        args = parse_args([
+            "--fixture",
+            "--file-first-run-json", "/tmp/screener-run.json",
+        ])
+
+        self.assertEqual(args.file_first_run_json, "/tmp/screener-run.json")
+        self.assertFalse(args.write_postgres_history)
 
 
 if __name__ == "__main__":
