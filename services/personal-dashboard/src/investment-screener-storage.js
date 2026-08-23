@@ -163,7 +163,10 @@ function sanitizeReasonRows(rows = [], fallbackReason = 'unspecified') {
   return rows.map((row) => ({
     ticker: sanitizeText(row?.ticker, 'UNKNOWN', 32),
     reason: sanitizeText(row?.reason, fallbackReason, 240),
-    recoverable: row?.recoverable === true
+    recoverable: row?.recoverable === true,
+    provider: sanitizeText(row?.provider, null, 80),
+    source_family: sanitizeText(row?.source_family, row?.provider ?? null, 80),
+    failed_at: row?.failed_at ? isoDate(row.failed_at, 'failed_at') : null
   }));
 }
 
@@ -193,10 +196,18 @@ function normalizeRun(run) {
     data_as_of: sanitizeText(run?.data_as_of, null, 32),
     universe: {
       source: sanitizeText(run?.universe?.source, mode === 'fixture' ? 'fixture sample universe' : 'configured universe', 120),
-      version: sanitizeText(run?.universe?.version, null, 120),
+      version: sanitizeText(run?.universe?.version, null, 240),
       market,
       count: universeCount,
-      complete_exchange_listing: run?.universe?.complete_exchange_listing === true
+      complete_exchange_listing: run?.universe?.complete_exchange_listing === true,
+      full_count: Number.isInteger(Number(run?.universe?.full_count)) ? Number(run.universe.full_count) : null,
+      selected_count: Number.isInteger(Number(run?.universe?.selected_count)) ? Number(run.universe.selected_count) : universeCount,
+      batch_offset: Number.isInteger(Number(run?.universe?.batch_offset)) ? Number(run.universe.batch_offset) : null,
+      batch_end_exclusive: Number.isInteger(Number(run?.universe?.batch_end_exclusive)) ? Number(run.universe.batch_end_exclusive) : null,
+      source_row_count: Number.isInteger(Number(run?.universe?.source_row_count)) ? Number(run.universe.source_row_count) : null,
+      normalized_active_count: Number.isInteger(Number(run?.universe?.normalized_active_count)) ? Number(run.universe.normalized_active_count) : null,
+      source_sha256: sanitizeText(run?.universe?.source_sha256, null, 80),
+      source_retrieved_at: sanitizeText(run?.universe?.source_retrieved_at, null, 40)
     },
     companies,
     observations,
@@ -208,20 +219,22 @@ function normalizeRun(run) {
 }
 
 function coverageForRun(run) {
+  const supplied = run.coverage && typeof run.coverage === 'object' ? run.coverage : {};
   const usable = run.scores.filter((score) => !score.excluded && score.composite_score !== null).length;
   const scored = run.scores.filter((score) => score.composite_score !== null).length;
   const excluded = run.scores.filter((score) => score.excluded).length;
   const denominator = run.universe.count || run.companies.length;
+  const status = sanitizeText(supplied.denominator_status, null, 80) ?? (run.fixture ? 'sample' : (run.universe.complete_exchange_listing ? 'complete_exchange_listing' : 'known_sample_universe'));
   return {
     denominator,
-    denominator_label: run.universe.source,
-    denominator_status: run.fixture ? 'sample' : 'known_sample_universe',
+    denominator_label: sanitizeText(supplied.denominator_label, run.universe.source, 240),
+    denominator_status: status,
     scraped: run.companies.length,
     scored,
     usable,
     excluded,
     failed: run.failures.length,
-    stale: 0,
+    stale: Number.isInteger(Number(supplied.stale)) ? Number(supplied.stale) : 0,
     missing_required_fields: run.exclusions.length,
     percent: denominator > 0 ? Number(((usable / denominator) * 100).toFixed(1)) : null,
     caveats: run.fixture

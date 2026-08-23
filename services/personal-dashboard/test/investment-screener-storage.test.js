@@ -77,7 +77,7 @@ const nonFixtureRun = {
     { ticker: 'BHP.AX', field_name: 'revenue', source_family: 'yahoo-finance', provider: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:30.000Z', data_as_of: '2026-06-30' },
     { ticker: 'CSL.AX', field_name: 'revenue', source_family: 'yahoo-finance', provider: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:35.000Z', data_as_of: '2026-06-30' }
   ],
-  failures: [{ ticker: 'CBA.AX', reason: 'missing required valuation fields', recoverable: true }],
+  failures: [{ ticker: 'CBA.AX', reason: 'missing required valuation fields', provider: 'yahoo-finance', source_family: 'yahoo-finance', recoverable: true }],
   exclusions: [{ ticker: 'CBA.AX', reason: 'missing required valuation fields' }]
 };
 
@@ -191,6 +191,9 @@ test('publishInvestmentScreenerRun lets validated non-fixture ASX Yahoo runs sup
     assert.equal(nonFixture.manifest.source, 'yahoo-finance');
     assert.equal(nonFixture.manifest.coverage.denominator_status, 'known_sample_universe');
     assert.deepEqual(nonFixture.manifest.coverage.caveats, ['Coverage is for the configured universe, not necessarily the full exchange.']);
+    const failures = (await readFile(join(nonFixture.run_dir, 'failures.jsonl'), 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+    assert.equal(failures[0].provider, 'yahoo-finance');
+    assert.equal(failures[0].source_family, 'yahoo-finance');
 
     const previousLatest = JSON.parse(await readFile(join(dataRoot, 'investment-screener', 'manifests', 'market=ASX', 'source=yahoo-finance', 'latest.previous.json'), 'utf8'));
     assert.equal(previousLatest.run_id, fixture.run_id);

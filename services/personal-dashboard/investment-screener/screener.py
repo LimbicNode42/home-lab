@@ -26,6 +26,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import sys
 import time
 from dataclasses import dataclass
@@ -146,6 +147,144 @@ def load_asx_watchlist(path: Path) -> list[dict]:
     if not isinstance(data, list):
         raise ValueError(f"Watchlist at {path} must be a JSON array; got {type(data)}")
     return data
+
+
+ASX_DIRECTORY_SOURCE_URL = (
+    "https://asx.api.markitdigital.com/asx-research/1.0/companies/directory/file"
+    "?access_token=83ff96335c2d45a094df02a206a39ff4"
+)
+ASX_CODE_RE = re.compile(r"^[A-Z0-9]{2,6}$")
+
+
+def _parse_market_cap(value: Any) -> Optional[int]:
+    text = str(value or "").strip().replace(",", "")
+    if not text:
+        return None
+    try:
+        return int(float(text))
+    except ValueError:
+        return None
+
+
+def _parse_asx_listing_date(value: Any) -> Optional[str]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%b-%Y"):
+        try:
+            return datetime.datetime.strptime(text, fmt).date().isoformat()
+        except ValueError:
+            pass
+    return text
+
+
+def normalise_asx_directory_rows(
+    rows: list[dict],
+    source_url: str,
+    retrieved_at: str,
+    csv_sha256: str,
+) -> tuple[list[dict], dict]:
+    """Normalize ASX company-directory CSV rows into reviewed seed entries."""
+    entries: list[dict] = []
+    excluded: list[dict] = []
+    row_count = len(rows)
+    source = {
+        "name": "ASX company directory CSV",
+        "url": source_url,
+        "retrieved_at": retrieved_at,
+        "sha256": csv_sha256,
+        "row_count": row_count,
+    }
+    for row in rows:
+        code = str(row.get("ASX code") or "").strip().upper()
+        if not code or not ASX_CODE_RE.match(code):
+            excluded.append({"asx_code": code, "reason": "missing or invalid ASX code"})
+            continue
+        industry_group = str(row.get("GICs industry group") or "").strip() or None
+        entry = {
+            "ticker": f"{code}.AX",
+            "asx_code": code,
+            "name": str(row.get("Company name") or code).strip() or code,
+            "market": "ASX",
+            "exchange": "ASX",
+            "region": "AU",
+            "sector": industry_group,
+            "industry": industry_group,
+            "listing_date": _parse_asx_listing_date(row.get("Listing date")),
+            "market_cap": _parse_market_cap(row.get("Market Cap")),
+            "active": True,
+            "source": source,
+        }
+        entries.append(entry)
+
+    entries.sort(key=lambda entry: (entry["market_cap"] is None, -(entry["market_cap"] or 0), entry["asx_code"]))
+    for index, entry in enumerate(entries, start=1):
+        entry["universe_rank"] = index
+
+    metadata = {
+        "source_name": source["name"],
+        "source_url": source_url,
+        "retrieved_at": retrieved_at,
+        "sha256": csv_sha256,
+        "row_count": row_count,
+        "normalized_active_count": len(entries),
+        "excluded_count": len(excluded),
+        "excluded": excluded,
+        "sort_rule": "market_cap_desc_then_asx_code_asc",
+        "generated_by": "investment-screener/screener.py normalise_asx_directory_rows",
+    }
+    return entries, metadata
+
+
+def load_asx_universe_seed(path: Path) -> dict:
+    """Load a wrapped reviewed ASX universe seed, with legacy array support."""
+    with open(path, encoding="utf8") as fh:
+        data = json.load(fh)
+    if isinstance(data, list):
+        return {"metadata": {"seed_path": str(path)}, "entries": data}
+    if not isinstance(data, dict) or not isinstance(data.get("entries"), list):
+        raise ValueError(f"ASX universe seed at {path} must contain an entries array")
+    metadata = dict(data.get("metadata") or {})
+    metadata.setdefault("seed_path", str(path))
+    return {"metadata": metadata, "entries": data["entries"]}
+
+
+def select_asx_universe_batch(
+    entries: list[dict],
+    batch_offset: int = 0,
+    max_tickers: Optional[int] = None,
+) -> dict:
+    """Select a deterministic active ASX universe slice and return accounting metadata."""
+    if batch_offset < 0:
+        raise ValueError("batch_offset must be non-negative")
+    active = sorted(
+        [entry for entry in entries if entry.get("active") and entry.get("ticker")],
+        key=lambda entry: (int(entry.get("universe_rank") or 999999), str(entry.get("ticker"))),
+    )
+    if max_tickers is not None and max_tickers < 1:
+        raise ValueError("max_tickers must be at least 1")
+    full_count = len(active)
+    end = full_count if max_tickers is None else min(full_count, batch_offset + max_tickers)
+    selected = active[batch_offset:end]
+    complete = batch_offset == 0 and end >= full_count
+    status = "complete_exchange_listing" if complete else "ranked_market_cap_batch"
+    return {
+        "entries": selected,
+        "tickers": [str(entry["ticker"]) for entry in selected],
+        "full_count": full_count,
+        "selected_count": len(selected),
+        "batch_offset": batch_offset,
+        "batch_end_exclusive": end,
+        "complete_exchange_listing": complete,
+        "denominator_status": status,
+    }
+
+
+def build_universe_version(seed_path: Path, metadata: dict) -> str:
+    """Build a public, path-safe seed version label."""
+    sha = metadata.get("sha256") or metadata.get("source_sha256") or "unknown"
+    retrieved = metadata.get("retrieved_at") or "unknown"
+    return f"{seed_path.as_posix()} sha256:{sha} retrieved_at:{retrieved}"
 
 
 def select_active_asx_tickers(watchlist: list[dict], max_tickers: Optional[int] = None) -> list[str]:
@@ -1012,6 +1151,7 @@ def hydrate_companies_from_asx_tickers(
     timeseries_fetcher: Optional[Callable[[str], dict]] = None,
     sleep_seconds: float = 0.3,
     cache_dir: Optional[Path] = None,
+    failure_sink: Optional[Callable[[dict], None]] = None,
 ) -> list[dict]:
     """
     Hydrate ASX companies from Yahoo finance data.
@@ -1035,6 +1175,16 @@ def hydrate_companies_from_asx_tickers(
             ts = timeseries_fetcher(symbol)
             companies.append(build_company_from_yahoo_timeseries(symbol, ts, quote))
         except Exception as exc:
+            failure = {
+                "ticker": symbol,
+                "reason": str(exc),
+                "recoverable": True,
+                "provider": "yahoo-finance",
+                "source_family": "yahoo-finance",
+                "failed_at": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+            }
+            if failure_sink:
+                failure_sink(failure)
             warning_sink(f"WARNING: failed to hydrate {symbol} ASX data: {exc}")
         if sleep_seconds and ticker != tickers[-1]:
             time.sleep(sleep_seconds)
@@ -1099,6 +1249,9 @@ def build_file_first_run_payload(
     universe: list[str],
     universe_source: str = "configured ASX bootstrap watchlist",
     universe_version: Optional[str] = None,
+    universe_metadata: Optional[dict] = None,
+    batch_metadata: Optional[dict] = None,
+    hydration_failures: Optional[list[dict]] = None,
     started_at: Optional[str] = None,
     completed_at: Optional[str] = None,
 ) -> dict:
@@ -1111,6 +1264,16 @@ def build_file_first_run_payload(
     scores: list[dict] = []
     failures: list[dict] = []
     exclusions: list[dict] = []
+    for failure in hydration_failures or []:
+        ticker = normalise_asx_ticker(str(failure.get("ticker") or "UNKNOWN")) if failure.get("ticker") else "UNKNOWN"
+        failures.append({
+            "ticker": ticker,
+            "reason": str(failure.get("reason") or "provider hydration failed"),
+            "recoverable": failure.get("recoverable") is not False,
+            "provider": failure.get("provider") or failure.get("source_family") or "unknown",
+            "source_family": failure.get("source_family") or failure.get("provider") or "unknown",
+            "failed_at": failure.get("failed_at"),
+        })
 
     for index, row in enumerate(ranked, start=1):
         ticker = row.get("ticker")
@@ -1142,6 +1305,26 @@ def build_file_first_run_payload(
 
     usable = len([row for row in scores if not row["excluded"] and row["composite_score"] is not None])
     denominator = len(universe) if universe else len(companies)
+    batch_metadata = dict(batch_metadata or {})
+    universe_metadata = dict(universe_metadata or {})
+    denominator_status = batch_metadata.get("denominator_status")
+    if not denominator_status:
+        if mode == "fixture":
+            denominator_status = "sample"
+        elif batch_metadata.get("complete_exchange_listing"):
+            denominator_status = "complete_exchange_listing"
+        elif batch_metadata:
+            denominator_status = "ranked_market_cap_batch"
+        else:
+            denominator_status = "known_sample_universe"
+    if denominator_status == "ranked_market_cap_batch":
+        top_n = batch_metadata.get("selected_count") or denominator
+        denominator_label = f"top {top_n} ASX listings by Market Cap from ASX company directory seed"
+    elif denominator_status == "complete_exchange_listing":
+        denominator_label = "complete ASX company directory seed"
+    else:
+        denominator_label = universe_source
+    complete_listing = bool(batch_metadata.get("complete_exchange_listing", False))
     source_caveats = [
         "Yahoo Finance public endpoints are unofficial; verify against ASX announcements/company reports before acting."
     ] if source == "yahoo-finance" or mode == "asx-yahoo-timeseries" else []
@@ -1159,7 +1342,15 @@ def build_file_first_run_payload(
             "version": universe_version,
             "market": "ASX",
             "count": denominator,
-            "complete_exchange_listing": False,
+            "complete_exchange_listing": complete_listing,
+            "full_count": batch_metadata.get("full_count"),
+            "selected_count": batch_metadata.get("selected_count", denominator),
+            "batch_offset": batch_metadata.get("batch_offset"),
+            "batch_end_exclusive": batch_metadata.get("batch_end_exclusive"),
+            "source_row_count": universe_metadata.get("source_row_count") or universe_metadata.get("row_count"),
+            "normalized_active_count": universe_metadata.get("normalized_active_count"),
+            "source_sha256": universe_metadata.get("source_sha256") or universe_metadata.get("sha256"),
+            "source_retrieved_at": universe_metadata.get("retrieved_at"),
         },
         "companies": companies,
         "observations": observations,
@@ -1169,13 +1360,15 @@ def build_file_first_run_payload(
         "exclusions": exclusions,
         "coverage": {
             "denominator": denominator,
-            "denominator_label": universe_source,
-            "denominator_status": "sample" if mode == "fixture" else "known_sample_universe",
+            "denominator_label": denominator_label,
+            "denominator_status": denominator_status,
             "scraped": len(companies),
             "scored": len([row for row in scores if row["composite_score"] is not None]),
             "usable": usable,
             "excluded": len(exclusions),
             "failed": len(failures),
+            "stale": 0,
+            "missing_required_fields": len(exclusions),
             "percent": round((usable / denominator) * 100, 1) if denominator else None,
         },
         "source_caveats": source_caveats,
@@ -1659,6 +1852,11 @@ def parse_args(argv=None):
         help="JSON watchlist file (universe/asx-watchlist.json). Use all active tickers.",
     )
     ap.add_argument(
+        "--asx-universe-seed",
+        default=None,
+        help="Reviewed ASX company-directory seed JSON. Prefer this for expanded ASX batches.",
+    )
+    ap.add_argument(
         "--asx-tickers", nargs="*", metavar="TICKER",
         help="Hydrate specific ASX tickers via Yahoo (appends .AX when omitted).",
     )
@@ -1669,6 +1867,14 @@ def parse_args(argv=None):
     ap.add_argument(
         "--max-tickers", type=int, default=None,
         help="Bound live ASX hydration to the first N active tickers from the watchlist.",
+    )
+    ap.add_argument(
+        "--batch-size", type=int, default=None,
+        help="Alias for --max-tickers when selecting a deterministic ASX universe seed slice.",
+    )
+    ap.add_argument(
+        "--batch-offset", type=int, default=0,
+        help="Zero-based offset into the ranked ASX universe seed for resumable batches.",
     )
     ap.add_argument(
         "--sleep-seconds", type=float, default=0.3,
@@ -1710,7 +1916,12 @@ def parse_args(argv=None):
         "--score-version", default="asx-bootstrap-v1",
         help="Version label for scorer logic stored with score rows.",
     )
-    return ap.parse_args(argv)
+    args = ap.parse_args(argv)
+    if args.batch_size is not None:
+        if args.max_tickers is not None and args.max_tickers != args.batch_size:
+            ap.error("--batch-size and --max-tickers must match when both are provided")
+        args.max_tickers = args.batch_size
+    return args
 
 
 FIXTURE_UNIVERSE = [
@@ -1766,12 +1977,44 @@ def main(argv=None):
     companies: list[dict] = []
     universe_tickers: list[str] = []
     watchlist_path_str: Optional[str] = None
+    universe_source = "fixture sample universe"
+    universe_version: Optional[str] = None
+    universe_metadata: dict = {}
+    batch_metadata: dict = {}
+    hydration_failures: list[dict] = []
 
     if args.fixture:
         print("Running in fixture mode (no network calls).", file=sys.stderr)
         companies = list(FIXTURE_UNIVERSE)
         universe_tickers = [str(c.get("ticker")) for c in companies if c.get("ticker")]
         mode = "fixture"
+        universe_source = "fixture sample universe"
+    elif args.asx_universe_seed:
+        seed_path = Path(args.asx_universe_seed)
+        watchlist_path_str = str(seed_path)
+        seed = load_asx_universe_seed(seed_path)
+        selected = select_asx_universe_batch(seed["entries"], batch_offset=args.batch_offset, max_tickers=args.max_tickers)
+        universe_tickers = list(selected["tickers"])
+        cache_dir = Path(args.cache_dir) if args.cache_dir else None
+        universe_source = "ASX company directory CSV via reviewed static seed"
+        universe_version = build_universe_version(seed_path, seed["metadata"])
+        universe_metadata = dict(seed["metadata"])
+        batch_metadata = dict(selected)
+        batch_metadata.pop("entries", None)
+        batch_metadata.pop("tickers", None)
+        bound = f"offset={args.batch_offset}, size={args.max_tickers or selected['selected_count']}"
+        print(f"Hydrating {len(universe_tickers)} active ASX tickers from universe seed ({bound}); sleep_seconds={args.sleep_seconds}.", file=sys.stderr)
+        warnings: list[str] = []
+        companies = hydrate_companies_from_asx_tickers(
+            universe_tickers,
+            warning_sink=warnings.append,
+            sleep_seconds=args.sleep_seconds,
+            cache_dir=cache_dir,
+            failure_sink=hydration_failures.append,
+        )
+        for w in warnings:
+            print(w, file=sys.stderr)
+        mode = "asx-yahoo-timeseries"
     elif args.asx_watchlist:
         watchlist_path = Path(args.asx_watchlist)
         watchlist_path_str = str(watchlist_path)
@@ -1779,10 +2022,11 @@ def main(argv=None):
         tickers = select_active_asx_tickers(watchlist, max_tickers=args.max_tickers)
         universe_tickers = list(tickers)
         cache_dir = Path(args.cache_dir) if args.cache_dir else None
+        universe_source = "configured ASX bootstrap watchlist"
         bound = f" (bounded to {args.max_tickers})" if args.max_tickers else ""
         print(f"Hydrating {len(tickers)} active ASX tickers from watchlist{bound}; sleep_seconds={args.sleep_seconds}.", file=sys.stderr)
         warnings: list[str] = []
-        companies = hydrate_companies_from_asx_tickers(tickers, warning_sink=warnings.append, sleep_seconds=args.sleep_seconds, cache_dir=cache_dir)
+        companies = hydrate_companies_from_asx_tickers(tickers, warning_sink=warnings.append, sleep_seconds=args.sleep_seconds, cache_dir=cache_dir, failure_sink=hydration_failures.append)
         for w in warnings:
             print(w, file=sys.stderr)
         mode = "asx-yahoo-timeseries"
@@ -1791,7 +2035,8 @@ def main(argv=None):
         universe_tickers = [normalise_asx_ticker(ticker) for ticker in args.asx_tickers]
         warnings: list[str] = []
         cache_dir = Path(args.cache_dir) if args.cache_dir else None
-        companies = hydrate_companies_from_asx_tickers(args.asx_tickers, warning_sink=warnings.append, sleep_seconds=args.sleep_seconds, cache_dir=cache_dir)
+        universe_source = "explicit ASX ticker list"
+        companies = hydrate_companies_from_asx_tickers(args.asx_tickers, warning_sink=warnings.append, sleep_seconds=args.sleep_seconds, cache_dir=cache_dir, failure_sink=hydration_failures.append)
         for w in warnings:
             print(w, file=sys.stderr)
         mode = "asx-yahoo-timeseries"
@@ -1816,8 +2061,11 @@ def main(argv=None):
             source="yahoo-finance" if mode == "asx-yahoo-timeseries" else mode,
             mode=mode,
             universe=universe_tickers,
-            universe_source="configured ASX bootstrap watchlist" if mode != "fixture" else "fixture sample universe",
-            universe_version=None,
+            universe_source=universe_source,
+            universe_version=universe_version,
+            universe_metadata=universe_metadata,
+            batch_metadata=batch_metadata,
+            hydration_failures=hydration_failures,
         )
         Path(args.file_first_run_json).parent.mkdir(parents=True, exist_ok=True)
         Path(args.file_first_run_json).write_text(json.dumps(payload, indent=2, default=str) + "\n")
