@@ -1041,6 +1041,147 @@ def hydrate_companies_from_asx_tickers(
     return companies
 
 
+
+def _safe_timestamp(value: Optional[str] = None) -> str:
+    if value:
+        parsed = _parse_provenance_time(value)
+        if parsed:
+            return parsed.astimezone(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+        return str(value)
+    return datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _row_field_observations(row: dict) -> list[dict]:
+    observations: list[dict] = []
+    for field_name, field_data in _row_raw_fields(row).items():
+        prov = field_data.get("provenance") or {}
+        observations.append({
+            "ticker": row.get("ticker"),
+            "field_name": field_name,
+            "value": field_data.get("value"),
+            "source_family": prov.get("source_family") or prov.get("provider") or "unknown",
+            "retrieved_at": _parse_iso_timestamp(prov.get("retrieved_at") or prov.get("retrieved_from_source_at")),
+            "data_as_of": _parse_iso_date(prov.get("data_as_of")),
+        })
+    return observations
+
+
+def _row_file_first_provenance(row: dict) -> list[dict]:
+    provenance: list[dict] = []
+    for field_name, field_data in _row_raw_fields(row).items():
+        prov = field_data.get("provenance") or {}
+        if not prov:
+            continue
+        provenance.append({
+            "ticker": row.get("ticker"),
+            "field_name": field_name,
+            "source_family": prov.get("source_family") or prov.get("provider") or "unknown",
+            "provider": prov.get("provider") or prov.get("source_family") or "unknown",
+            "retrieved_at": _parse_iso_timestamp(prov.get("retrieved_at") or prov.get("retrieved_from_source_at")),
+            "data_as_of": _parse_iso_date(prov.get("data_as_of")),
+        })
+    return provenance
+
+
+def _ranked_data_as_of_latest(rows: list[dict]) -> Optional[str]:
+    values: list[str] = []
+    for row in rows:
+        summary = row.get("provenance_summary") or {}
+        if isinstance(summary, dict):
+            values.extend(str(v) for v in summary.get("data_as_of") or [] if v)
+    return sorted(set(values))[-1] if values else None
+
+
+def build_file_first_run_payload(
+    ranked: list[dict],
+    source: str,
+    mode: str,
+    universe: list[str],
+    universe_source: str = "configured ASX bootstrap watchlist",
+    universe_version: Optional[str] = None,
+    started_at: Optional[str] = None,
+    completed_at: Optional[str] = None,
+) -> dict:
+    """Build the canonical JSON payload consumed by the NAS/DuckDB artifact publisher."""
+    completed = _safe_timestamp(completed_at)
+    started = _safe_timestamp(started_at or completed)
+    companies: list[dict] = []
+    observations: list[dict] = []
+    provenance: list[dict] = []
+    scores: list[dict] = []
+    failures: list[dict] = []
+    exclusions: list[dict] = []
+
+    for index, row in enumerate(ranked, start=1):
+        ticker = row.get("ticker")
+        companies.append({
+            "ticker": ticker,
+            "name": row.get("name") or ticker,
+            "market": row.get("market") or "ASX",
+            "currency": row.get("currency") or "AUD",
+        })
+        excluded = bool(row.get("excluded"))
+        exclusion_reason = "; ".join(str(reason) for reason in row.get("exclusion_reasons") or row.get("caveats") or [] if reason) or None
+        scores.append({
+            "rank": row.get("rank") or index,
+            "ticker": ticker,
+            "name": row.get("name") or ticker,
+            "market": row.get("market") or "ASX",
+            "currency": row.get("currency") or "AUD",
+            "composite_score": row.get("composite_score"),
+            "sub_scores": dict(row.get("sub_scores") or {}),
+            "excluded": excluded,
+            "exclusion_reason": exclusion_reason,
+        })
+        observations.extend(_row_field_observations(row))
+        provenance.extend(_row_file_first_provenance(row))
+        if excluded:
+            item = {"ticker": ticker, "reason": exclusion_reason or "excluded from ranking", "recoverable": True}
+            failures.append(item)
+            exclusions.append({"ticker": ticker, "reason": item["reason"]})
+
+    usable = len([row for row in scores if not row["excluded"] and row["composite_score"] is not None])
+    denominator = len(universe) if universe else len(companies)
+    source_caveats = [
+        "Yahoo Finance public endpoints are unofficial; verify against ASX announcements/company reports before acting."
+    ] if source == "yahoo-finance" or mode == "asx-yahoo-timeseries" else []
+    return {
+        "market": "ASX",
+        "source": source,
+        "mode": mode,
+        "fixture": mode == "fixture",
+        "started_at": started,
+        "completed_at": completed,
+        "generated_at": completed,
+        "data_as_of": _ranked_data_as_of_latest(ranked),
+        "universe": {
+            "source": universe_source,
+            "version": universe_version,
+            "market": "ASX",
+            "count": denominator,
+            "complete_exchange_listing": False,
+        },
+        "companies": companies,
+        "observations": observations,
+        "scores": scores,
+        "provenance": provenance,
+        "failures": failures,
+        "exclusions": exclusions,
+        "coverage": {
+            "denominator": denominator,
+            "denominator_label": universe_source,
+            "denominator_status": "sample" if mode == "fixture" else "known_sample_universe",
+            "scraped": len(companies),
+            "scored": len([row for row in scores if row["composite_score"] is not None]),
+            "usable": usable,
+            "excluded": len(exclusions),
+            "failed": len(failures),
+            "percent": round((usable / denominator) * 100, 1) if denominator else None,
+        },
+        "source_caveats": source_caveats,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Postgres storage
 # ---------------------------------------------------------------------------
@@ -1542,6 +1683,10 @@ def parse_args(argv=None):
         help="Directory to write latest_ranked.json and latest_report.txt.",
     )
     ap.add_argument(
+        "--file-first-run-json", default=None,
+        help="Write canonical NAS/DuckDB publisher run payload JSON; publish it with scripts/publish-investment-screener-run.mjs.",
+    )
+    ap.add_argument(
         "--config", default=str(Path(__file__).parent / "config.yaml"),
         help="Path to config.yaml.",
     )
@@ -1664,6 +1809,19 @@ def main(argv=None):
 
     export = build_dashboard_ranked_export(ranked, mode=mode)
     report = build_plain_text_report(ranked, export, watchlist_path_str)
+
+    if args.file_first_run_json:
+        payload = build_file_first_run_payload(
+            ranked,
+            source="yahoo-finance" if mode == "asx-yahoo-timeseries" else mode,
+            mode=mode,
+            universe=universe_tickers,
+            universe_source="configured ASX bootstrap watchlist" if mode != "fixture" else "fixture sample universe",
+            universe_version=None,
+        )
+        Path(args.file_first_run_json).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.file_first_run_json).write_text(json.dumps(payload, indent=2, default=str) + "\n")
+        print("Wrote file-first run JSON payload.", file=sys.stderr)
 
     if args.write_postgres_history:
         conn = connect_postgres_from_env(args.database_url_env)

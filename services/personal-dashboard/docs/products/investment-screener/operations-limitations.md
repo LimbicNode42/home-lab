@@ -57,11 +57,40 @@ Rationale: these docs sit beside the dashboard service because the authenticated
 Use the file-first storage path for durable recurring screener history. The NAS directory mounted or copied into the dashboard runtime should contain an `investment-screener/` tree with immutable run artifacts and small latest pointers.
 
 1. Produce a complete run payload with explicit `market`, `source`, `mode`, `started_at`, `completed_at`, `data_as_of`, universe metadata, companies, scores, observations, provenance, failures, and exclusions.
-2. Publish through the storage helper (`publishInvestmentScreenerRun` in `src/investment-screener-storage.js`) or an equivalent single-writer job. It writes to a same-filesystem staging directory, validates rows, writes JSONL and Parquet companions, calculates checksums, then atomically promotes the run directory and `manifests/.../latest.json` pointer.
+2. Publish through the storage helper (`publishInvestmentScreenerRun` in `src/investment-screener-storage.js`) or `scripts/publish-investment-screener-run.mjs`. It writes to a same-filesystem staging directory, validates rows, writes JSONL and Parquet companions, calculates checksums, then atomically promotes the run directory and `manifests/.../latest.json` pointer.
 3. If validation fails, do not manually advance `latest.json`; the previous latest pointer must remain valid.
 4. Publish safe dashboard exports under `exports/dashboard/market=<MARKET>/` in the same single-writer path. Runtime API reads may query the immutable Parquet artifacts with in-memory DuckDB, but must not create `duckdb/`, materialized databases, or export files in the canonical/runtime-cache tree.
 5. Configure the dashboard with `INVESTMENT_SCREENER_DATA_ROOT=/app` when `/app/investment-screener` is the read-only runtime-cache copy of the NAS data tree. `INVESTMENT_SCREENER_RANKED_FILE` and `INVESTMENT_SCREENER_REPORT_FILE` remain supported as legacy fallback paths.
 6. Verify the browser/API payloads do not contain NAS mount paths, local paths, DB URLs, task ids, stack traces, or secret-shaped values.
+
+Bounded non-fixture ASX Yahoo publication command, to run only from the approved writer host/path after deployment approval:
+
+```sh
+cd services/personal-dashboard
+export ASX_SCREENER_DATA_ROOT="${ASX_SCREENER_DATA_ROOT:?set the screener writer data root}"
+export ASX_SCREENER_RUN_JSON="${ASX_SCREENER_RUN_JSON:-/var/tmp/investment-screener/asx-yahoo-run.json}"
+export ASX_SCREENER_PROVIDER_CACHE="${ASX_SCREENER_PROVIDER_CACHE:-$PWD/.cache/investment-screener/yahoo}"
+export ASX_SCREENER_MAX_TICKERS="${ASX_SCREENER_MAX_TICKERS:-25}"
+export ASX_SCREENER_SLEEP_SECONDS="${ASX_SCREENER_SLEEP_SECONDS:-1.0}"
+
+python3 investment-screener/screener.py \
+  --asx-watchlist investment-screener/universe/asx-watchlist.json \
+  --max-tickers "$ASX_SCREENER_MAX_TICKERS" \
+  --sleep-seconds "$ASX_SCREENER_SLEEP_SECONDS" \
+  --cache-dir "$ASX_SCREENER_PROVIDER_CACHE" \
+  --file-first-run-json "$ASX_SCREENER_RUN_JSON"
+
+node scripts/publish-investment-screener-run.mjs \
+  --data-root "$ASX_SCREENER_DATA_ROOT" \
+  --run-json "$ASX_SCREENER_RUN_JSON"
+```
+
+Environment notes:
+
+- `ASX_SCREENER_DATA_ROOT` is the single-writer data root whose child `investment-screener/` becomes the canonical immutable artifact tree. Do not point it at the dashboard read-only runtime cache.
+- `ASX_SCREENER_PROVIDER_CACHE` should be a host-local cache directory, not a served dashboard path and not committed to Git. It stores only provider JSON responses for throttled reruns.
+- `ASX_SCREENER_RUN_JSON` is a transient canonical run payload. Keep it in a private temp/staging directory and delete it after publication if operator policy requires.
+- Keep `--max-tickers` and `--sleep-seconds` set for Yahoo; the source is unofficial and can be blocked, stale, incomplete, or silently changed.
 
 Quick read-only verification examples, run against a copied/safe data root rather than live writer staging:
 

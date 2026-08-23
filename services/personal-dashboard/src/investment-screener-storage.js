@@ -407,6 +407,8 @@ export async function publishInvestmentScreenerRun({ dataRoot, run, now = new Da
       data_as_of: normalized.data_as_of,
       universe: normalized.universe,
       coverage,
+      provenance_sources: [...new Set(normalized.provenance.map((row) => row.source_family).filter(Boolean))],
+      latest_retrieved_at: normalized.provenance.map((row) => row.retrieved_at).filter(Boolean).sort().at(-1) ?? null,
       artifacts,
       relative_manifest_path: `runs/market=${normalized.market}/source=${normalized.source}/mode=${normalized.mode}/run_date=${runDate}/${runId}/manifest.json`
     };
@@ -500,6 +502,8 @@ export async function buildInvestmentScreenerDuckDbSummary({ dataRoot, market = 
       source_summary: {
         mode: manifest.mode,
         providers: [manifest.source],
+        source_families: [...new Set(manifest.provenance_sources ?? [])],
+        latest_retrieved_at: manifest.latest_retrieved_at ?? null,
         universe_source: manifest.universe.source,
         universe_version: manifest.universe.version,
         data_as_of: manifest.data_as_of,
