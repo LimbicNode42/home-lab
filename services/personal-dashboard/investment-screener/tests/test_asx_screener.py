@@ -30,11 +30,15 @@ from screener import (
     build_company_from_yahoo_timeseries,
     build_dashboard_ranked_export,
     build_file_first_run_payload,
+    build_universe_version,
     hydrate_companies_from_asx_tickers,
     select_active_asx_tickers,
+    select_asx_universe_batch,
     insert_screener_run,
     load_config,
     load_asx_watchlist,
+    load_asx_universe_seed,
+    normalise_asx_directory_rows,
     normalise_asx_ticker,
     parse_args,
     rank_companies,
@@ -628,6 +632,76 @@ class TestLoadAsxWatchlist(unittest.TestCase):
         self.assertGreater(len(tickers), 0)
 
 
+class TestAsxUniverseSeed(unittest.TestCase):
+
+    def test_normalise_asx_directory_rows_sorts_by_market_cap_and_preserves_source_provenance(self):
+        rows = [
+            {"ASX code": "zzz", "Company name": "Last Ltd", "GICs industry group": "Utilities", "Listing date": "1/02/2024", "Market Cap": "1,000"},
+            {"ASX code": "BHP", "Company name": "BHP GROUP LIMITED", "GICs industry group": "Materials", "Listing date": "13/08/1987", "Market Cap": "334,284,993,458"},
+            {"ASX code": "bad code", "Company name": "Bad Code", "Market Cap": "999999999999"},
+            {"ASX code": "ABC", "Company name": "No Cap", "GICs industry group": "Financials", "Listing date": "", "Market Cap": ""},
+        ]
+
+        entries, metadata = normalise_asx_directory_rows(
+            rows,
+            source_url="https://example.test/asx.csv",
+            retrieved_at="2026-08-23T05:47:51Z",
+            csv_sha256="a" * 64,
+        )
+
+        self.assertEqual([entry["ticker"] for entry in entries], ["BHP.AX", "ZZZ.AX", "ABC.AX"])
+        self.assertEqual(entries[0]["asx_code"], "BHP")
+        self.assertEqual(entries[0]["market_cap"], 334_284_993_458)
+        self.assertEqual(entries[0]["listing_date"], "1987-08-13")
+        self.assertEqual(entries[0]["sector"], "Materials")
+        self.assertEqual(entries[0]["universe_rank"], 1)
+        self.assertTrue(entries[0]["active"])
+        self.assertEqual(entries[0]["source"]["sha256"], "a" * 64)
+        self.assertEqual(metadata["row_count"], 4)
+        self.assertEqual(metadata["normalized_active_count"], 3)
+        self.assertEqual(metadata["excluded_count"], 1)
+
+    def test_load_asx_universe_seed_accepts_metadata_wrapped_seed(self):
+        seed_path = self._write_tmp_seed({
+            "metadata": {"source_url": "https://example.test/asx.csv", "sha256": "b" * 64, "retrieved_at": "2026-08-23T05:47:51Z"},
+            "entries": [
+                {"ticker": "BHP.AX", "asx_code": "BHP", "name": "BHP", "market": "ASX", "exchange": "ASX", "region": "AU", "active": True, "universe_rank": 1},
+                {"ticker": "CBA.AX", "asx_code": "CBA", "name": "CBA", "market": "ASX", "exchange": "ASX", "region": "AU", "active": False, "universe_rank": 2},
+            ],
+        })
+
+        seed = load_asx_universe_seed(seed_path)
+
+        self.assertEqual(seed["metadata"]["sha256"], "b" * 64)
+        self.assertEqual([entry["ticker"] for entry in seed["entries"]], ["BHP.AX", "CBA.AX"])
+
+    def test_select_asx_universe_batch_honors_offset_limit_and_reports_denominator(self):
+        entries = [
+            {"ticker": "BHP.AX", "active": True, "universe_rank": 1},
+            {"ticker": "CBA.AX", "active": True, "universe_rank": 2},
+            {"ticker": "CSL.AX", "active": True, "universe_rank": 3},
+        ]
+
+        selected = select_asx_universe_batch(entries, batch_offset=1, max_tickers=1)
+
+        self.assertEqual([entry["ticker"] for entry in selected["entries"]], ["CBA.AX"])
+        self.assertEqual(selected["tickers"], ["CBA.AX"])
+        self.assertEqual(selected["full_count"], 3)
+        self.assertEqual(selected["selected_count"], 1)
+        self.assertEqual(selected["batch_offset"], 1)
+        self.assertEqual(selected["batch_end_exclusive"], 2)
+        self.assertFalse(selected["complete_exchange_listing"])
+        self.assertEqual(selected["denominator_status"], "ranked_market_cap_batch")
+
+    def _write_tmp_seed(self, payload):
+        import tempfile
+        path = Path(tempfile.mkdtemp()) / "seed.json"
+        path.write_text(json.dumps(payload), encoding="utf8")
+        self.addCleanup(lambda: path.parent.rmdir())
+        self.addCleanup(lambda: path.unlink(missing_ok=True))
+        return path
+
+
 # ---------------------------------------------------------------------------
 # 7. Bounded real ASX hydration command behavior
 # ---------------------------------------------------------------------------
@@ -644,6 +718,19 @@ class TestBoundedAsxHydrationCli(unittest.TestCase):
 
         self.assertEqual(args.max_tickers, 2)
         self.assertEqual(args.sleep_seconds, 0.75)
+
+    def test_cli_exposes_universe_seed_batch_offset_and_batch_size_alias(self):
+        args = parse_args([
+            "--asx-universe-seed", "investment-screener/universe/asx-listed-companies.seed.json",
+            "--batch-offset", "100",
+            "--batch-size", "50",
+            "--sleep-seconds", "1.0",
+        ])
+
+        self.assertEqual(args.asx_universe_seed, "investment-screener/universe/asx-listed-companies.seed.json")
+        self.assertEqual(args.batch_offset, 100)
+        self.assertEqual(args.batch_size, 50)
+        self.assertEqual(args.max_tickers, 50)
 
     def test_select_active_asx_tickers_honors_max_tickers(self):
         entries = [
@@ -664,6 +751,22 @@ class TestBoundedAsxHydrationCli(unittest.TestCase):
         self.assertEqual(hydrated["revenue"].provenance["source_family"], "yahoo-finance")
         self.assertEqual(hydrated["price"].provenance["source_family"], "yahoo-finance")
         self.assertIn("unofficial", hydrated["revenue"].provenance["freshness"].lower())
+
+    def test_hydration_records_recoverable_ticker_failures_without_stopping_batch(self):
+        failures = []
+
+        companies = hydrate_companies_from_asx_tickers(
+            ["BHP", "BAD"],
+            quote_fetcher=lambda symbol: {"price": 10.0, "currency": "AUD", "exchange": "ASX", "name": symbol} if symbol == "BHP.AX" else (_ for _ in ()).throw(RuntimeError("provider 404")),
+            timeseries_fetcher=lambda symbol: bhp_timeseries_fixture(),
+            sleep_seconds=0,
+            failure_sink=failures.append,
+        )
+
+        self.assertEqual([company["ticker"] for company in companies], ["BHP.AX"])
+        self.assertEqual(failures[0]["ticker"], "BAD.AX")
+        self.assertEqual(failures[0]["provider"], "yahoo-finance")
+        self.assertTrue(failures[0]["recoverable"])
 
 
 
@@ -702,6 +805,39 @@ class TestFileFirstArtifactPayload(unittest.TestCase):
         self.assertTrue(any(row["provider"] == "yahoo-finance" for row in payload["provenance"]))
         self.assertEqual(payload["coverage"]["denominator_status"], "known_sample_universe")
         self.assertTrue(any("unofficial" in caveat.lower() for caveat in payload["source_caveats"]))
+
+    def test_file_first_payload_preserves_ranked_batch_metadata_failures_and_coverage_math(self):
+        cfg = load_config(CONFIG_PATH)
+        ranked = rank_companies([asx_company(ticker="BHP.AX")], cfg)
+
+        payload = build_file_first_run_payload(
+            ranked,
+            source="yahoo-finance",
+            mode="asx-yahoo-timeseries",
+            universe=["BHP.AX", "BAD.AX"],
+            universe_source="ASX company directory CSV via reviewed static seed",
+            universe_version="investment-screener/universe/asx-listed-companies.seed.json sha256:" + ("c" * 64),
+            universe_metadata={"source_row_count": 1838, "normalized_active_count": 1838, "source_sha256": "a" * 64},
+            batch_metadata={"batch_offset": 0, "batch_end_exclusive": 2, "selected_count": 2, "full_count": 1838, "complete_exchange_listing": False},
+            hydration_failures=[{"ticker": "BAD.AX", "reason": "provider 404", "provider": "yahoo-finance", "recoverable": True}],
+            started_at="2026-08-23T10:00:00Z",
+            completed_at="2026-08-23T10:01:00Z",
+        )
+
+        self.assertEqual(payload["universe"]["source"], "ASX company directory CSV via reviewed static seed")
+        self.assertEqual(payload["universe"]["count"], 2)
+        self.assertEqual(payload["universe"]["batch_offset"], 0)
+        self.assertEqual(payload["universe"]["full_count"], 1838)
+        self.assertFalse(payload["universe"]["complete_exchange_listing"])
+        self.assertEqual(payload["coverage"]["denominator"], 2)
+        self.assertEqual(payload["coverage"]["usable"], 1)
+        self.assertEqual(payload["coverage"]["failed"], 1)
+        self.assertEqual(payload["coverage"]["excluded"], 0)
+        self.assertEqual(payload["coverage"]["percent"], 50.0)
+        self.assertEqual(payload["coverage"]["denominator_status"], "ranked_market_cap_batch")
+        self.assertIn("top 2 ASX listings by Market Cap", payload["coverage"]["denominator_label"])
+        self.assertEqual(payload["failures"][0]["ticker"], "BAD.AX")
+        self.assertEqual(payload["failures"][0]["provider"], "yahoo-finance")
 
     def test_cli_exposes_file_first_run_payload_output_without_requiring_postgres(self):
         args = parse_args([
