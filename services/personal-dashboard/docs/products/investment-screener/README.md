@@ -34,7 +34,8 @@ Do not use it as the final reason to buy, sell, hold, size, or time a position. 
 | Ranked JSON output | Machine-readable, dashboard-safe candidate data. | Feed the dashboard; do not read manually unless debugging. | [Interpreting results](./interpreting-results.md) |
 | Plain-text report output | Human-readable snapshot of the latest run. | Skim candidates, caveats, and limitations when the dashboard is unavailable. | [Interpreting results](./interpreting-results.md) |
 | Dashboard panel | Authenticated UI for the latest export with filters and suggestion counts. | Review candidates and adjust display focus. | [Dashboard panel](./dashboard-panel.md) |
-| Historical storage | Optional Postgres-backed record of completed screener runs, observations, scores, and provenance. | Compare recurring runs later through sanitized projections. | [Historical pipeline architecture](./historical-pipeline-architecture.md) |
+| NAS/DuckDB storage | NAS-resident immutable Parquet/JSONL run artifacts with manifests/latest pointers; DuckDB is a rebuildable query/materialization layer for dashboard summaries. | Persist recurring runs durably without requiring Postgres writes or node-local primary storage. | [Operations and limitations](./operations-limitations.md) |
+| Historical storage | Legacy/optional Postgres-backed record of completed screener runs, observations, scores, and provenance. | Import or compare older runs later through sanitized projections. | [Historical pipeline architecture](./historical-pipeline-architecture.md) |
 | Historical pipeline architecture | ASX-first recurring hydration, Postgres history, provenance, and dashboard evolution contract. | Guide implementation of the storage/hydration lane. | [Historical pipeline architecture](./historical-pipeline-architecture.md) |
 | Operational runbook | Safe monthly/quarterly hydration, publication, checks, and troubleshooting. | Refresh output without leaking credentials or poking live services unnecessarily. | [Operations and limitations](./operations-limitations.md) |
 
@@ -57,7 +58,7 @@ Input quality matters more than UI polish. If the watchlist is stale, sparse, se
 
 First-cut hydration uses explicitly labeled bootstrap data sources. Yahoo-derived chart and fundamentals-timeseries values are useful for recurring shape checks and shortlisting, but they are not ASX filings and must not be treated as source-of-record data. Interesting candidates still need verification against company reports, ASX announcements, or another authorized source.
 
-The dashboard does not fetch fresh market data. It reads only the latest sanitized export mounted into the dashboard runtime. Historical data is written by the generator/storage lane, not by the browser.
+The dashboard does not fetch fresh market data. It reads only sanitized exports or rebuildable DuckDB summaries generated from NAS-backed artifacts mounted into the dashboard runtime. Historical data is written by the generator/storage lane, not by the browser.
 
 ## Outputs
 
@@ -89,7 +90,8 @@ The useful workflow is:
 - Yahoo-derived values are bootstrap evidence, not authoritative filings data.
 - Cross-market and cross-sector comparisons may be distorted by accounting, currency, reporting cadence, and data-provider differences; banks and financials are especially easy to misread with industrial-company metrics.
 - Dashboard filters operate on the latest exported data; they do not recompute the model.
-- Historical trends are useful for direction and recurrence, but only when run cadence, universe, source quality, and scoring version are considered together.
+- Historical trends are useful for direction and recurrence, but only when run cadence, universe, source quality, storage manifest, and scoring version are considered together.
+- The canonical new storage path is the NAS-backed file store: immutable `runs/.../manifest.json`, `*.jsonl`, `*.parquet`, `checksums.sha256`, and `manifests/.../latest.json`. A DuckDB file may be regenerated from those artifacts and is not the source of truth.
 - The dashboard intentionally exposes a sanitized projection, not raw scorer internals or database rows.
 
 ## Operational runbook

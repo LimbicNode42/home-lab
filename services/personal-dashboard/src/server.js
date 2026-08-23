@@ -8,6 +8,7 @@ import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 import { loadConfig, toPublicConfig } from './config.js';
+import { buildInvestmentScreenerDuckDbSummary } from './investment-screener-storage.js';
 import { createPostgresPersonalDataStore } from './personal-data-store.js';
 import { StatusService } from './status.js';
 
@@ -1747,13 +1748,76 @@ async function readInvestmentScreenerReport(reportFile) {
   }
 }
 
-async function readInvestmentScreenerCoverage({ rankedFile, historyPool, searchParams = null }) {
+function payloadFromDuckDbSummary(summary) {
+  return {
+    mode: safeMode(summary?.source_summary?.mode),
+    generated_at: safeIsoDate(summary?.generated_at),
+    data_as_of: safeIsoDate(summary?.source_summary?.data_as_of),
+    disclaimer: INVESTMENT_SCREENER_DISCLAIMER,
+    limitations: [],
+    candidates: Array.isArray(summary?.ranked_candidates)
+      ? summary.ranked_candidates.map((candidate, index) => sanitizeInvestmentCandidate(candidate, index)).filter(Boolean)
+      : [],
+    excluded: [],
+    doc_links: INVESTMENT_SCREENER_DOC_LINKS,
+    source_summary: {
+      mode: safeMode(summary?.source_summary?.mode),
+      mode_label: modeLabel(safeMode(summary?.source_summary?.mode)),
+      providers: safeTextArray(summary?.source_summary?.providers, 8, 80),
+      source_families: safeTextArray(summary?.source_summary?.source_families, 8, 80),
+      universe_source: safeText(summary?.source_summary?.universe_source, 'unknown', 120),
+      universe_version: safeText(summary?.source_summary?.universe_version, null, 120),
+      latest_retrieved_at: safeIsoDate(summary?.source_summary?.latest_retrieved_at),
+      latest_hydrated_at: safeIsoDate(summary?.generated_at),
+      data_as_of: isoDateOnly(summary?.source_summary?.data_as_of),
+      provenance_rows: safeInteger(summary?.source_summary?.provenance_rows),
+      provenance_fields: safeInteger(summary?.source_summary?.provenance_fields),
+      caveats: safeTextArray(summary?.source_summary?.caveats, 8, 240)
+    },
+    coverage: finalizeCoverage({
+      market: summary?.market ?? 'ASX',
+      mode: safeMode(summary?.source_summary?.mode),
+      rawCoverage: summary?.coverage,
+      fallbackUsable: Array.isArray(summary?.ranked_candidates) ? summary.ranked_candidates.length : 0
+    })
+  };
+}
+
+async function coverageFromDuckDbDataRoot(dataRoot, market = 'ASX') {
+  if (!dataRoot) return null;
+  const summary = await buildInvestmentScreenerDuckDbSummary({ dataRoot, market: safeMarket(market), source: 'yahoo-finance' });
+  const payload = payloadFromDuckDbSummary(summary);
+  return {
+    market: payload.coverage.market,
+    status: 'ok',
+    source: 'duckdb',
+    generated_at: payload.generated_at,
+    source_summary: payload.source_summary,
+    coverage: payload.coverage
+  };
+}
+
+async function rankedFromDuckDbDataRoot(dataRoot, searchParams = null) {
+  if (!dataRoot) return null;
+  const market = safeMarket(searchParams?.get?.('market') ?? 'ASX');
+  const summary = await buildInvestmentScreenerDuckDbSummary({ dataRoot, market, source: 'yahoo-finance' });
+  return applyInvestmentScreenerFilters(payloadFromDuckDbSummary(summary), searchParams);
+}
+
+async function readInvestmentScreenerCoverage({ rankedFile, historyPool, dataRoot = null, searchParams = null }) {
   const market = safeMarket(searchParams?.get?.('market') ?? 'ASX');
   try {
     const postgresCoverage = await coverageFromPostgres(historyPool, market);
     if (postgresCoverage) return { statusCode: 200, payload: postgresCoverage };
   } catch {
     // Fall back to sanitized artifact metadata. Runtime DB failures are not public API data.
+  }
+
+  try {
+    const duckDbCoverage = await coverageFromDuckDbDataRoot(dataRoot, market);
+    if (duckDbCoverage) return { statusCode: 200, payload: duckDbCoverage };
+  } catch {
+    // Fall back to legacy ranked artifact. DuckDB rebuild diagnostics are not browser data.
   }
 
   if (!rankedFile) {
@@ -1774,7 +1838,15 @@ async function readInvestmentScreenerCoverage({ rankedFile, historyPool, searchP
   }
 }
 
-async function readInvestmentScreenerRanked({ rankedFile, historyPool, searchParams = null }) {
+async function readInvestmentScreenerRanked({ rankedFile, historyPool, dataRoot = null, searchParams = null }) {
+  if (dataRoot) {
+    try {
+      const duckDbResult = await rankedFromDuckDbDataRoot(dataRoot, searchParams);
+      if (duckDbResult) return duckDbResult;
+    } catch {
+      // Continue to the sanitized legacy-file response; never leak DuckDB/NAS path diagnostics.
+    }
+  }
   if (!rankedFile) {
     return { statusCode: 503, payload: { error: 'investment_screener_not_configured', message: 'Investment screener ranked output file is not configured' } };
   }
@@ -1785,7 +1857,7 @@ async function readInvestmentScreenerRanked({ rankedFile, historyPool, searchPar
     }
     const rawContent = await readFile(rankedFile, 'utf8');
     const parsed = JSON.parse(rawContent);
-    const coverageResult = await readInvestmentScreenerCoverage({ rankedFile, historyPool, searchParams });
+    const coverageResult = await readInvestmentScreenerCoverage({ rankedFile, historyPool, dataRoot, searchParams });
     const payload = sanitizeInvestmentRankedPayload(parsed, info.mtime);
     const enriched = coverageResult.statusCode === 200
       ? { ...payload, source_summary: coverageResult.payload.source_summary, coverage: coverageResult.payload.coverage }
@@ -1991,6 +2063,9 @@ export async function createApp(options = {}) {
   const investmentScreenerRankedFile = Object.prototype.hasOwnProperty.call(options, 'investmentScreenerRankedFile')
     ? options.investmentScreenerRankedFile
     : (process.env.INVESTMENT_SCREENER_RANKED_FILE ?? null);
+  const investmentScreenerDataRoot = Object.prototype.hasOwnProperty.call(options, 'investmentScreenerDataRoot')
+    ? options.investmentScreenerDataRoot
+    : (process.env.INVESTMENT_SCREENER_DATA_ROOT ?? process.env.SCREENER_DATA_ROOT ?? null);
   const investmentScreenerHistoryPool = Object.prototype.hasOwnProperty.call(options, 'investmentScreenerHistoryPool')
     ? options.investmentScreenerHistoryPool
     : await createInvestmentScreenerHistoryPool(process.env.INVESTMENT_SCREENER_DATABASE_URL ?? null);
@@ -2083,12 +2158,12 @@ export async function createApp(options = {}) {
       }
 
       if (request.method === 'GET' && url.pathname === '/api/investment-screener/coverage') {
-        const result = await readInvestmentScreenerCoverage({ rankedFile: investmentScreenerRankedFile, historyPool: investmentScreenerHistoryPool, searchParams: url.searchParams });
+        const result = await readInvestmentScreenerCoverage({ rankedFile: investmentScreenerRankedFile, historyPool: investmentScreenerHistoryPool, dataRoot: investmentScreenerDataRoot, searchParams: url.searchParams });
         return json(response, result.statusCode, result.payload);
       }
 
       if (request.method === 'GET' && url.pathname === '/api/investment-screener/ranked') {
-        const result = await readInvestmentScreenerRanked({ rankedFile: investmentScreenerRankedFile, historyPool: investmentScreenerHistoryPool, searchParams: url.searchParams });
+        const result = await readInvestmentScreenerRanked({ rankedFile: investmentScreenerRankedFile, historyPool: investmentScreenerHistoryPool, dataRoot: investmentScreenerDataRoot, searchParams: url.searchParams });
         return json(response, result.statusCode, result.payload);
       }
 

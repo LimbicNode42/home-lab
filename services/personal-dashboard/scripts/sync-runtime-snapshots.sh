@@ -30,14 +30,41 @@ copy_snapshot() {
   mv -f "$tmp_path" "$dest_path"
 }
 
+copy_tree_snapshot() {
+  source_dir=$1
+  dest_dir=$2
+  label=$3
+  parent_dir=$(dirname "$dest_dir")
+  tmp_dir="$dest_dir.tmp.$$"
+  previous_dir="$dest_dir.previous.$$"
+
+  if [ ! -d "$source_dir" ]; then
+    printf '%s\n' "$label source is missing or not a directory: $source_dir" >&2
+    exit 1
+  fi
+
+  mkdir -p "$parent_dir"
+  rm -rf "$tmp_dir" "$previous_dir"
+  mkdir -p "$tmp_dir"
+  cp -R "$source_dir/." "$tmp_dir/"
+  find "$tmp_dir" -type d -exec chmod 0755 {} +
+  find "$tmp_dir" -type f -exec chmod 0644 {} +
+  if [ -e "$dest_dir" ]; then
+    mv "$dest_dir" "$previous_dir"
+  fi
+  mv "$tmp_dir" "$dest_dir"
+  rm -rf "$previous_dir"
+}
+
 cleanup() {
   rm -f \
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/config/dashboard.public.json.tmp.$$" \
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/config/home-lab-committed-files.txt.tmp.$$" \
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/finnick/latest_report.txt.tmp.$$" \
-    "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/investment-screener/latest_report.txt.tmp.$$" \
-    "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/investment-screener/latest_ranked.json.tmp.$$" \
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/kanban/kanban.db.tmp.$$"
+  rm -rf \
+    "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/investment-screener.tmp.$$" \
+    "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/investment-screener.previous.$$"
 }
 trap cleanup EXIT HUP INT TERM
 
@@ -52,12 +79,9 @@ copy_snapshot "$APP_DIR/config/home-lab-committed-files.txt" \
 copy_snapshot "$FINNICK_REPORT_HOST_DIR/latest_report.txt" \
   "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/finnick/latest_report.txt" \
   "Finnick report"
-copy_snapshot "$INVESTMENT_SCREENER_HOST_DIR/latest_report.txt" \
-  "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/investment-screener/latest_report.txt" \
-  "Investment screener report"
-copy_snapshot "$INVESTMENT_SCREENER_HOST_DIR/latest_ranked.json" \
-  "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/investment-screener/latest_ranked.json" \
-  "Investment screener ranked output"
+copy_tree_snapshot "$INVESTMENT_SCREENER_HOST_DIR" \
+  "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/investment-screener" \
+  "Investment screener NAS data root"
 copy_snapshot "$KANBAN_DB_HOST_DIR/kanban.db" \
   "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/kanban/kanban.db" \
   "Kanban DB snapshot"

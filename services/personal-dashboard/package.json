@@ -13,6 +13,8 @@
     "node": ">=22"
   },
   "dependencies": {
+    "@duckdb/node-api": "1.5.5-r.4",
+    "parquetjs-lite": "0.8.7",
     "pg": "^8.23.0"
   }
 }
