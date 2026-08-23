@@ -113,6 +113,7 @@ docker run -d \
   -e FINNICK_REPORT_FILE=/app/finnick/latest_report.txt \
   -e INVESTMENT_SCREENER_REPORT_FILE=/app/investment-screener/latest_report.txt \
   -e INVESTMENT_SCREENER_RANKED_FILE=/app/investment-screener/latest_ranked.json \
+  -e INVESTMENT_SCREENER_DATA_ROOT=/app \
   -e DASHBOARD_AUTH_MODE=${DASHBOARD_AUTH_MODE:-reverse-proxy} \
   -e DASHBOARD_PROXY_USER_HEADER=${DASHBOARD_PROXY_USER_HEADER:-cf-access-authenticated-user-email} \
   -e DASHBOARD_STATUS_CACHE_TTL_MS=${DASHBOARD_STATUS_CACHE_TTL_MS:-30000} \

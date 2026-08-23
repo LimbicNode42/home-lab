@@ -600,6 +600,51 @@ test('GET /api/investment-screener/ranked preserves bounded ASX Yahoo source mod
   }
 });
 
+test('GET /api/investment-screener/ranked can rebuild from NAS-backed DuckDB/materialized screener storage without Postgres', async () => {
+  const { publishInvestmentScreenerRun } = await import('../src/investment-screener-storage.js');
+  const dataRoot = await mkdtemp(join(tmpdir(), 'investment-api-duckdb-'));
+  await publishInvestmentScreenerRun({
+    dataRoot,
+    run: {
+      market: 'ASX',
+      source: 'yahoo-finance',
+      mode: 'fixture',
+      started_at: '2026-08-23T09:00:00.000Z',
+      completed_at: '2026-08-23T09:01:00.000Z',
+      data_as_of: '2026-08-22',
+      universe: { source: 'fixture sample universe', count: 2, market: 'ASX', complete_exchange_listing: false },
+      companies: [
+        { ticker: 'BHP.AX', name: 'BHP Group', market: 'ASX', currency: 'AUD' },
+        { ticker: 'CSL.AX', name: 'CSL Limited', market: 'ASX', currency: 'AUD' }
+      ],
+      scores: [
+        { rank: 1, ticker: 'BHP.AX', name: 'BHP Group', market: 'ASX', currency: 'AUD', composite_score: 91.4, sub_scores: { quality: 22 } },
+        { rank: 2, ticker: 'CSL.AX', name: 'CSL Limited', market: 'ASX', currency: 'AUD', composite_score: 89.1, sub_scores: { quality: 24 } }
+      ],
+      provenance: [{ ticker: 'BHP.AX', field_name: 'revenue', source_family: 'fixture', provider: 'fixture', retrieved_at: '2026-08-23T09:00:30.000Z', data_as_of: '2026-08-22' }]
+    }
+  });
+
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerRankedFile: null, investmentScreenerDataRoot: dataRoot });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/investment-screener/ranked?market=ASX&limit=10`);
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+    assert.equal(response.status, 200);
+    assert.equal(body.source_summary.mode, 'fixture');
+    assert.equal(body.coverage.usable, 2);
+    assert.deepEqual(body.candidates.map((candidate) => candidate.ticker), ['BHP.AX', 'CSL.AX']);
+    assert.equal(serialized.includes(dataRoot), false);
+    assert.equal(serialized.includes('postgres://'), false);
+  } finally {
+    await server.close();
+    await rm(dataRoot, { recursive: true, force: true });
+  }
+});
+
+
 test('GET /api/investment-screener/ranked strips paths, diagnostics, metadata, and secret-shaped values', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'investment-ranked-leak-'));
   const rankedPath = join(dir, 'latest_ranked.json');

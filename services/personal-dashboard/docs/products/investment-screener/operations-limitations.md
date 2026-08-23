@@ -20,6 +20,8 @@ Use this when the panel is missing output, output appears stale, filters behave 
 - Do not restart or redeploy the live dashboard for documentation-only changes.
 - Do not bind unsanitized generator workspaces directly into the dashboard runtime.
 - Do not treat unofficial market data as authoritative.
+- Do not use Tori/Toyota node-local storage, SD cards, or a DuckDB file as the durable primary screener store. The durable store is the NAS-backed immutable file layout.
+- Do not run active OLTP-style Postgres/DuckDB WAL writes over NFS/mergerfs for screener history; publish files atomically, then rebuild query summaries.
 - Keep product docs non-secret and internal by default.
 
 ## Documentation information architecture
@@ -45,9 +47,28 @@ Rationale: these docs sit beside the dashboard service because the authenticated
 2. If it says output is not configured, inspect the dashboard runtime configuration through the approved operator process.
 3. If it says output has not been generated, inspect the generator job and export artifacts.
 4. If output exists but is stale, rerun the generator using the approved artifact workflow.
-5. Publish both the ranked JSON and plain-text report together.
-6. Refresh the Investment Screener tab.
-7. Confirm generated timestamp, candidates, limitations, and doc links appear.
+5. For the NAS/DuckDB path, inspect `manifests/market=<MARKET>/source=<SOURCE>/latest.json`, the referenced run `manifest.json`, `checksums.sha256`, and the generated `exports/dashboard/market=<MARKET>/latest_ranked.json` / `latest_coverage.json` files.
+6. For the legacy latest-file path, publish both the ranked JSON and plain-text report together.
+7. Refresh the Investment Screener tab.
+8. Confirm generated timestamp, candidates, limitations, coverage, provenance/source summary, and doc links appear.
+
+### NAS/DuckDB file-first publication
+
+Use the file-first storage path for durable recurring screener history. The NAS directory mounted or copied into the dashboard runtime should contain an `investment-screener/` tree with immutable run artifacts and small latest pointers.
+
+1. Produce a complete run payload with explicit `market`, `source`, `mode`, `started_at`, `completed_at`, `data_as_of`, universe metadata, companies, scores, observations, provenance, failures, and exclusions.
+2. Publish through the storage helper (`publishInvestmentScreenerRun` in `src/investment-screener-storage.js`) or an equivalent single-writer job. It writes to a same-filesystem staging directory, validates rows, writes JSONL and Parquet companions, calculates checksums, then atomically promotes the run directory and `manifests/.../latest.json` pointer.
+3. If validation fails, do not manually advance `latest.json`; the previous latest pointer must remain valid.
+4. Rebuild dashboard summaries with DuckDB (`buildInvestmentScreenerDuckDbSummary`) from the latest manifest. DuckDB creates `duckdb/materialized/market=<MARKET>/screener_summary.duckdb` and safe dashboard exports under `exports/dashboard/market=<MARKET>/`.
+5. Configure the dashboard with `INVESTMENT_SCREENER_DATA_ROOT=/app` when `/app/investment-screener` is the read-only runtime-cache copy of the NAS data tree. `INVESTMENT_SCREENER_RANKED_FILE` and `INVESTMENT_SCREENER_REPORT_FILE` remain supported as legacy fallback paths.
+6. Verify the browser/API payloads do not contain NAS mount paths, local paths, DB URLs, task ids, stack traces, or secret-shaped values.
+
+Quick read-only verification examples, run against a copied/safe data root rather than live writer staging:
+
+```sh
+node --input-type=module -e "import { readLatestInvestmentScreenerManifest } from './src/investment-screener-storage.js'; console.log(await readLatestInvestmentScreenerManifest({ dataRoot: process.env.INVESTMENT_SCREENER_DATA_ROOT || '/app', market: 'ASX', source: 'yahoo-finance' }))"
+node --input-type=module -e "import { buildInvestmentScreenerDuckDbSummary } from './src/investment-screener-storage.js'; console.log(await buildInvestmentScreenerDuckDbSummary({ dataRoot: process.env.INVESTMENT_SCREENER_DATA_ROOT || '/app', market: 'ASX', source: 'yahoo-finance' }))"
+```
 
 ### Monthly ASX hydration
 
@@ -57,11 +78,11 @@ Use the monthly run for routine watchlist refresh and latest-dashboard publicati
 2. Run generator tests or fixture smoke checks before touching runtime artifacts.
 3. Render runtime-only environment variables from the approved secret manager or deployment environment. Do not paste database URLs, passwords, tokens, or local paths into the command, logs, docs, or Git.
 4. Run ASX hydration with a stable monthly run key built from market, source mode (`asx-yahoo-timeseries` for the Yahoo bootstrap lane), period, universe hash, config hash, and code version. Use `--max-tickers`, `--sleep-seconds`, and `--cache-dir` for bounded, non-aggressive provider access.
-5. Write Postgres history only when the runtime credential is available and the storage lane has been approved for that environment. A database failure should not require breaking the latest-file dashboard if a valid last export exists.
-6. Validate the generated ranked JSON and plain-text report before publication. Check candidate count, excluded count, limitations, generated timestamp, data-as-of values, and source-quality labels.
-7. Publish the latest files atomically through the approved file handoff: validate temporary outputs first, then replace the current latest pair together.
-8. Refresh the dashboard Investment Screener tab and verify the latest artifact display. Do not expect historical charts yet.
-9. Record a short operator note with cadence, period, universe version/hash, code version, candidate count, excluded count, source mix, and any caveats worth human review. Keep the note sanitized.
+5. Prefer the NAS/DuckDB file-first publication path. Write Postgres history only when the runtime credential is available and the storage lane has been approved for that environment. A database failure should not require breaking the latest dashboard view if a valid last export exists.
+6. Validate the generated artifacts before publication. Check candidate count, excluded count, coverage denominator/status, limitations, generated timestamp, data-as-of values, source-quality labels, provenance rows/fields, manifest checksums, and fixture/live mode labeling.
+7. Publish via staging plus atomic promote/latest pointer update; never edit a published run directory in place.
+8. Refresh the dashboard Investment Screener tab and verify the latest artifact display.
+9. Record a short operator note with cadence, period, universe version/hash, code version, candidate count, excluded count, source mix, manifest run id, and any caveats worth human review. Keep the note sanitized.
 
 ### Quarterly reporting-season refresh
 
@@ -91,6 +112,8 @@ Use the quarterly run after major reporting windows to refresh evidence more del
 | Doc content has missing lines | Runtime sanitizer removed lines containing forbidden local or secret-like values. | Rewrite the docs with repo-relative, non-secret wording. |
 | Dashboard doc link points to old epic doc only | Investment screener API doc links need updating. | Point doc links at product docs first, epic docs second if still useful. |
 | Filter error mentions unsupported field | Field is not present in the sanitized export. | Do not enable the UI control until the export safely includes it. |
+| Latest run vanished after failed publication | A writer advanced the latest pointer before validation, or a manual edit bypassed staging. | Restore `latest.previous.json` if present, inspect checksums, and fix the writer before rerunning. |
+| DuckDB file is locked, stale, or missing | DuckDB is a generated materialization, not the canonical store. | Delete/rebuild the materialized DB from NAS run artifacts; do not repair by editing canonical Parquet/JSONL files. |
 
 ## Data-source limitations
 
@@ -102,6 +125,7 @@ Use the quarterly run after major reporting windows to refresh evidence more del
 - A clean dashboard card does not prove the source data is correct.
 - Yahoo ASX hydration is a bootstrap source, not a source-of-record filings archive.
 - Historical database projections must be sanitized before dashboard exposure.
+- DuckDB materializations are disposable query artifacts. The source of truth is the NAS manifest plus immutable Parquet/JSONL run files.
 
 ## Financial-advice disclaimer
 
@@ -111,6 +135,6 @@ The screener is informational only. It does not provide financial advice, person
 
 - Add a docs manifest file separate from server code if the approved-docs list keeps growing.
 - Add automated validation that product docs contain no forbidden runtime patterns.
-- Add a generated-output schema check before the dashboard reads a new ranked JSON file.
+- Extend generated-output schema checks to cover manifests, Parquet/JSONL companions, latest pointers, and DuckDB dashboard exports.
 - Add a freshness threshold and visible stale-warning state.
 - Add the ASX historical pipeline and recurring-job controls described in [Historical pipeline architecture](./historical-pipeline-architecture.md).
