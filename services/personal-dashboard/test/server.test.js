@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { rm } from 'node:fs/promises';
@@ -23,6 +23,19 @@ async function listen(handler) {
     baseUrl: `http://127.0.0.1:${port}`,
     close: () => new Promise((resolve, reject) => server.close((err) => err ? reject(err) : resolve()))
   };
+}
+
+async function snapshotTree(root, prefix = '') {
+  const entries = await readdir(root, { withFileTypes: true });
+  const paths = [];
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+    paths.push(entry.isDirectory() ? `${relativePath}/` : relativePath);
+    if (entry.isDirectory()) {
+      paths.push(...await snapshotTree(join(root, entry.name), relativePath));
+    }
+  }
+  return paths;
 }
 
 const basicConfig = {
@@ -600,7 +613,7 @@ test('GET /api/investment-screener/ranked preserves bounded ASX Yahoo source mod
   }
 });
 
-test('GET /api/investment-screener/ranked can rebuild from NAS-backed DuckDB/materialized screener storage without Postgres', async () => {
+test('GET /api/investment-screener/ranked can query NAS-backed DuckDB screener artifacts without Postgres', async () => {
   const { publishInvestmentScreenerRun } = await import('../src/investment-screener-storage.js');
   const dataRoot = await mkdtemp(join(tmpdir(), 'investment-api-duckdb-'));
   await publishInvestmentScreenerRun({
@@ -638,6 +651,50 @@ test('GET /api/investment-screener/ranked can rebuild from NAS-backed DuckDB/mat
     assert.deepEqual(body.candidates.map((candidate) => candidate.ticker), ['BHP.AX', 'CSL.AX']);
     assert.equal(serialized.includes(dataRoot), false);
     assert.equal(serialized.includes('postgres://'), false);
+  } finally {
+    await server.close();
+    await rm(dataRoot, { recursive: true, force: true });
+  }
+});
+
+test('GET /api/investment-screener/ranked reads DuckDB-backed artifacts without writing to the canonical screener tree', async () => {
+  const { publishInvestmentScreenerRun } = await import('../src/investment-screener-storage.js');
+  const dataRoot = await mkdtemp(join(tmpdir(), 'investment-api-readonly-duckdb-'));
+  await publishInvestmentScreenerRun({
+    dataRoot,
+    run: {
+      market: 'ASX',
+      source: 'yahoo-finance',
+      mode: 'fixture',
+      started_at: '2026-08-23T09:00:00.000Z',
+      completed_at: '2026-08-23T09:01:00.000Z',
+      data_as_of: '2026-08-22',
+      universe: { source: 'fixture sample universe', count: 2, market: 'ASX', complete_exchange_listing: false },
+      companies: [
+        { ticker: 'BHP.AX', name: 'BHP Group', market: 'ASX', currency: 'AUD' },
+        { ticker: 'CSL.AX', name: 'CSL Limited', market: 'ASX', currency: 'AUD' }
+      ],
+      scores: [
+        { rank: 1, ticker: 'BHP.AX', name: 'BHP Group', market: 'ASX', currency: 'AUD', composite_score: 91.4, sub_scores: { quality: 22 } },
+        { rank: 2, ticker: 'CSL.AX', name: 'CSL Limited', market: 'ASX', currency: 'AUD', composite_score: 89.1, sub_scores: { quality: 24 } }
+      ],
+      provenance: [{ ticker: 'BHP.AX', field_name: 'revenue', source_family: 'fixture', provider: 'fixture', retrieved_at: '2026-08-23T09:00:30.000Z', data_as_of: '2026-08-22' }]
+    }
+  });
+
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerRankedFile: null, investmentScreenerDataRoot: dataRoot });
+  const server = await listen(app);
+  try {
+    const before = await snapshotTree(join(dataRoot, 'investment-screener'));
+    const response = await fetch(`${server.baseUrl}/api/investment-screener/ranked?market=ASX&limit=10`);
+    const body = await response.json();
+    const after = await snapshotTree(join(dataRoot, 'investment-screener'));
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(body.candidates.map((candidate) => candidate.ticker), ['BHP.AX', 'CSL.AX']);
+    assert.deepEqual(after, before, 'API reads must not create DuckDB/materialized/export files in the canonical screener tree');
+    assert.equal(after.some((path) => path.startsWith('duckdb/')), false);
   } finally {
     await server.close();
     await rm(dataRoot, { recursive: true, force: true });

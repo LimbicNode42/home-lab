@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -45,6 +45,19 @@ const baseRun = {
   exclusions: [{ ticker: 'CBA.AX', reason: 'missing required valuation fields' }]
 };
 
+async function snapshotTree(root, prefix = '') {
+  const entries = await readdir(root, { withFileTypes: true });
+  const paths = [];
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+    paths.push(entry.isDirectory() ? `${relativePath}/` : relativePath);
+    if (entry.isDirectory()) {
+      paths.push(...await snapshotTree(join(root, entry.name), relativePath));
+    }
+  }
+  return paths;
+}
+
 test('publishInvestmentScreenerRun writes immutable NAS-style artifacts, manifest, checksums, and latest pointer', async () => {
   const dataRoot = await mkdtemp(join(tmpdir(), 'screener-storage-'));
   try {
@@ -70,6 +83,14 @@ test('publishInvestmentScreenerRun writes immutable NAS-style artifacts, manifes
     const latest = await readLatestInvestmentScreenerManifest({ dataRoot, market: 'ASX', source: 'yahoo-finance' });
     assert.equal(latest.run_id, result.run_id);
     assert.equal(latest.run_manifest, manifest.relative_manifest_path);
+
+    const latestRanked = JSON.parse(await readFile(join(dataRoot, 'investment-screener', 'exports', 'dashboard', 'market=ASX', 'latest_ranked.json'), 'utf8'));
+    assert.equal(latestRanked.source_summary.mode, 'fixture');
+    assert.equal(latestRanked.coverage.usable, 2);
+
+    const latestCoverage = JSON.parse(await readFile(join(dataRoot, 'investment-screener', 'exports', 'dashboard', 'market=ASX', 'latest_coverage.json'), 'utf8'));
+    assert.equal(latestCoverage.source, 'published-artifact');
+    assert.equal(latestCoverage.coverage.denominator, 3);
   } finally {
     await rm(dataRoot, { recursive: true, force: true });
   }
@@ -98,11 +119,13 @@ test('publishInvestmentScreenerRun preserves prior latest pointer when validatio
   }
 });
 
-test('buildInvestmentScreenerDuckDbSummary rebuilds ranked and coverage summaries from immutable parquet artifacts', async () => {
+test('buildInvestmentScreenerDuckDbSummary reads ranked and coverage summaries from immutable parquet artifacts without canonical writes', async () => {
   const dataRoot = await mkdtemp(join(tmpdir(), 'screener-duckdb-'));
   try {
     const published = await publishInvestmentScreenerRun({ dataRoot, run: baseRun, now: new Date('2026-08-23T09:02:00.000Z') });
+    const before = await snapshotTree(join(dataRoot, 'investment-screener'));
     const summary = await buildInvestmentScreenerDuckDbSummary({ dataRoot, market: 'ASX', source: 'yahoo-finance' });
+    const after = await snapshotTree(join(dataRoot, 'investment-screener'));
 
     assert.equal(summary.source, 'duckdb');
     assert.equal(summary.run_id, published.run_id);
@@ -111,13 +134,8 @@ test('buildInvestmentScreenerDuckDbSummary rebuilds ranked and coverage summarie
     assert.equal(summary.coverage.percent, 66.7);
     assert.deepEqual(summary.ranked_candidates.map((candidate) => candidate.ticker), ['BHP.AX', 'CSL.AX']);
     assert.equal(JSON.stringify(summary).includes(dataRoot), false, 'summary must not leak local/NAS paths');
-
-    const latestRanked = JSON.parse(await readFile(join(dataRoot, 'investment-screener', 'exports', 'dashboard', 'market=ASX', 'latest_ranked.json'), 'utf8'));
-    assert.equal(latestRanked.source_summary.mode, 'fixture');
-    assert.equal(latestRanked.coverage.usable, 2);
-
-    const dbInfo = await stat(join(dataRoot, 'investment-screener', 'duckdb', 'materialized', 'market=ASX', 'screener_summary.duckdb'));
-    assert.ok(dbInfo.isFile());
+    assert.deepEqual(after, before, 'API/runtime DuckDB reads must not write into canonical investment-screener tree');
+    assert.equal(after.some((path) => path.startsWith('duckdb/')), false, 'DuckDB materialization belongs outside API request handling');
   } finally {
     await rm(dataRoot, { recursive: true, force: true });
   }

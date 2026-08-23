@@ -429,6 +429,17 @@ export async function publishInvestmentScreenerRun({ dataRoot, run, now = new Da
     await writeFileAtomic(join(manifestDir, 'latest.json'), `${JSON.stringify(latest, null, 2)}\n`);
     await appendFileAtomic(join(manifestDir, 'runs.jsonl'), `${JSON.stringify(latest)}\n`);
 
+    const exportDir = join(dataRoot, ROOT_DIR, 'exports', 'dashboard', `market=${normalized.market}`);
+    await writeFileAtomic(join(exportDir, 'latest_ranked.json'), `${JSON.stringify(dashboard, null, 2)}\n`);
+    await writeFileAtomic(join(exportDir, 'latest_coverage.json'), `${JSON.stringify({
+      market: normalized.market,
+      source: 'published-artifact',
+      generated_at: normalized.generated_at,
+      source_summary: dashboard.source_summary,
+      coverage
+    }, null, 2)}\n`);
+    await writeFileAtomic(join(exportDir, 'latest_report.txt'), `Investment Screener ${normalized.market}\nRun: ${manifest.run_id}\nUsable: ${coverage.usable} / ${coverage.denominator}\n`);
+
     return { run_id: runId, run_dir: runDir, manifest, latest };
   } catch (err) {
     await rm(stageDir, { recursive: true, force: true });
@@ -454,10 +465,7 @@ export async function buildInvestmentScreenerDuckDbSummary({ dataRoot, market = 
   const latest = await readLatestInvestmentScreenerManifest({ dataRoot, market: safeMarket, source: safeSource });
   const manifest = JSON.parse(await readFile(join(dataRoot, ROOT_DIR, latest.run_manifest), 'utf8'));
   const runDir = dirname(join(dataRoot, ROOT_DIR, latest.run_manifest));
-  const materializedDir = join(dataRoot, ROOT_DIR, 'duckdb', 'materialized', `market=${safeMarket}`);
-  await mkdir(materializedDir, { recursive: true });
-  const dbPath = join(materializedDir, 'screener_summary.duckdb');
-  const db = await DuckDBInstance.create(dbPath);
+  const db = await DuckDBInstance.create(':memory:');
   const connection = await db.connect();
   try {
     const rankedParquet = join(runDir, manifest.artifacts.ranked_candidates_parquet.path).replaceAll("'", "''");
@@ -500,34 +508,6 @@ export async function buildInvestmentScreenerDuckDbSummary({ dataRoot, market = 
       coverage,
       ranked_candidates: ranked
     };
-    await writeJson(join(materializedDir, 'screener_summary.manifest.json'), {
-      schema_version: 'investment-screener-duckdb-materialization/v1',
-      run_id: manifest.run_id,
-      source_manifest: latest.run_manifest,
-      database: 'screener_summary.duckdb',
-      generated_at: summary.generated_at,
-      tables: ['ranked_candidates']
-    });
-
-    const exportDir = join(dataRoot, ROOT_DIR, 'exports', 'dashboard', `market=${safeMarket}`);
-    await writeFileAtomic(join(exportDir, 'latest_ranked.json'), `${JSON.stringify({
-      schema_version: DASHBOARD_SCHEMA_VERSION,
-      mode: manifest.mode,
-      generated_at: summary.generated_at,
-      data_as_of: manifest.data_as_of,
-      candidates: ranked,
-      excluded: [],
-      source_summary: summary.source_summary,
-      coverage
-    }, null, 2)}\n`);
-    await writeFileAtomic(join(exportDir, 'latest_coverage.json'), `${JSON.stringify({
-      market: safeMarket,
-      source: 'duckdb',
-      generated_at: summary.generated_at,
-      source_summary: summary.source_summary,
-      coverage
-    }, null, 2)}\n`);
-    await writeFileAtomic(join(exportDir, 'latest_report.txt'), `Investment Screener ${safeMarket}\nRun: ${manifest.run_id}\nUsable: ${coverage.usable} / ${coverage.denominator}\n`);
     return summary;
   } finally {
     connection.closeSync();
