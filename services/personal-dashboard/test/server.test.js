@@ -284,6 +284,255 @@ test('GET /api/finnick/report requires authentication in reverse-proxy mode', as
 
 
 // ──────────────────────────────────────────────
+// /api/homelab/health tests
+// ──────────────────────────────────────────────
+
+test('GET /api/homelab/health returns 503 when homelabHealthReportFile is not configured', async () => {
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, homelabHealthReportFile: null });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/homelab/health`);
+    const body = await response.json();
+    assert.equal(response.status, 503);
+    assert.equal(body.error, 'not_configured');
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /api/homelab/health returns 404 when the report file does not exist', async () => {
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({
+    configPath,
+    authMode: 'disabled',
+    nodeEnv: 'test',
+    allowDisabledAuth: true,
+    homelabHealthReportFile: '/tmp/definitely-does-not-exist-homelab-health-test.txt'
+  });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/homelab/health`);
+    const body = await response.json();
+    assert.equal(response.status, 404);
+    assert.equal(body.error, 'not_found');
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /api/homelab/health returns 200 with state=ok, parsed fields when file is fresh', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'homelab-health-test-'));
+  const reportPath = join(dir, 'latest_report.txt');
+  const reportContent = [
+    'Homelab health report - 2026-08-22T22:00:29Z',
+    '',
+    'Summary:',
+    '- Proxmox guests observed: 6',
+    '- Proxmox backup jobs observed: 6',
+    '- Critical tracked guests: 100, 103, 110, 111, 112',
+    '- Alerts: 0',
+    '',
+    'Backup coverage:',
+    '- 100: name=critical status=running scheduled=yes latest=vzdump-lxc-100-2026-08-22.tar.zst',
+    '',
+    'Alerts:',
+    '- none',
+  ].join('\n');
+  await writeFile(reportPath, reportContent, 'utf8');
+
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({
+    configPath,
+    authMode: 'disabled',
+    nodeEnv: 'test',
+    allowDisabledAuth: true,
+    homelabHealthReportFile: reportPath
+  });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/homelab/health`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.state, 'ok');
+    assert.ok(typeof body.content === 'string');
+    assert.ok(body.content.includes('Homelab health report'));
+    assert.equal(body.generated_at, '2026-08-22T22:00:29Z');
+    assert.equal(body.alert_count, 0);
+    assert.ok(typeof body.age_hours === 'number');
+    assert.ok(typeof body.fetched_at === 'string');
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('GET /api/homelab/health returns state=degraded when alert_count > 0 and file is fresh', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'homelab-health-degraded-'));
+  const reportPath = join(dir, 'latest_report.txt');
+  const reportContent = [
+    'Homelab health report - 2026-08-22T22:00:29Z',
+    '',
+    'Summary:',
+    '- Proxmox guests observed: 6',
+    '- Alerts: 7',
+    '',
+    'Alerts:',
+    '- some alert here',
+  ].join('\n');
+  await writeFile(reportPath, reportContent, 'utf8');
+
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({
+    configPath,
+    authMode: 'disabled',
+    nodeEnv: 'test',
+    allowDisabledAuth: true,
+    homelabHealthReportFile: reportPath
+  });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/homelab/health`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.state, 'degraded');
+    assert.equal(body.alert_count, 7);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('GET /api/homelab/health returns state=empty when file is blank', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'homelab-health-empty-'));
+  const reportPath = join(dir, 'latest_report.txt');
+  await writeFile(reportPath, '   \n  \n', 'utf8');
+
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({
+    configPath,
+    authMode: 'disabled',
+    nodeEnv: 'test',
+    allowDisabledAuth: true,
+    homelabHealthReportFile: reportPath
+  });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/homelab/health`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.state, 'empty');
+    assert.equal(body.content, '');
+    assert.equal(body.alert_count, null);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('GET /api/homelab/health returns 502 on read error', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'homelab-health-perm-'));
+  const reportPath = join(dir, 'latest_report.txt');
+  await writeFile(reportPath, 'content', 'utf8');
+  await chmod(reportPath, 0o000);
+
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({
+    configPath,
+    authMode: 'disabled',
+    nodeEnv: 'test',
+    allowDisabledAuth: true,
+    homelabHealthReportFile: reportPath
+  });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/homelab/health`);
+    const body = await response.json();
+    // Running as root bypasses file permission checks; skip the assertion in that case.
+    if (process.getuid && process.getuid() === 0) {
+      assert.ok([200, 502].includes(response.status), `unexpected status ${response.status}`);
+    } else {
+      assert.equal(response.status, 502);
+      assert.equal(body.error, 'read_error');
+    }
+  } finally {
+    await server.close();
+    await chmod(reportPath, 0o644);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('GET /api/homelab/health treats a directory bind source as not_found', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'homelab-health-dir-'));
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({
+    configPath,
+    authMode: 'disabled',
+    nodeEnv: 'test',
+    allowDisabledAuth: true,
+    homelabHealthReportFile: dir
+  });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/homelab/health`);
+    const body = await response.json();
+    assert.equal(response.status, 404);
+    assert.equal(body.error, 'not_found');
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('GET /api/homelab/health requires authentication in reverse-proxy mode', async () => {
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({
+    configPath,
+    authMode: 'reverse-proxy',
+    proxyUserHeader: 'x-forwarded-user',
+    homelabHealthReportFile: '/tmp/nonexistent-homelab-health-auth.txt'
+  });
+  const server = await listen(app);
+  try {
+    const unauthResponse = await fetch(`${server.baseUrl}/api/homelab/health`);
+    assert.equal(unauthResponse.status, 401);
+
+    const authResponse = await fetch(`${server.baseUrl}/api/homelab/health`, {
+      headers: { 'x-forwarded-user': 'ben' }
+    });
+    assert.notEqual(authResponse.status, 401);
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /api/homelab/health alert_count is null when Alerts line is missing from Summary', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'homelab-health-noalerts-'));
+  const reportPath = join(dir, 'latest_report.txt');
+  await writeFile(reportPath, 'Homelab health report - 2026-08-22T22:00:29Z\n\nSummary:\n- Proxmox guests: 6\n', 'utf8');
+
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({
+    configPath,
+    authMode: 'disabled',
+    nodeEnv: 'test',
+    allowDisabledAuth: true,
+    homelabHealthReportFile: reportPath
+  });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/homelab/health`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.alert_count, null);
+    assert.equal(body.state, 'ok');
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ──────────────────────────────────────────────
 // /api/investment-screener tests
 // ──────────────────────────────────────────────
 

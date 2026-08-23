@@ -42,7 +42,7 @@ test('dashboard tabs load the expected existing read-only endpoints without new 
   assert.match(appSource, /tabId === 'overview'[\s\S]*loadOverviewData\(\)/);
   assert.match(appSource, /tabId === 'work'[\s\S]*refreshKanban\(\)/);
   assert.match(appSource, /tabId === 'knowledge'[\s\S]*refreshEpics\(\)[\s\S]*refreshDocs\(\)/);
-  assert.match(appSource, /} else if \(tabId === 'reports'\) \{\n    await refreshFinnick\(\);\n  \} else if \(tabId === 'investment-screener'\) \{\n    await refreshInvestmentScreener\(\);\n  \}/);
+  assert.match(appSource, /} else if \(tabId === 'reports'\) \{\n    await refreshFinnick\(\);\n    await refreshHomelabHealth\(\);\n  \} else if \(tabId === 'investment-screener'\) \{\n    await refreshInvestmentScreener\(\);\n  \}/);
   assert.match(appSource, /tabId === 'diary'[\s\S]*refreshDiaryEntries\(\)/);
   assert.match(appSource, /tabId === 'goals'[\s\S]*refreshGoals\(\)/);
   assert.doesNotMatch(appSource, /\/api\/dashboard\/summary/);

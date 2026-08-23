@@ -10,6 +10,7 @@ PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR=${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/va
 FINNICK_REPORT_HOST_DIR=${FINNICK_REPORT_HOST_DIR:-/mnt/nas/services/personal-dashboard/finnick}
 INVESTMENT_SCREENER_HOST_DIR=${INVESTMENT_SCREENER_HOST_DIR:-/mnt/nas/services/personal-dashboard/investment-screener}
 KANBAN_DB_HOST_DIR=${KANBAN_DB_HOST_DIR:-/mnt/nas/services/personal-dashboard/kanban}
+HOMELAB_HEALTH_HOST_DIR=${HOMELAB_HEALTH_HOST_DIR:-/mnt/nas/services/personal-dashboard/homelab-health}
 
 copy_snapshot() {
   source_path=$1
@@ -61,6 +62,7 @@ cleanup() {
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/config/dashboard.public.json.tmp.$$" \
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/config/home-lab-committed-files.txt.tmp.$$" \
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/finnick/latest_report.txt.tmp.$$" \
+    "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/homelab-health/latest_report.txt.tmp.$$" \
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/kanban/kanban.db.tmp.$$"
   rm -rf \
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/investment-screener.tmp.$$" \
@@ -85,5 +87,8 @@ copy_tree_snapshot "$INVESTMENT_SCREENER_HOST_DIR" \
 copy_snapshot "$KANBAN_DB_HOST_DIR/kanban.db" \
   "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/kanban/kanban.db" \
   "Kanban DB snapshot"
+copy_snapshot "$HOMELAB_HEALTH_HOST_DIR/latest_report.txt" \
+  "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/homelab-health/latest_report.txt" \
+  "Homelab health report"
 
 printf '%s\n' "Synced personal-dashboard runtime snapshots to $PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR"

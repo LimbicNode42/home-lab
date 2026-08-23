@@ -4,6 +4,10 @@ const statusList = document.querySelector('#status-list');
 const refreshButton = document.querySelector('#refresh-status');
 const finnickContent = document.querySelector('#finnick-content');
 const refreshFinnickButton = document.querySelector('#refresh-finnick');
+const homelabHealthContent = document.querySelector('#homelab-health-content');
+const homelabHealthBadge = document.querySelector('#homelab-health-badge');
+const homelabHealthFreshness = document.querySelector('#homelab-health-freshness');
+const refreshHomelabHealthButton = document.querySelector('#refresh-homelab-health');
 const investmentScreenerContent = document.querySelector('#investment-screener-content');
 const refreshInvestmentScreenerButton = document.querySelector('#refresh-investment-screener');
 const investmentScreenerControls = document.querySelector('#investment-screener-controls');
@@ -232,6 +236,7 @@ async function loadTabData(tabId) {
     await refreshDocs();
   } else if (tabId === 'reports') {
     await refreshFinnick();
+    await refreshHomelabHealth();
   } else if (tabId === 'investment-screener') {
     await refreshInvestmentScreener();
   } else if (tabId === 'diary') {
@@ -560,9 +565,66 @@ if (refreshFinnickButton) {
   refreshFinnickButton.addEventListener('click', refreshFinnick);
 }
 
+async function refreshHomelabHealth() {
+  if (refreshHomelabHealthButton) refreshHomelabHealthButton.disabled = true;
+  try {
+    const data = await getJson('/api/homelab/health');
+    // Render freshness line
+    const state = data.state ?? 'ok';
+    const relTime = data.generated_at
+      ? `Last run: ${data.generated_at}`
+      : data.age_hours != null
+        ? `Last run: ${data.age_hours}h ago`
+        : 'Last run: unknown';
+    const stateLabel = state === 'stale' ? ' — may be stale' : state === 'degraded' ? ' — degraded' : '';
+    if (homelabHealthFreshness) homelabHealthFreshness.textContent = relTime + stateLabel;
+    // Render badge
+    if (homelabHealthBadge) {
+      const count = data.alert_count;
+      if (typeof count === 'number' && count > 0) {
+        homelabHealthBadge.textContent = `${count} alert${count === 1 ? '' : 's'}`;
+        homelabHealthBadge.className = count >= 5 ? 'badge badge-alert' : 'badge badge-warn';
+      } else if (count === 0) {
+        homelabHealthBadge.textContent = 'OK';
+        homelabHealthBadge.className = 'badge badge-ok';
+      } else {
+        homelabHealthBadge.textContent = '';
+        homelabHealthBadge.className = 'badge';
+      }
+    }
+    // Render content
+    if (state === 'stale') {
+      const warning = el('p', { className: 'warn', text: `Last run: ${data.age_hours}h ago — may be stale` });
+      const pre = el('pre', { className: 'homelab-health-report', text: data.content });
+      if (homelabHealthContent) homelabHealthContent.replaceChildren(warning, pre);
+    } else {
+      const pre = el('pre', { className: 'homelab-health-report', text: data.content });
+      if (homelabHealthContent) homelabHealthContent.replaceChildren(pre);
+    }
+  } catch (error) {
+    let msg;
+    if (error.message.includes('404')) {
+      msg = 'No report yet — check back after the 08:00 AEST cron runs.';
+    } else if (error.message.includes('503')) {
+      msg = 'Homelab health report is not configured on this instance.';
+    } else if (error.message.includes('502')) {
+      msg = 'Unable to read homelab health report.';
+    } else {
+      msg = `Report unavailable: ${error.message}`;
+    }
+    if (homelabHealthContent) homelabHealthContent.replaceChildren(el('p', { className: 'error', text: msg }));
+    if (homelabHealthFreshness) homelabHealthFreshness.textContent = '';
+    if (homelabHealthBadge) { homelabHealthBadge.textContent = ''; homelabHealthBadge.className = 'badge'; }
+  } finally {
+    if (refreshHomelabHealthButton) refreshHomelabHealthButton.disabled = false;
+  }
+}
+
+if (refreshHomelabHealthButton) {
+  refreshHomelabHealthButton.addEventListener('click', refreshHomelabHealth);
+}
 
 function investmentScreenerRequestPath() {
-  const searchParams = new URLSearchParams();
   const queryText = investmentSearchFilter?.value?.trim();
   const market = investmentMarketFilter?.value?.trim();
   const metric = investmentMetricFilter?.value?.trim();

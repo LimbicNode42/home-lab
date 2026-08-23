@@ -201,18 +201,21 @@ test('sync-runtime-snapshots.sh copies expected source files into host-local cac
   const finnickDir = join(root, 'nas', 'finnick');
   const investmentDir = join(root, 'nas', 'investment-screener');
   const kanbanDir = join(root, 'nas', 'kanban');
+  const homelabHealthDir = join(root, 'nas', 'homelab-health');
   const cacheDir = join(root, 'runtime-cache');
 
   await mkdir(join(appDir, 'config'), { recursive: true });
   await mkdir(finnickDir, { recursive: true });
   await mkdir(investmentDir, { recursive: true });
   await mkdir(kanbanDir, { recursive: true });
+  await mkdir(homelabHealthDir, { recursive: true });
   await writeFile(join(appDir, 'config', 'dashboard.public.json'), '{"title":"Cache Test"}\n', 'utf8');
   await writeFile(join(appDir, 'config', 'home-lab-committed-files.txt'), 'services/personal-dashboard/README.md\n', 'utf8');
   await writeFile(join(finnickDir, 'latest_report.txt'), 'finnick report\n', 'utf8');
   await writeFile(join(investmentDir, 'latest_report.txt'), 'investment report\n', 'utf8');
   await writeFile(join(investmentDir, 'latest_ranked.json'), '{"candidates":[]}\n', 'utf8');
   await writeFile(join(kanbanDir, 'kanban.db'), 'sqlite snapshot bytes\n', 'utf8');
+  await writeFile(join(homelabHealthDir, 'latest_report.txt'), 'Homelab health report\n', 'utf8');
 
   try {
     await execFileAsync('sh', [SYNC_SCRIPT_PATH], {
@@ -222,6 +225,7 @@ test('sync-runtime-snapshots.sh copies expected source files into host-local cac
         FINNICK_REPORT_HOST_DIR: finnickDir,
         INVESTMENT_SCREENER_HOST_DIR: investmentDir,
         KANBAN_DB_HOST_DIR: kanbanDir,
+        HOMELAB_HEALTH_HOST_DIR: homelabHealthDir,
         PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR: cacheDir
       }
     });
@@ -232,6 +236,7 @@ test('sync-runtime-snapshots.sh copies expected source files into host-local cac
     assert.equal(await readFile(join(cacheDir, 'investment-screener', 'latest_report.txt'), 'utf8'), 'investment report\n');
     assert.equal(await readFile(join(cacheDir, 'investment-screener', 'latest_ranked.json'), 'utf8'), '{"candidates":[]}\n');
     assert.equal(await readFile(join(cacheDir, 'kanban', 'kanban.db'), 'utf8'), 'sqlite snapshot bytes\n');
+    assert.equal(await readFile(join(cacheDir, 'homelab-health', 'latest_report.txt'), 'utf8'), 'Homelab health report\n');
   } finally {
     await rm(root, { recursive: true, force: true });
   }
