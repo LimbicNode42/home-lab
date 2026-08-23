@@ -59,7 +59,7 @@ Use the file-first storage path for durable recurring screener history. The NAS 
 1. Produce a complete run payload with explicit `market`, `source`, `mode`, `started_at`, `completed_at`, `data_as_of`, universe metadata, companies, scores, observations, provenance, failures, and exclusions.
 2. Publish through the storage helper (`publishInvestmentScreenerRun` in `src/investment-screener-storage.js`) or an equivalent single-writer job. It writes to a same-filesystem staging directory, validates rows, writes JSONL and Parquet companions, calculates checksums, then atomically promotes the run directory and `manifests/.../latest.json` pointer.
 3. If validation fails, do not manually advance `latest.json`; the previous latest pointer must remain valid.
-4. Rebuild dashboard summaries with DuckDB (`buildInvestmentScreenerDuckDbSummary`) from the latest manifest. DuckDB creates `duckdb/materialized/market=<MARKET>/screener_summary.duckdb` and safe dashboard exports under `exports/dashboard/market=<MARKET>/`.
+4. Publish safe dashboard exports under `exports/dashboard/market=<MARKET>/` in the same single-writer path. Runtime API reads may query the immutable Parquet artifacts with in-memory DuckDB, but must not create `duckdb/`, materialized databases, or export files in the canonical/runtime-cache tree.
 5. Configure the dashboard with `INVESTMENT_SCREENER_DATA_ROOT=/app` when `/app/investment-screener` is the read-only runtime-cache copy of the NAS data tree. `INVESTMENT_SCREENER_RANKED_FILE` and `INVESTMENT_SCREENER_REPORT_FILE` remain supported as legacy fallback paths.
 6. Verify the browser/API payloads do not contain NAS mount paths, local paths, DB URLs, task ids, stack traces, or secret-shaped values.
 
@@ -67,7 +67,7 @@ Quick read-only verification examples, run against a copied/safe data root rathe
 
 ```sh
 node --input-type=module -e "import { readLatestInvestmentScreenerManifest } from './src/investment-screener-storage.js'; console.log(await readLatestInvestmentScreenerManifest({ dataRoot: process.env.INVESTMENT_SCREENER_DATA_ROOT || '/app', market: 'ASX', source: 'yahoo-finance' }))"
-node --input-type=module -e "import { buildInvestmentScreenerDuckDbSummary } from './src/investment-screener-storage.js'; console.log(await buildInvestmentScreenerDuckDbSummary({ dataRoot: process.env.INVESTMENT_SCREENER_DATA_ROOT || '/app', market: 'ASX', source: 'yahoo-finance' }))"
+node --input-type=module -e "import { buildInvestmentScreenerDuckDbSummary } from './src/investment-screener-storage.js'; console.log(await buildInvestmentScreenerDuckDbSummary({ dataRoot: process.env.INVESTMENT_SCREENER_DATA_ROOT || '/app', market: 'ASX', source: 'yahoo-finance' }))" # read-only query, no canonical writes
 ```
 
 ### Monthly ASX hydration
