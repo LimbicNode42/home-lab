@@ -18,6 +18,7 @@ Kanban board freshness and mutation planning lives in [`kanban-state-bridge-plan
   - `GET /api/investment-screener/ranked` and `GET /api/investment-screener/report` authenticated endpoints that return sanitized generated investment screener output with freshness metadata and doc links (see [Investment screener panel](#investment-screener-panel)).
   - `GET /api/docs` and `GET /api/docs/:id` authenticated documentation endpoints backed by an approved committed Markdown manifest (see [Documentation panel](#documentation-panel)).
   - `GET /api/epics` authenticated completed-epics endpoint that reads Kanban via Node's in-process SQLite API and exposes only redacted task summaries and committed GitHub doc links.
+  - `GET/POST/PATCH/DELETE /api/writing/posts` authenticated Blog/Drafts endpoints backed by the host-local writing store (see [Blog / Drafts panel](#blog--drafts-panel)).
 - Reverse-proxy authentication gate by default.
 - Dockerfile and Compose service for local/homelab container runs.
 - Node built-in test suite covering auth, config, status, Finnick, Kanban, completed epics, and documentation endpoints.
@@ -266,6 +267,14 @@ sh /mnt/nas/services/personal-dashboard/scripts/run-critical-docker.sh
 ```
 
 This rebuilds the image and recreates the container with the read-only report directory bind intact. The report file on the host is untouched.
+
+## Blog / Drafts panel
+
+The dashboard includes an authenticated **Blog / Drafts** panel for local writing posts stored in the host-local writing store. The current implementation is plain Markdown-oriented CRUD with sanitized preview rendering and path-free API errors.
+
+The rich authoring design for the next implementation lane lives at [`docs/products/blog-drafts/rich-authoring-design.md`](./docs/products/blog-drafts/rich-authoring-design.md). It keeps Markdown as the canonical storage format, adds typed fenced embed blocks for media/layout controls, defines the safe renderer boundary, and describes the lazy migration path for older plain-text/body posts.
+
+First-pass rich authoring should not use MDX, arbitrary HTML, general iframe embed paste, remote image hotlinking, or inline user-controlled CSS. Keep saved content as Markdown plus allowlisted block options; render with DOM node creation only, never `innerHTML`.
 
 ## Investment screener panel
 
