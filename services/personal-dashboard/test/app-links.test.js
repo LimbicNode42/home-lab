@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 
 const appSource = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
@@ -86,6 +87,59 @@ test('dashboard investment screener exposes search and pagination controls for b
   assert.match(appSource, /searchParams\.set\('offset'/);
   assert.match(appSource, /function updateInvestmentPaginationControls\(/);
   assert.match(appSource, /payload\.pagination/);
+});
+
+
+test('dashboard investment screener request path builds query params without a ReferenceError', () => {
+  class FakeNode {
+    constructor(value = '') {
+      this.value = value;
+      this.children = [];
+      this.className = '';
+      this.textContent = '';
+      this.disabled = false;
+      this.dataset = {};
+      this.classList = { toggle: () => {} };
+    }
+
+    addEventListener() {}
+    append(...children) { this.children.push(...children); }
+    replaceChildren(...children) { this.children = children; }
+    setAttribute(name, value) { this[name] = String(value); }
+    querySelector() { return null; }
+    querySelectorAll() { return []; }
+  }
+
+  const nodes = new Map([
+    ['investment-search-filter', new FakeNode('BHP')],
+    ['investment-market-filter', new FakeNode('ASX')],
+    ['investment-metric-filter', new FakeNode('quality')],
+    ['investment-weight-filter', new FakeNode('balanced')],
+    ['investment-topn-filter', new FakeNode('12')],
+    ['kanban-panel', new FakeNode()],
+    ['toggle-kanban-density', new FakeNode()]
+  ]);
+  const document = {
+    querySelector: (selector) => nodes.get(selector.replace(/^#/, '')) ?? new FakeNode(),
+    createElement: () => new FakeNode(),
+    createTextNode: (text) => {
+      const node = new FakeNode();
+      node.textContent = text;
+      return node;
+    },
+    title: ''
+  };
+  const window = {
+    location: { hash: '#investment-screener', origin: 'http://dashboard.local' },
+    history: { pushState: () => {} },
+    localStorage: { getItem: () => null, setItem: () => {} },
+    addEventListener: () => {}
+  };
+  const context = { document, window, URL, URLSearchParams, fetch: async () => ({ ok: true, json: async () => ({}) }), console, setTimeout, clearTimeout };
+
+  vm.runInNewContext(`${appSource}\nglobalThis.__investmentPath = investmentScreenerRequestPath();`, context);
+
+  assert.equal(context.__investmentPath, '/api/investment-screener/ranked?q=BHP&market=ASX&metric=quality&limit=12');
 });
 
 
