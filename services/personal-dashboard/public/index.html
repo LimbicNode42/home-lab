@@ -18,6 +18,7 @@
         <div class="tab-list" role="tablist" aria-label="Dashboard sections">
           <a id="tab-overview" class="dashboard-tab" role="tab" href="#overview" aria-controls="panel-overview" aria-selected="true" tabindex="0">Overview</a>
           <a id="tab-knowledge" class="dashboard-tab" role="tab" href="#knowledge" aria-controls="panel-knowledge" aria-selected="false" tabindex="-1">Knowledge</a>
+          <a id="tab-blog-drafts" class="dashboard-tab" role="tab" href="#blog-drafts" aria-controls="panel-blog-drafts" aria-selected="false" tabindex="-1">Blog / Drafts</a>
           <a id="tab-reports" class="dashboard-tab" role="tab" href="#reports" aria-controls="panel-reports" aria-selected="false" tabindex="-1">Reports</a>
           <a id="tab-investment-screener" class="dashboard-tab" role="tab" href="#investment-screener" aria-controls="panel-investment-screener" aria-selected="false" tabindex="-1">Investment Screener</a>
           <a id="tab-diary-goals" class="dashboard-tab" role="tab" href="#diary-goals" aria-controls="panel-diary-goals" aria-selected="false" tabindex="-1">Diary &amp; Goals</a>
@@ -42,45 +43,8 @@
           </div>
         </section>
       </section>
-<section id="panel-knowledge" class="tab-panel" role="tabpanel" aria-labelledby="tab-knowledge" data-tab-panel="knowledge" hidden>
-        <section class="panel" id="epics-panel">
-          <div class="panel-heading">
-            <h2>Completed Epics</h2>
-          </div>
-          <div id="epics-list" aria-live="polite">
-            <p class="muted">Loading epics…</p>
-          </div>
-        </section>
-
-        <section class="panel" id="writing-panel">
-          <div class="panel-heading">
-            <div>
-              <h2>Blog / Drafts</h2>
-              <p class="muted board-message">Read-only writing surface from committed sample posts. Publish, delete, edit, and attachment upload are deliberately deferred until storage is reviewed.</p>
-            </div>
-            <div class="panel-actions">
-              <label class="inline-control" for="writing-status-filter">
-                Status
-                <select id="writing-status-filter" name="writing_status">
-                  <option value="all">All</option>
-                  <option value="draft">Drafts</option>
-                  <option value="published">Published</option>
-                  <option value="archived">Archived</option>
-                </select>
-              </label>
-              <button id="refresh-writing-posts" type="button">Refresh</button>
-            </div>
-          </div>
-          <div class="writing-layout">
-            <div id="writing-posts-list" class="writing-posts-list" aria-live="polite">
-              <p class="muted">Loading writing drafts…</p>
-            </div>
-            <article id="writing-post-preview" class="writing-post-preview" aria-live="polite">
-              <p class="muted">Select a draft or post to preview sanitized Markdown.</p>
-            </article>
-          </div>
-        </section>
-<section class="panel" id="docs-panel">
+      <section id="panel-knowledge" class="tab-panel" role="tabpanel" aria-labelledby="tab-knowledge" data-tab-panel="knowledge" hidden>
+        <section class="panel" id="docs-panel">
           <div class="panel-heading">
             <div>
               <h2>Documentation</h2>
@@ -101,6 +65,47 @@
             <div id="docs-content" class="doc-viewer" aria-live="polite">
               <p class="muted">Select a document to view it here.</p>
             </div>
+          </div>
+        </section>
+
+        <section class="panel" id="epics-panel">
+          <div class="panel-heading">
+            <h2>Completed Epics</h2>
+          </div>
+          <div id="epics-list" aria-live="polite">
+            <p class="muted">Loading epics…</p>
+          </div>
+        </section>
+      </section>
+
+      <section id="panel-blog-drafts" class="tab-panel" role="tabpanel" aria-labelledby="tab-blog-drafts" data-tab-panel="blog-drafts" hidden>
+        <section class="panel" id="writing-panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Blog / Drafts</h2>
+              <p class="muted board-message">Create, edit, publish, archive, and delete local writing posts stored in the dashboard writing store.</p>
+            </div>
+            <div class="panel-actions">
+              <label class="inline-control" for="writing-status-filter">
+                Status
+                <select id="writing-status-filter" name="writing_status">
+                  <option value="all">All</option>
+                  <option value="draft">Drafts</option>
+                  <option value="published">Published</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </label>
+              <button id="new-writing-post" type="button">New post</button>
+              <button id="refresh-writing-posts" type="button">Refresh</button>
+            </div>
+          </div>
+          <div class="writing-layout">
+            <div id="writing-posts-list" class="writing-posts-list" aria-live="polite">
+              <p class="muted">Loading writing drafts…</p>
+            </div>
+            <article id="writing-post-preview" class="writing-post-preview" aria-live="polite">
+              <p class="muted">Select a draft or post to preview sanitized Markdown.</p>
+            </article>
           </div>
         </section>
       </section>
@@ -343,6 +348,46 @@
           <button id="close-doc-reader" type="button" aria-label="Close document reader">Close</button>
         </header>
         <div id="doc-reader-content" class="doc-reader-content" tabindex="0"></div>
+      </article>
+    </div>
+
+    <div id="writing-editor-modal" class="doc-reader-modal" role="dialog" aria-modal="true" aria-labelledby="writing-editor-title" aria-hidden="true" hidden>
+      <div class="doc-reader-backdrop" aria-hidden="true"></div>
+      <article id="writing-editor-dialog" class="doc-reader-dialog writing-editor-dialog" tabindex="-1">
+        <header class="doc-reader-header">
+          <div>
+            <h2 id="writing-editor-title">Edit writing post</h2>
+            <p id="writing-editor-message" class="muted" aria-live="polite"></p>
+          </div>
+          <button id="close-writing-editor" type="button" aria-label="Close writing editor">Close</button>
+        </header>
+        <form id="writing-editor-form" class="personal-data-form writing-editor-form">
+          <label>
+            Title
+            <input id="writing-editor-post-title" name="title" type="text" maxlength="160" autocomplete="off" required>
+          </label>
+          <label>
+            Status
+            <select id="writing-editor-status" name="status" required>
+              <option value="draft">Draft</option>
+              <option value="published">Published</option>
+              <option value="archived">Archived</option>
+            </select>
+          </label>
+          <label class="form-wide">
+            Tags <span class="muted">comma-separated</span>
+            <input id="writing-editor-tags" name="tags" type="text" maxlength="480" autocomplete="off">
+          </label>
+          <label class="form-wide">
+            Body
+            <textarea id="writing-editor-body" name="body_markdown" maxlength="40960" required rows="14"></textarea>
+          </label>
+          <div class="form-actions form-wide">
+            <button id="save-writing-post" type="submit">Save post</button>
+            <button id="delete-writing-post" type="button" class="danger-button">Delete</button>
+            <button id="cancel-writing-editor" type="button">Cancel</button>
+          </div>
+        </form>
       </article>
     </div>
     <script type="module" src="/app.js"></script>
