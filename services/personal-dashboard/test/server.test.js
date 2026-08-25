@@ -795,6 +795,67 @@ test('GET /api/investment-screener/coverage preserves sanitized freshness metada
   }
 });
 
+test('GET /api/investment-screener/report prefers canonical non-fixture export over legacy fixture file', async () => {
+  const dataRoot = await mkdtemp(join(tmpdir(), 'investment-report-canonical-'));
+  const legacyDir = await mkdtemp(join(tmpdir(), 'investment-report-legacy-'));
+  // Legacy runtime-cache report file holds fixture content labeled "(fixture)".
+  const legacyReportPath = join(legacyDir, 'latest_report.txt');
+  await writeFile(legacyReportPath, 'Investment Screener ASX\nRun: fixture-stub\nUsable: 1 / 3\nBHP.AX (fixture)\n', 'utf8');
+
+  // Canonical publisher export under exports/dashboard/market=ASX/latest_report.txt.
+  const canonicalDir = join(dataRoot, 'investment-screener', 'exports', 'dashboard', 'market=ASX');
+  await mkdir(canonicalDir, { recursive: true });
+  await writeFile(join(canonicalDir, 'latest_report.txt'), 'Investment Screener ASX\nRun: investment-screener_ASX_asx-yahoo-timeseries_2026-08-23T100100Z_0123456789ab\nUsable: 2 / 3\n', 'utf8');
+  const manifestDir = join(dataRoot, 'investment-screener', 'manifests', 'market=ASX', 'source=yahoo-finance');
+  await mkdir(manifestDir, { recursive: true });
+  await writeFile(join(manifestDir, 'latest.json'), JSON.stringify({
+    run_id: 'investment-screener_ASX_asx-yahoo-timeseries_2026-08-23T100100Z_0123456789ab',
+    mode: 'asx-yahoo-timeseries',
+    generated_at: '2026-08-23T10:01:00.000Z',
+    data_as_of: '2026-06-30',
+    run_manifest: 'runs/market=ASX/source=yahoo-finance/mode=asx-yahoo-timeseries/run_date=2026-08-23/investment-screener_ASX_asx-yahoo-timeseries_2026-08-23T100100Z_0123456789ab/manifest.json'
+  }), 'utf8');
+
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerReportFile: legacyReportPath, investmentScreenerDataRoot: dataRoot });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/investment-screener/report`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.mode, 'asx-yahoo-timeseries');
+    assert.equal(body.generated_at, '2026-08-23T10:01:00.000Z');
+    assert.equal(body.data_as_of, '2026-06-30');
+    assert.match(body.content, /Run: investment-screener_ASX_asx-yahoo-timeseries/);
+    assert.equal(body.content.includes('(fixture)'), false, 'canonical report must not contain fixture content');
+  } finally {
+    await server.close();
+    await rm(legacyDir, { recursive: true, force: true });
+    await rm(dataRoot, { recursive: true, force: true });
+  }
+});
+
+test('GET /api/investment-screener/report flags legacy fixture content as fixture, never live', async () => {
+  const legacyDir = await mkdtemp(join(tmpdir(), 'investment-report-fixture-'));
+  const legacyReportPath = join(legacyDir, 'latest_report.txt');
+  await writeFile(legacyReportPath, 'Investment Screener ASX\nRun: fixture-stub\nUsable: 1 / 3\nBHP.AX (fixture)\n', 'utf8');
+
+  const configPath = await writeConfig(basicConfig);
+  // No data root configured: only the legacy file is available.
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerReportFile: legacyReportPath, investmentScreenerDataRoot: null });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/investment-screener/report`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.mode, 'fixture', 'fixture content must never be labeled live');
+    assert.equal(JSON.stringify(body).includes('"live"'), false);
+  } finally {
+    await server.close();
+    await rm(legacyDir, { recursive: true, force: true });
+  }
+});
+
 test('GET /api/investment-screener/coverage clamps artifact fallback candidate counts to configured universe denominator', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'investment-coverage-over-universe-'));
   const rankedPath = join(dir, 'latest_ranked.json');
@@ -1131,7 +1192,7 @@ test('GET /api/investment-screener/report returns sanitized report text with fre
     const body = await response.json();
     assert.equal(response.status, 200);
     assert.deepEqual(Object.keys(body), ['mode', 'generated_at', 'data_as_of', 'disclaimer', 'content', 'doc_links']);
-    assert.equal(body.mode, 'live');
+    assert.equal(body.mode, 'fixture');
     assert.ok(body.generated_at);
     assert.ok(body.content.includes('BRK.B'));
     assert.ok(body.content.includes('Toyota Motor Corporation'));

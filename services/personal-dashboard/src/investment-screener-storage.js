@@ -272,6 +272,57 @@ function freshnessForRun(run, now = new Date()) {
   };
 }
 
+// Reconstruct freshness from a published run manifest for artifacts that predate
+// the freshness metadata (pre-6227ed2): the manifest carries top-level
+// latest_retrieved_at / generated_at / completed_at / data_as_of but no coverage.freshness.
+function freshnessFromManifest(manifest, now = new Date()) {
+  const latestRetrievedAt = manifest.latest_retrieved_at ?? manifest.coverage?.freshness?.latest_retrieved_at ?? null;
+  const generatedAt = manifest.generated_at ?? manifest.completed_at ?? null;
+  const dataAsOf = manifest.data_as_of ?? null;
+  const generatedDate = parseDateOrNull(generatedAt);
+  const latestRetrievedDate = parseDateOrNull(latestRetrievedAt);
+  const dataAsOfDate = parseDateOrNull(dataAsOf);
+  const generatedAgeHours = hoursBetween(now, generatedDate);
+  const latestRetrievedAgeHours = hoursBetween(now, latestRetrievedDate);
+  const dataAsOfAgeDays = daysBetween(now, dataAsOfDate);
+  const maxGeneratedAgeHours = Number.isFinite(Number(manifest.coverage?.max_generated_age_hours)) ? Number(manifest.coverage.max_generated_age_hours) : 26;
+  const maxSourceAgeHours = Number.isFinite(Number(manifest.coverage?.max_source_age_hours)) ? Number(manifest.coverage.max_source_age_hours) : 26;
+  const maxDataAsOfAgeDays = Number.isFinite(Number(manifest.coverage?.max_data_as_of_age_days)) ? Number(manifest.coverage.max_data_as_of_age_days) : 370;
+  const warnings = [];
+  if (generatedAgeHours !== null && generatedAgeHours > maxGeneratedAgeHours) warnings.push(`Generated artifact is ${generatedAgeHours}h old, older than ${maxGeneratedAgeHours}h freshness threshold.`);
+  if (latestRetrievedAgeHours !== null && latestRetrievedAgeHours > maxSourceAgeHours) warnings.push(`Latest provider retrieval is ${latestRetrievedAgeHours}h old, older than ${maxSourceAgeHours}h freshness threshold.`);
+  if (dataAsOfAgeDays !== null && dataAsOfAgeDays > maxDataAsOfAgeDays) warnings.push(`Source data_as_of is ${dataAsOfAgeDays}d old, older than ${maxDataAsOfAgeDays}d freshness threshold.`);
+  if (!latestRetrievedAt && !manifest.fixture) warnings.push('No provider retrieved_at timestamp is available for this non-fixture run.');
+  return {
+    generated_at: generatedAt,
+    generated_age_hours: generatedAgeHours,
+    latest_retrieved_at: latestRetrievedAt,
+    latest_retrieved_age_hours: latestRetrievedAgeHours,
+    data_as_of: dataAsOf,
+    data_as_of_age_days: dataAsOfAgeDays,
+    stale: warnings.length > 0,
+    stale_thresholds: {
+      max_generated_age_hours: maxGeneratedAgeHours,
+      max_source_age_hours: maxSourceAgeHours,
+      max_data_as_of_age_days: maxDataAsOfAgeDays
+    }
+  };
+}
+
+// Re-derive the human-readable staleness warnings from a constructed freshness blob,
+// matching the wording the publisher emits in coverageForRun.
+function freshnessWarningsFor(freshness) {
+  if (!freshness || !freshness.stale) return [];
+  const warnings = [];
+  const generatedAge = freshness.generated_age_hours;
+  if (generatedAge !== null && generatedAge > freshness.stale_thresholds.max_generated_age_hours) warnings.push(`Generated artifact is ${generatedAge}h old, older than ${freshness.stale_thresholds.max_generated_age_hours}h freshness threshold.`);
+  const sourceAge = freshness.latest_retrieved_age_hours;
+  if (sourceAge !== null && sourceAge > freshness.stale_thresholds.max_source_age_hours) warnings.push(`Latest provider retrieval is ${sourceAge}h old, older than ${freshness.stale_thresholds.max_source_age_hours}h freshness threshold.`);
+  const dataAge = freshness.data_as_of_age_days;
+  if (dataAge !== null && dataAge > freshness.stale_thresholds.max_data_as_of_age_days) warnings.push(`Source data_as_of is ${dataAge}d old, older than ${freshness.stale_thresholds.max_data_as_of_age_days}d freshness threshold.`);
+  return warnings;
+}
+
 function coverageForRun(run, now = new Date()) {
   const supplied = run.coverage && typeof run.coverage === 'object' ? run.coverage : {};
   const usable = run.scores.filter((score) => !score.excluded && score.composite_score !== null).length;
@@ -806,17 +857,30 @@ export async function buildInvestmentScreenerDuckDbSummary({ dataRoot, market = 
       score: Number(row.score),
       sub_scores: row.sub_scores_json ? JSON.parse(row.sub_scores_json) : {}
     }));
+    const reconstructedFreshness = freshnessFromManifest(manifest);
     const coverage = {
       ...manifest.coverage,
       usable: ranked.length,
-      percent: manifest.coverage.denominator > 0 ? Number(((ranked.length / manifest.coverage.denominator) * 100).toFixed(1)) : null
+      percent: manifest.coverage.denominator > 0 ? Number(((ranked.length / manifest.coverage.denominator) * 100).toFixed(1)) : null,
+      // Pre-6227ed2 artifacts carry no coverage.freshness key, so reconstruct it
+      // from manifest timestamps instead of spreading a bare {} that yields null fields.
+      freshness: reconstructedFreshness,
+      // The pre-6227ed2 manifest carries a bare `stale: 0` count; re-derive it from
+      // the reconstructed freshness so a stale artifact reads stale in the count too.
+      stale: reconstructedFreshness.stale,
+      // Surface staleness warnings alongside the reconstructed freshness, mirroring
+      // the publisher's coverageForRun, so stale artifacts read as stale end-to-end.
+      warnings: [
+        ...(Array.isArray(manifest.coverage?.warnings) ? manifest.coverage.warnings : []),
+        ...freshnessWarningsFor(reconstructedFreshness)
+      ]
     };
     const summary = {
       schema_version: 'investment-screener-duckdb-summary/v1',
       source: 'duckdb',
       run_id: manifest.run_id,
       market: safeMarket,
-      generated_at: new Date().toISOString(),
+      generated_at: manifest.generated_at ?? manifest.completed_at ?? null,
       source_summary: {
         mode: manifest.mode,
         providers: [manifest.source],

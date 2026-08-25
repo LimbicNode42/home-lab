@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 const execFileAsync = promisify(execFile);
@@ -367,6 +367,61 @@ test('publishInvestmentScreenerRun adds freshness metadata and stale warnings to
     const latestCoverage = JSON.parse(await readFile(join(dataRoot, 'investment-screener', 'exports', 'dashboard', 'market=ASX', 'latest_coverage.json'), 'utf8'));
     assert.equal(latestCoverage.coverage.freshness.stale, true);
     assert.equal(latestCoverage.source_summary.latest_retrieved_at, '2026-08-20T10:00:30.000Z');
+  } finally {
+    await rm(dataRoot, { recursive: true, force: true });
+  }
+});
+
+test('buildInvestmentScreenerDuckDbSummary reconstructs freshness from manifest when coverage.freshness is absent', async () => {
+  const dataRoot = await mkdtemp(join(tmpdir(), 'screener-duckdb-freshness-reconstruct-'));
+  try {
+    // Publish a fresh non-fixture run, then simulate a pre-6227ed2 manifest by
+    // stripping the coverage.freshness key (the shape the sentinel found in live data).
+    const published = await publishInvestmentScreenerRun({ dataRoot, run: nonFixtureRun, now: new Date('2026-08-23T10:02:00.000Z') });
+    const manifestPath = join(published.run_dir, 'manifest.json');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    delete manifest.coverage.freshness;
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+
+    const summary = await buildInvestmentScreenerDuckDbSummary({ dataRoot, market: 'ASX', source: 'yahoo-finance' });
+
+    assert.equal(summary.generated_at, manifest.generated_at, 'generated_at must surface manifest timestamp, not request time');
+    assert.ok(summary.coverage.freshness, 'freshness must be reconstructed when absent from manifest coverage');
+    assert.equal(summary.coverage.freshness.generated_at, manifest.generated_at);
+    assert.equal(summary.coverage.freshness.latest_retrieved_at, '2026-08-23T10:00:35.000Z');
+    assert.equal(summary.coverage.freshness.data_as_of, '2026-06-30');
+    assert.ok(summary.coverage.freshness.generated_at !== null);
+    assert.ok(summary.coverage.freshness.latest_retrieved_at !== null);
+    assert.ok(summary.coverage.freshness.data_as_of !== null);
+    assert.equal(typeof summary.coverage.freshness.latest_retrieved_age_hours, 'number');
+  } finally {
+    await rm(dataRoot, { recursive: true, force: true });
+  }
+});
+
+test('buildInvestmentScreenerDuckDbSummary marks stale data with stale true and stale warnings', async () => {
+  const dataRoot = await mkdtemp(join(tmpdir(), 'screener-duckdb-freshness-stale-'));
+  try {
+    // Stale run hydrated ~3 days in the past, mirroring the live defect (latest_retrieved_at 3 days old).
+    const staleRun = {
+      ...nonFixtureRun,
+      completed_at: '2026-08-20T10:01:00.000Z',
+      generated_at: '2026-08-20T10:01:00.000Z',
+      data_as_of: '2026-06-30',
+      provenance: nonFixtureRun.provenance.map((row) => ({ ...row, retrieved_at: '2026-08-20T10:00:30.000Z' }))
+    };
+    await publishInvestmentScreenerRun({ dataRoot, run: staleRun, now: new Date('2026-08-20T10:02:00.000Z') });
+    const manifestPath = join(dataRoot, 'investment-screener', 'manifests', 'market=ASX', 'source=yahoo-finance', 'latest.json');
+    const latest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    const runDir = join(dataRoot, 'investment-screener', dirname(latest.run_manifest));
+    const manifest = JSON.parse(await readFile(join(runDir, 'manifest.json'), 'utf8'));
+    delete manifest.coverage.freshness;
+    await writeFile(join(runDir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
+
+    const summary = await buildInvestmentScreenerDuckDbSummary({ dataRoot, market: 'ASX', source: 'yahoo-finance' });
+    assert.equal(summary.coverage.freshness.stale, true);
+    assert.ok(summary.coverage.freshness.latest_retrieved_age_hours > 26);
+    assert.ok(summary.coverage.warnings.some((warning) => warning.includes('older than 26h')));
   } finally {
     await rm(dataRoot, { recursive: true, force: true });
   }
