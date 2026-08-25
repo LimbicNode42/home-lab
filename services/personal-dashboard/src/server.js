@@ -33,6 +33,15 @@ function json(response, statusCode, payload) {
   response.end(body);
 }
 
+function decodePathSegment(segment) {
+  try {
+    return decodeURIComponent(segment);
+  } catch (err) {
+    if (err instanceof URIError) return null;
+    throw err;
+  }
+}
+
 function text(response, statusCode, payload) {
   response.writeHead(statusCode, { 'content-type': 'text/plain; charset=utf-8' });
   response.end(payload);
@@ -2390,7 +2399,10 @@ export async function createApp(options = {}) {
 
       const writingPostMatch = /^\/api\/writing\/posts\/([^/]+)$/.exec(url.pathname);
       if (writingPostMatch) {
-        const postId = decodeURIComponent(writingPostMatch[1]);
+        const postId = decodePathSegment(writingPostMatch[1]);
+        if (postId === null) {
+          return json(response, 400, { error: 'invalid_writing_post_id', message: 'Writing post id is not valid.' });
+        }
         if (request.method === 'GET') {
           const result = await readWritingPost({ writingPostsFile, postId });
           return json(response, result.statusCode, result.payload);
