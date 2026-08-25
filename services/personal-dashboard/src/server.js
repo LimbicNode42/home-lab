@@ -1,9 +1,9 @@
 import { accessSync, constants, createReadStream, readFileSync } from 'node:fs';
-import { readFile, stat } from 'node:fs/promises';
+import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import { execFileSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
-import { delimiter, extname, join, normalize, relative, resolve, sep } from 'node:path';
+import { basename, delimiter, dirname, extname, join, normalize, relative, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
@@ -179,6 +179,7 @@ const TASK_ID_PATTERN = /^t_[0-9a-f]+$/;
 const MAX_MOVE_BODY_BYTES = 8 * 1024;
 const MAX_DIARY_BODY_BYTES = 40 * 1024;
 const MAX_GOAL_BODY_BYTES = 16 * 1024;
+const MAX_WRITING_BODY_BYTES = 48 * 1024;
 
 function personalDataNotConfiguredPayload() {
   return {
@@ -848,7 +849,7 @@ function sanitizeWritingPost(rawPost) {
     created_at: safeIsoDate(rawPost.created_at),
     updated_at: safeIsoDate(rawPost.updated_at),
     published_at: status === 'published' ? safeIsoDate(rawPost.published_at ?? rawPost.updated_at) : null,
-    storage: 'read-only committed fixture'
+    storage: 'dashboard writing store'
   };
 }
 
@@ -874,6 +875,132 @@ function writingCounts(posts) {
 function writingListCard(post) {
   const { body_markdown, attachments, ...card } = post;
   return { ...card, attachment_count: attachments.length };
+}
+
+
+function safePublicWritingError(err) {
+  if (err?.code === 'validation_failed') {
+    return { statusCode: 400, payload: { error: 'validation_failed', message: 'Writing post validation failed' } };
+  }
+  if (err?.code === 'unsupported_media_type') {
+    return { statusCode: 415, payload: { error: 'unsupported_media_type', message: 'Expected application/json request body' } };
+  }
+  if (err?.code === 'request_body_too_large') {
+    return { statusCode: 413, payload: { error: 'request_body_too_large', message: 'Request body is too large' } };
+  }
+  if (err?.code === 'invalid_json') {
+    return { statusCode: 400, payload: { error: 'invalid_request_body', message: 'Invalid JSON request body' } };
+  }
+  return { statusCode: 503, payload: { error: 'writing_storage_unavailable', message: 'Writing storage is unavailable' } };
+}
+
+function validationFailed() {
+  const error = new Error('Writing post validation failed');
+  error.code = 'validation_failed';
+  throw error;
+}
+
+function normalizeWritingTagsInput(value) {
+  const raw = typeof value === 'string' ? value.split(',') : (Array.isArray(value) ? value : []);
+  const tags = [];
+  for (const item of raw) {
+    const tag = normalizeWritingTag(item);
+    if (tag && !tags.includes(tag)) tags.push(tag);
+    if (tags.length >= WRITING_TAG_MAX_COUNT) break;
+  }
+  return tags;
+}
+
+function slugifyWritingTitle(title) {
+  const slug = String(title ?? '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64);
+  return slug || `draft-${Date.now()}`;
+}
+
+function uniqueWritingPostId(base, posts) {
+  const existing = new Set(posts.map((post) => post.post_id));
+  let candidate = base;
+  let suffix = 2;
+  while (existing.has(candidate)) {
+    const tail = `-${suffix}`;
+    candidate = `${base.slice(0, 80 - tail.length)}${tail}`;
+    suffix += 1;
+  }
+  return candidate;
+}
+
+function normalizeWritingPayload(body, existingPost = null, now = new Date()) {
+  const title = safeText(body.title, null, 160);
+  const status = body.status ?? existingPost?.status ?? 'draft';
+  if (!title || !WRITING_STATUS_VALUES.has(status)) validationFailed();
+  const bodyMarkdown = stripUnsafeMarkdown(body.body_markdown ?? body.body ?? body.text ?? existingPost?.body_markdown ?? '');
+  if (!bodyMarkdown) validationFailed();
+  const nowIso = now.toISOString();
+  const previousStatus = existingPost?.status;
+  const publishedAt = status === 'published'
+    ? (existingPost?.published_at ?? (previousStatus === 'published' ? existingPost?.updated_at : null) ?? nowIso)
+    : null;
+  return {
+    ...(existingPost ?? {}),
+    title,
+    status,
+    tags: normalizeWritingTagsInput(body.tags ?? existingPost?.tags ?? []),
+    body_markdown: bodyMarkdown,
+    attachments: Array.isArray(existingPost?.attachments) ? existingPost.attachments : [],
+    created_at: existingPost?.created_at ?? nowIso,
+    updated_at: nowIso,
+    published_at: publishedAt
+  };
+}
+
+async function writeWritingPostsFile(writingPostsFile, posts) {
+  await mkdir(dirname(writingPostsFile), { recursive: true });
+  const temp = join(dirname(writingPostsFile), `.${basename(writingPostsFile)}.${process.pid}.${Date.now()}.tmp`);
+  await writeFile(temp, `${JSON.stringify({ posts }, null, 2)}\n`, 'utf8');
+  await rename(temp, writingPostsFile);
+}
+
+async function createWritingPost({ writingPostsFile, body }) {
+  const posts = await loadWritingPosts(writingPostsFile);
+  const now = new Date();
+  const post = sanitizeWritingPost({
+    post_id: uniqueWritingPostId(slugifyWritingTitle(body.title), posts),
+    ...normalizeWritingPayload(body, null, now)
+  });
+  if (!post) validationFailed();
+  await writeWritingPostsFile(writingPostsFile, [post, ...posts]);
+  return { statusCode: 201, payload: { post, mode: 'read-write', storage: 'json file' } };
+}
+
+async function updateWritingPost({ writingPostsFile, postId, body }) {
+  if (!WRITING_POST_ID_PATTERN.test(postId)) {
+    return { statusCode: 404, payload: { error: 'writing_post_not_found', message: 'Writing post was not found' } };
+  }
+  const posts = await loadWritingPosts(writingPostsFile);
+  const index = posts.findIndex((post) => post.post_id === postId);
+  if (index === -1) return { statusCode: 404, payload: { error: 'writing_post_not_found', message: 'Writing post was not found' } };
+  const post = sanitizeWritingPost({ post_id: postId, ...normalizeWritingPayload(body, posts[index]) });
+  if (!post) validationFailed();
+  posts[index] = post;
+  await writeWritingPostsFile(writingPostsFile, posts);
+  return { statusCode: 200, payload: { post, mode: 'read-write', storage: 'json file' } };
+}
+
+async function deleteWritingPost({ writingPostsFile, postId }) {
+  if (!WRITING_POST_ID_PATTERN.test(postId)) {
+    return { statusCode: 404, payload: { error: 'writing_post_not_found', message: 'Writing post was not found' } };
+  }
+  const posts = await loadWritingPosts(writingPostsFile);
+  const index = posts.findIndex((post) => post.post_id === postId);
+  if (index === -1) return { statusCode: 404, payload: { error: 'writing_post_not_found', message: 'Writing post was not found' } };
+  const [deleted] = posts.splice(index, 1);
+  await writeWritingPostsFile(writingPostsFile, posts);
+  return { statusCode: 200, payload: { deleted: writingListCard(deleted), mode: 'read-write' } };
 }
 
 async function readWritingPosts({ writingPostsFile, searchParams }) {
@@ -2219,15 +2346,51 @@ export async function createApp(options = {}) {
         return json(response, result.statusCode, result.payload);
       }
 
-      if (request.method === 'GET' && url.pathname === '/api/writing/posts') {
-        const result = await readWritingPosts({ writingPostsFile, searchParams: url.searchParams });
-        return json(response, result.statusCode, result.payload);
+      if (url.pathname === '/api/writing/posts') {
+        if (request.method === 'GET') {
+          const result = await readWritingPosts({ writingPostsFile, searchParams: url.searchParams });
+          return json(response, result.statusCode, result.payload);
+        }
+        if (request.method === 'POST') {
+          try {
+            const body = await readJsonBody(request, MAX_WRITING_BODY_BYTES);
+            const result = await createWritingPost({ writingPostsFile, body });
+            return json(response, result.statusCode, result.payload);
+          } catch (err) {
+            const result = safePublicWritingError(err);
+            return json(response, result.statusCode, result.payload);
+          }
+        }
+        return json(response, 405, { error: 'method_not_allowed' });
       }
 
       const writingPostMatch = /^\/api\/writing\/posts\/([^/]+)$/.exec(url.pathname);
-      if (request.method === 'GET' && writingPostMatch) {
-        const result = await readWritingPost({ writingPostsFile, postId: decodeURIComponent(writingPostMatch[1]) });
-        return json(response, result.statusCode, result.payload);
+      if (writingPostMatch) {
+        const postId = decodeURIComponent(writingPostMatch[1]);
+        if (request.method === 'GET') {
+          const result = await readWritingPost({ writingPostsFile, postId });
+          return json(response, result.statusCode, result.payload);
+        }
+        if (request.method === 'PATCH') {
+          try {
+            const body = await readJsonBody(request, MAX_WRITING_BODY_BYTES);
+            const result = await updateWritingPost({ writingPostsFile, postId, body });
+            return json(response, result.statusCode, result.payload);
+          } catch (err) {
+            const result = safePublicWritingError(err);
+            return json(response, result.statusCode, result.payload);
+          }
+        }
+        if (request.method === 'DELETE') {
+          try {
+            const result = await deleteWritingPost({ writingPostsFile, postId });
+            return json(response, result.statusCode, result.payload);
+          } catch (err) {
+            const result = safePublicWritingError(err);
+            return json(response, result.statusCode, result.payload);
+          }
+        }
+        return json(response, 405, { error: 'method_not_allowed' });
       }
 
       if (url.pathname === '/api/datasets') {

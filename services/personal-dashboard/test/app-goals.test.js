@@ -20,16 +20,17 @@ test('goals section has accessible shell, create form, status filter, list, and 
 });
 
 test('goals frontend uses bounded fields and authenticated goal API paths only', () => {
+  const goalSource = appSource.slice(appSource.indexOf('function setGoalMessage'), appSource.indexOf('async function boot'));
   assert.match(indexSource, /id="goal-title"[^>]+maxlength="160"/);
   assert.match(indexSource, /id="goal-description"[^>]+maxlength="5000"/);
   assert.match(indexSource, /<option value="active">Active<\/option>/);
   assert.match(indexSource, /<option value="archived">Archived<\/option>/);
-  assert.match(appSource, /const TAB_IDS = \['overview', 'knowledge', 'reports', 'investment-screener', 'diary-goals'\]/);
+  assert.match(appSource, /const TAB_IDS = \['overview', 'knowledge', 'blog-drafts', 'reports', 'investment-screener', 'diary-goals'\]/);
   assert.match(appSource, /tabId === 'diary-goals'[\s\S]*refreshGoals\(\)/);
-  assert.match(appSource, /postJson\('\/api\/goals'/);
-  assert.match(appSource, /patchJson\(`\/api\/goals\/\$\{encodeURIComponent\((goal\.id|currentGoalId)\)\}`/);
-  assert.match(appSource, /getJson\(goalsRequestPath\(\)\)/);
-  assert.match(appSource, /getJson\(`\/api\/goals\/\$\{encodeURIComponent\(goal\.id\)\}`\)/);
-  assert.doesNotMatch(appSource, /DELETE\s*['"]|\/api\/goals\/.*delete|purgeGoal/i);
-  assert.doesNotMatch(appSource, /goal[\s\S]{0,80}(assessment|score|LLM)/i);
+  assert.match(goalSource, /postJson\('\/api\/goals'/);
+  assert.match(goalSource, /patchJson\(`\/api\/goals\/\$\{encodeURIComponent\((goal\.id|currentGoalId)\)\}`/);
+  assert.match(goalSource, /getJson\(goalsRequestPath\(\)\)/);
+  assert.match(goalSource, /getJson\(`\/api\/goals\/\$\{encodeURIComponent\(goal\.id\)\}`\)/);
+  assert.doesNotMatch(goalSource, /DELETE\s*['"]|\/api\/goals\/.*delete|purgeGoal/i);
+  assert.doesNotMatch(goalSource, /goal[\s\S]{0,80}(assessment|score|LLM)/i);
 });

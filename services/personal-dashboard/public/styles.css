@@ -450,6 +450,10 @@ h2, h3 { margin-top: 0; }
 .writing-tags { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.75rem 0; }
 .writing-attachments { margin: 0.5rem 0 0; padding-left: 1.2rem; }
 .writing-storage-note { margin-top: 1rem; font-size: 0.86rem; }
+.writing-editor-dialog { max-width: min(760px, calc(100vw - 1.5rem)); }
+.writing-editor-form { margin: 0; padding: 1rem; overflow: auto; }
+.danger-button { border-color: rgba(255, 180, 171, 0.6); color: #ffb4ab; background: rgba(127, 29, 29, 0.32); }
+.danger-button:hover { border-color: #ffb4ab; }
 .inline-control { display: inline-flex; align-items: center; gap: 0.45rem; color: #9aa7b4; }
 .inline-control select { border: 1px solid #3b4658; border-radius: 0.55rem; padding: 0.45rem; color: #e6edf3; background: #111827; }
 @media (max-width: 760px) { .writing-layout { grid-template-columns: 1fr; } }

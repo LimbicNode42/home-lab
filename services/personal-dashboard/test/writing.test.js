@@ -154,6 +154,106 @@ test('GET /api/writing/posts rejects invalid filters and missing post ids safely
   }
 });
 
+
+test('POST/PATCH/DELETE /api/writing/posts performs sanitized durable CRUD against the posts file', async () => {
+  const writingPostsFile = await writePosts(samplePosts);
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({
+    configPath,
+    writingPostsFile,
+    authMode: 'disabled',
+    nodeEnv: 'test',
+    allowDisabledAuth: true
+  });
+  const server = await listen(app);
+
+  try {
+    const createResponse = await fetch(`${server.baseUrl}/api/writing/posts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        title: 'New modal draft',
+        status: 'draft',
+        tags: 'modal, dashboard, modal',
+        body_markdown: '<script>nope()</script># Modal Draft\n\nSafe body.'
+      })
+    });
+    const createBody = await createResponse.json();
+    assert.equal(createResponse.status, 201);
+    assert.match(createBody.post.post_id, /^new-modal-draft/);
+    assert.equal(createBody.post.title, 'New modal draft');
+    assert.equal(createBody.post.storage, 'dashboard writing store');
+    assert.deepEqual(createBody.post.tags, ['modal', 'dashboard']);
+    assert.equal(createBody.post.body_markdown.includes('<script'), false);
+
+    const patchResponse = await fetch(`${server.baseUrl}/api/writing/posts/${createBody.post.post_id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Updated modal draft', status: 'published', tags: ['published'], body_markdown: 'Published body.' })
+    });
+    const patchBody = await patchResponse.json();
+    assert.equal(patchResponse.status, 200);
+    assert.equal(patchBody.post.title, 'Updated modal draft');
+    assert.equal(patchBody.post.status, 'published');
+    assert.equal(patchBody.post.storage, 'dashboard writing store');
+    assert.ok(patchBody.post.published_at, 'published posts receive a published_at timestamp');
+
+    const listResponse = await fetch(`${server.baseUrl}/api/writing/posts?status=published`);
+    const listBody = await listResponse.json();
+    assert.equal(listResponse.status, 200);
+    assert.ok(listBody.posts.some((post) => post.post_id === createBody.post.post_id));
+    assert.equal(JSON.stringify(listBody).includes('body_markdown'), false, 'list cards still omit full bodies');
+
+    const storedAfterPatch = JSON.parse(await readFile(writingPostsFile, 'utf8'));
+    assert.equal(storedAfterPatch.posts.some((post) => post.post_id === createBody.post.post_id && post.title === 'Updated modal draft'), true);
+
+    const deleteResponse = await fetch(`${server.baseUrl}/api/writing/posts/${createBody.post.post_id}`, { method: 'DELETE' });
+    const deleteBody = await deleteResponse.json();
+    assert.equal(deleteResponse.status, 200);
+    assert.equal(deleteBody.deleted.post_id, createBody.post.post_id);
+
+    const missingResponse = await fetch(`${server.baseUrl}/api/writing/posts/${createBody.post.post_id}`);
+    assert.equal(missingResponse.status, 404);
+    const storedAfterDelete = JSON.parse(await readFile(writingPostsFile, 'utf8'));
+    assert.equal(storedAfterDelete.posts.some((post) => post.post_id === createBody.post.post_id), false);
+    assert.equal(storedAfterDelete.posts.some((post) => post.post_id === 'draft-dashboard-ideas'), true, 'existing posts are preserved');
+  } finally {
+    await server.close();
+  }
+});
+
+test('writing CRUD rejects invalid bodies with sanitized API errors', async () => {
+  const app = await appWithPosts();
+  const server = await listen(app);
+
+  try {
+    const invalidCreate = await fetch(`${server.baseUrl}/api/writing/posts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: '   ', status: 'deleted', body_markdown: '' })
+    });
+    const invalidCreateBody = await invalidCreate.json();
+    assert.equal(invalidCreate.status, 400);
+    assert.equal(invalidCreateBody.error, 'validation_failed');
+
+    const invalidJson = await fetch(`${server.baseUrl}/api/writing/posts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{bad json'
+    });
+    const invalidJsonBody = await invalidJson.json();
+    assert.equal(invalidJson.status, 400);
+    assert.equal(invalidJsonBody.error, 'invalid_request_body');
+
+    const serialized = JSON.stringify(invalidCreateBody) + JSON.stringify(invalidJsonBody);
+    for (const forbidden of ['/root', '/mnt/nas', 'stderr', 'DATABASE_URL', 'TOKEN']) {
+      assert.equal(serialized.includes(forbidden), false, `writing error leaked ${forbidden}`);
+    }
+  } finally {
+    await server.close();
+  }
+});
+
 test('writing API remains behind dashboard API auth when reverse proxy auth is enabled', async () => {
   const configPath = await writeConfig(basicConfig);
   const writingPostsFile = await writePosts(samplePosts);
@@ -171,17 +271,29 @@ test('writing API remains behind dashboard API auth when reverse proxy auth is e
   }
 });
 
-test('Knowledge panel exposes a read-only Blog and Drafts surface with safe markdown rendering', async () => {
+test('Blog and Drafts lives outside Knowledge with CRUD modal controls and safe rendering', async () => {
   const indexSource = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
   const appSource = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   const dockerfileSource = await readFile(new URL('../Dockerfile', import.meta.url), 'utf8');
+  const stylesSource = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
 
-  assert.match(indexSource, /id="writing-panel"/);
-  assert.match(indexSource, /Blog \/ Drafts/);
-  assert.match(indexSource, /read-only/i);
+  assert.match(indexSource, /id="tab-blog-drafts"/);
+  assert.match(indexSource, /id="panel-blog-drafts"[\s\S]*id="writing-panel"/);
+  const knowledgePanel = indexSource.slice(indexSource.indexOf('id="panel-knowledge"'), indexSource.indexOf('id="panel-blog-drafts"'));
+  assert.doesNotMatch(knowledgePanel, /id="writing-panel"/);
+  assert.match(indexSource, /id="new-writing-post"/);
+  assert.match(indexSource, /id="writing-editor-modal"/);
+  assert.match(indexSource, /id="writing-editor-form"/);
+  assert.match(indexSource, /id="delete-writing-post"/);
+  assert.doesNotMatch(indexSource, /Read-only writing surface/i);
   assert.match(appSource, /const writingPostsList = document\.querySelector\('#writing-posts-list'\)/);
-  assert.match(appSource, /\/api\/writing\/posts/);
+  assert.match(appSource, /function openWritingEditor/);
+  assert.match(appSource, /postJson\('\/api\/writing\/posts'/);
+  assert.match(appSource, /patchJson\(`\/api\/writing\/posts\/\$\{encodeURIComponent\(currentWritingPostId\)\}`/);
+  assert.match(appSource, /deleteJson\(`\/api\/writing\/posts\/\$\{encodeURIComponent\(currentWritingPostId\)\}`/);
   assert.match(appSource, /renderMarkdownDocument\(post\.body_markdown/);
   assert.match(dockerfileSource, /COPY data \.\/data/);
+  assert.match(stylesSource, /\.writing-editor-dialog/);
+  assert.match(stylesSource, /\.danger-button/);
   assert.doesNotMatch(appSource, /writing[\s\S]{0,80}innerHTML\s*=/i);
 });

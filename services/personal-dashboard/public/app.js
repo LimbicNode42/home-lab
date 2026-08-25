@@ -36,6 +36,19 @@ const writingPostsList = document.querySelector('#writing-posts-list');
 const writingPostPreview = document.querySelector('#writing-post-preview');
 const writingStatusFilter = document.querySelector('#writing-status-filter');
 const refreshWritingPostsButton = document.querySelector('#refresh-writing-posts');
+const newWritingPostButton = document.querySelector('#new-writing-post');
+const writingEditorModal = document.querySelector('#writing-editor-modal');
+const writingEditorDialog = document.querySelector('#writing-editor-dialog');
+const writingEditorTitle = document.querySelector('#writing-editor-title');
+const writingEditorMessage = document.querySelector('#writing-editor-message');
+const writingEditorForm = document.querySelector('#writing-editor-form');
+const writingEditorPostTitle = document.querySelector('#writing-editor-post-title');
+const writingEditorStatus = document.querySelector('#writing-editor-status');
+const writingEditorTags = document.querySelector('#writing-editor-tags');
+const writingEditorBody = document.querySelector('#writing-editor-body');
+const closeWritingEditorButton = document.querySelector('#close-writing-editor');
+const cancelWritingEditorButton = document.querySelector('#cancel-writing-editor');
+const deleteWritingPostButton = document.querySelector('#delete-writing-post');
 const diaryEntryForm = document.querySelector('#diary-entry-form');
 const diaryEntryDate = document.querySelector('#diary-entry-date');
 const diaryEntryTitle = document.querySelector('#diary-entry-title');
@@ -136,6 +149,15 @@ function patchJson(path, payload) {
   return writeJson(path, 'PATCH', payload);
 }
 
+async function deleteJson(path) {
+  const response = await fetch(path, { method: 'DELETE', headers: { accept: 'application/json' } });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.message || data.error || `${path} returned ${response.status}`);
+  }
+  return data;
+}
+
 function renderConfig(config) {
   document.title = config.title;
   title.textContent = config.title;
@@ -187,7 +209,7 @@ async function refreshStatus() {
   }
 }
 
-const TAB_IDS = ['overview', 'knowledge', 'reports', 'investment-screener', 'diary-goals'];
+const TAB_IDS = ['overview', 'knowledge', 'blog-drafts', 'reports', 'investment-screener', 'diary-goals'];
 const DEFAULT_TAB_ID = 'overview';
 const tabs = new Map(TAB_IDS.map((id) => [id, document.querySelector(`#tab-${id}`)]));
 const tabPanels = new Map(TAB_IDS.map((id) => [id, document.querySelector(`#panel-${id}`)]));
@@ -214,9 +236,10 @@ async function loadTabData(tabId) {
   if (tabId === 'overview') {
     await loadOverviewData();
   } else if (tabId === 'knowledge') {
-    await refreshEpics();
-    await refreshWritingPosts();
     await refreshDocs();
+    await refreshEpics();
+  } else if (tabId === 'blog-drafts') {
+    await refreshWritingPosts();
   } else if (tabId === 'reports') {
     await refreshFinnick();
     await refreshHomelabHealth();
@@ -890,9 +913,64 @@ function writingMeta(post) {
   ].filter(Boolean).join(' · ');
 }
 
+function writingErrorMessage(error) {
+  const message = String(error?.message ?? 'Writing unavailable');
+  if (/validation|invalid/i.test(message)) return 'Check the title, status, and body, then try again.';
+  return message.replace(/\/[^\s]+/g, '[redacted]');
+}
+
+let currentWritingPostId = null;
+let lastWritingEditorFocus = null;
+
+function setWritingEditorMessage(message, kind = 'muted') {
+  if (!writingEditorMessage) return;
+  writingEditorMessage.className = kind;
+  writingEditorMessage.textContent = message;
+}
+
+function writingPayloadFromEditor() {
+  return {
+    title: writingEditorPostTitle?.value || '',
+    status: writingEditorStatus?.value || 'draft',
+    tags: writingEditorTags?.value || '',
+    body_markdown: writingEditorBody?.value || ''
+  };
+}
+
+function fillWritingEditor(post = null) {
+  currentWritingPostId = post?.post_id ?? null;
+  if (writingEditorTitle) writingEditorTitle.textContent = currentWritingPostId ? 'Edit writing post' : 'New writing post';
+  if (writingEditorPostTitle) writingEditorPostTitle.value = post?.title || '';
+  if (writingEditorStatus) writingEditorStatus.value = post?.status || 'draft';
+  if (writingEditorTags) writingEditorTags.value = Array.isArray(post?.tags) ? post.tags.join(', ') : '';
+  if (writingEditorBody) writingEditorBody.value = post?.body_markdown || '';
+  if (deleteWritingPostButton) deleteWritingPostButton.hidden = !currentWritingPostId;
+  setWritingEditorMessage(currentWritingPostId ? 'Editing existing post.' : 'Ready to create a new post.');
+}
+
+function openWritingEditor(post = null) {
+  if (!writingEditorModal) return;
+  lastWritingEditorFocus = document.activeElement;
+  fillWritingEditor(post);
+  writingEditorModal.hidden = false;
+  writingEditorModal.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('doc-reader-open');
+  setTimeout(() => (writingEditorPostTitle || writingEditorDialog)?.focus(), 0);
+}
+
+function closeWritingEditor() {
+  if (!writingEditorModal) return;
+  writingEditorModal.hidden = true;
+  writingEditorModal.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('doc-reader-open');
+  currentWritingPostId = null;
+  writingEditorForm?.reset();
+  if (lastWritingEditorFocus && typeof lastWritingEditorFocus.focus === 'function') lastWritingEditorFocus.focus();
+}
+
 function renderWritingPostCard(post) {
-  const button = el('button', { className: 'entry-view-button', type: 'button', text: 'Preview' });
-  button.addEventListener('click', () => loadWritingPost(post.post_id));
+  const button = el('button', { className: 'entry-view-button', type: 'button', text: 'View / edit' });
+  button.addEventListener('click', () => loadWritingPost(post.post_id, { openEditor: true }));
   return el('article', { className: 'writing-post-card' }, [
     el('div', { className: 'personal-entry-heading' }, [
       el('strong', { text: post.title || '(untitled post)' }),
@@ -906,6 +984,8 @@ function renderWritingPostCard(post) {
 
 function renderWritingPostPreview(post) {
   if (!writingPostPreview) return;
+  const editButton = el('button', { type: 'button', text: 'Edit post' });
+  editButton.addEventListener('click', () => openWritingEditor(post));
   const tags = Array.isArray(post.tags) && post.tags.length
     ? el('div', { className: 'writing-tags' }, post.tags.map((tag) => el('span', { className: 'badge neutral', text: tag })))
     : el('p', { className: 'muted', text: 'No tags.' });
@@ -921,22 +1001,23 @@ function renderWritingPostPreview(post) {
       el('span', { className: writingStatusBadgeClass(post.status), text: post.status || 'unknown' })
     ]),
     el('p', { className: 'muted', text: [post.updated_at ? `Updated ${formatDateTime(post.updated_at)}` : null, post.published_at ? `published ${formatDateTime(post.published_at)}` : null, post.storage].filter(Boolean).join(' · ') }),
+    editButton,
     tags,
     renderMarkdownDocument(post.body_markdown || ''),
     el('h4', { text: 'Attachments' }),
-    attachments,
-    el('p', { className: 'muted writing-storage-note', text: 'Read-only MVP: create/edit/publish/delete are deferred until storage and backup behavior are reviewed.' })
+    attachments
   ]));
 }
 
-async function loadWritingPost(postId) {
+async function loadWritingPost(postId, { openEditor = false } = {}) {
   if (!postId || !writingPostPreview) return;
   writingPostPreview.replaceChildren(el('p', { className: 'muted', text: 'Loading writing preview…' }));
   try {
     const data = await getJson(`/api/writing/posts/${encodeURIComponent(postId)}`);
     renderWritingPostPreview(data.post);
+    if (openEditor) openWritingEditor(data.post);
   } catch (error) {
-    writingPostPreview.replaceChildren(el('p', { className: 'error', text: `Writing preview unavailable: ${error.message.replace(/\/[^\s]+/g, '[redacted]')}` }));
+    writingPostPreview.replaceChildren(el('p', { className: 'error', text: `Writing preview unavailable: ${writingErrorMessage(error)}` }));
   }
 }
 
@@ -948,7 +1029,11 @@ async function refreshWritingPosts() {
     const posts = Array.isArray(data.posts) ? data.posts : [];
     writingPostsList.replaceChildren();
     if (posts.length === 0) {
-      writingPostsList.append(el('p', { className: 'muted', text: 'No writing posts match this filter.' }));
+      writingPostsList.append(el('p', { className: 'muted', text: 'No writing posts match this filter. Create one, or change the status filter.' }));
+      if (writingPostPreview) {
+        delete writingPostPreview.dataset.loaded;
+        writingPostPreview.replaceChildren(el('p', { className: 'muted', text: 'No writing post selected.' }));
+      }
     } else {
       writingPostsList.append(...posts.map(renderWritingPostCard));
     }
@@ -957,13 +1042,57 @@ async function refreshWritingPosts() {
       await loadWritingPost(posts[0].post_id);
     }
   } catch (error) {
-    writingPostsList.replaceChildren(el('p', { className: 'error', text: `Writing posts unavailable: ${error.message}` }));
+    writingPostsList.replaceChildren(el('p', { className: 'error', text: `Writing posts unavailable: ${writingErrorMessage(error)}` }));
   } finally {
     if (refreshWritingPostsButton) refreshWritingPostsButton.disabled = false;
   }
 }
 
+async function submitWritingEditor(event) {
+  event.preventDefault();
+  setWritingEditorMessage('Saving post…');
+  try {
+    const data = currentWritingPostId
+      ? await patchJson(`/api/writing/posts/${encodeURIComponent(currentWritingPostId)}`, writingPayloadFromEditor())
+      : await postJson('/api/writing/posts', writingPayloadFromEditor());
+    setWritingEditorMessage('Saved post.');
+    if (writingPostPreview) delete writingPostPreview.dataset.loaded;
+    await refreshWritingPosts();
+    renderWritingPostPreview(data.post);
+    closeWritingEditor();
+  } catch (error) {
+    setWritingEditorMessage(writingErrorMessage(error), 'error');
+  }
+}
+
+async function deleteCurrentWritingPost() {
+  if (!currentWritingPostId) return;
+  const confirmed = window.confirm ? window.confirm('Delete this writing post?') : true;
+  if (!confirmed) return;
+  setWritingEditorMessage('Deleting post…');
+  try {
+    await deleteJson(`/api/writing/posts/${encodeURIComponent(currentWritingPostId)}`);
+    if (writingPostPreview) {
+      delete writingPostPreview.dataset.loaded;
+      writingPostPreview.replaceChildren(el('p', { className: 'muted', text: 'Post deleted.' }));
+    }
+    closeWritingEditor();
+    await refreshWritingPosts();
+  } catch (error) {
+    setWritingEditorMessage(writingErrorMessage(error), 'error');
+  }
+}
+
+
 if (refreshWritingPostsButton) refreshWritingPostsButton.addEventListener('click', refreshWritingPosts);
+if (newWritingPostButton) newWritingPostButton.addEventListener('click', () => openWritingEditor());
+if (writingEditorForm) writingEditorForm.addEventListener('submit', submitWritingEditor);
+if (closeWritingEditorButton) closeWritingEditorButton.addEventListener('click', closeWritingEditor);
+if (cancelWritingEditorButton) cancelWritingEditorButton.addEventListener('click', closeWritingEditor);
+if (deleteWritingPostButton) deleteWritingPostButton.addEventListener('click', deleteCurrentWritingPost);
+if (writingEditorModal) writingEditorModal.addEventListener('click', (event) => {
+  if (event.target === writingEditorModal || event.target.classList?.contains('doc-reader-backdrop')) closeWritingEditor();
+});
 if (writingStatusFilter) writingStatusFilter.addEventListener('change', () => {
   if (writingPostPreview) delete writingPostPreview.dataset.loaded;
   refreshWritingPosts();
