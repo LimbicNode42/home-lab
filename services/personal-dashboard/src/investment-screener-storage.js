@@ -685,7 +685,7 @@ export async function readInvestmentScreenerCompanyDetail({ dataRoot, ticker, ma
   const valuation = {
     market_cap: observedField('market_cap', 'Market cap', observations, provenance),
     pe_ratio: observedField('pe_ratio', 'P/E ratio', observations, provenance),
-    price_sales: observedField('price_sales', 'Price / sales', observations, provenance)
+    price_to_sales: observedField('price_to_sales', 'Price / sales', observations, provenance)
   };
   const qualityGrowthSafety = {
     composite_score: scoreField('composite_score', 'Composite score', score),
@@ -694,18 +694,18 @@ export async function readInvestmentScreenerCompanyDetail({ dataRoot, ticker, ma
     growth: scoreField('growth', 'Growth score', score),
     net_margin: observedField('net_margin', 'Net margin', observations, provenance),
     roe: observedField('roe', 'Return on equity', observations, provenance),
-    fcf: observedField('free_cash_flow', 'Free cash flow', observations, provenance),
+    fcf: observedField('fcf', 'Free cash flow', observations, provenance),
     fcf_margin: observedField('fcf_margin', 'FCF margin', observations, provenance),
     revenue_growth: observedField('revenue_growth', 'Revenue growth', observations, provenance),
     current_ratio: observedField('current_ratio', 'Current ratio', observations, provenance),
-    debt_assets: observedField('debt_assets', 'Debt / assets', observations, provenance)
+    debt_to_assets: observedField('debt_to_assets', 'Debt / assets', observations, provenance)
   };
   const statements = {
     revenue: observedField('revenue', 'Revenue', observations, provenance),
     prior_revenue: observedField('prior_revenue', 'Prior revenue', observations, provenance),
     net_income: observedField('net_income', 'Net income', observations, provenance),
     operating_cash_flow: observedField('operating_cash_flow', 'Operating cash flow', observations, provenance),
-    capital_expenditure: observedField('capital_expenditure', 'Capital expenditure', observations, provenance),
+    capital_expenditures: observedField('capital_expenditures', 'Capital expenditure', observations, provenance),
     total_assets: observedField('total_assets', 'Total assets', observations, provenance),
     current_assets: observedField('current_assets', 'Current assets', observations, provenance),
     total_liabilities: observedField('total_liabilities', 'Total liabilities', observations, provenance),
@@ -725,7 +725,7 @@ export async function readInvestmentScreenerCompanyDetail({ dataRoot, ticker, ma
     total_liabilities: statements.total_liabilities,
     current_liabilities: statements.current_liabilities,
     operating_cash_flow: statements.operating_cash_flow,
-    capital_expenditure: statements.capital_expenditure
+    capital_expenditures: statements.capital_expenditures
   };
   const provenanceValues = [...provenance.values()];
   const providerNames = [...new Set(provenanceValues.map((row) => row.provider).filter(Boolean))];

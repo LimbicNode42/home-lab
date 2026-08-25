@@ -606,6 +606,29 @@ class TestInsertScreenerRun(unittest.TestCase):
 
         self.assertEqual(run_id, 99)
 
+    def test_insert_records_derived_provenance_with_scalar_dates_and_derived_source_family(self):
+        cfg = load_config(CONFIG_PATH)
+        c = asx_company()
+        ranked = rank_companies([c], cfg)
+        conn = self._fake_conn()
+
+        insert_screener_run(
+            conn, ranked, source="test", mode="fixture", universe=["BHP.AX"]
+        )
+
+        provenance_params = [
+            params for sql, params in conn.cursor_obj.statements
+            if "investment_screener_provenance" in sql
+        ]
+        market_cap = next(params for params in provenance_params if params[2] == "market_cap")
+        self.assertEqual(market_cap[3], "derived")
+        self.assertIsInstance(market_cap[5], str)
+        self.assertIsInstance(market_cap[7], str)
+        self.assertNotIn("[", market_cap[5])
+        self.assertNotIn("[", market_cap[7])
+        self.assertTrue(market_cap[8] is None or isinstance(market_cap[8], str))
+        self.assertTrue(market_cap[10] is None or isinstance(market_cap[10], str))
+
     def test_insert_records_asx_ticker_in_score_params(self):
         cfg = load_config(CONFIG_PATH)
         c = asx_company(ticker="CBA.AX", market="ASX", currency="AUD")
