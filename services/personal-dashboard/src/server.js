@@ -853,14 +853,30 @@ function sanitizeWritingPost(rawPost) {
   };
 }
 
+function writingStorageUnavailable() {
+  const error = new Error('Writing storage is unavailable');
+  error.code = 'writing_storage_unavailable';
+  return error;
+}
+
 async function loadWritingPosts(writingPostsFile) {
+  let fileStats;
   try {
-    const parsed = JSON.parse(await readFile(writingPostsFile, 'utf8'));
-    const entries = Array.isArray(parsed?.posts) ? parsed.posts : (Array.isArray(parsed) ? parsed : []);
-    return entries.map(sanitizeWritingPost).filter(Boolean).sort((left, right) => String(right.updated_at ?? '').localeCompare(String(left.updated_at ?? '')));
-  } catch {
-    return [];
+    fileStats = await stat(writingPostsFile);
+  } catch (err) {
+    if (err?.code === 'ENOENT') return [];
+    throw writingStorageUnavailable();
   }
+  if (!fileStats.isFile()) throw writingStorageUnavailable();
+
+  let parsed;
+  try {
+    parsed = JSON.parse(await readFile(writingPostsFile, 'utf8'));
+  } catch {
+    throw writingStorageUnavailable();
+  }
+  const entries = Array.isArray(parsed?.posts) ? parsed.posts : (Array.isArray(parsed) ? parsed : []);
+  return entries.map(sanitizeWritingPost).filter(Boolean).sort((left, right) => String(right.updated_at ?? '').localeCompare(String(left.updated_at ?? '')));
 }
 
 function writingCounts(posts) {
@@ -1008,28 +1024,36 @@ async function readWritingPosts({ writingPostsFile, searchParams }) {
   if (!WRITING_STATUS_FILTERS.has(status)) {
     return { statusCode: 400, payload: { error: 'invalid_writing_status_filter', message: 'Writing status must be one of all, draft, published, or archived' } };
   }
-  const posts = await loadWritingPosts(writingPostsFile);
-  const filtered = status === 'all' ? posts : posts.filter((post) => post.status === status);
-  return {
-    statusCode: 200,
-    payload: {
-      posts: filtered.map(writingListCard),
-      status,
-      counts: writingCounts(posts),
-      mode: 'read-only',
-      storage: 'committed fixture'
-    }
-  };
+  try {
+    const posts = await loadWritingPosts(writingPostsFile);
+    const filtered = status === 'all' ? posts : posts.filter((post) => post.status === status);
+    return {
+      statusCode: 200,
+      payload: {
+        posts: filtered.map(writingListCard),
+        status,
+        counts: writingCounts(posts),
+        mode: 'read-only',
+        storage: 'committed fixture'
+      }
+    };
+  } catch (err) {
+    return safePublicWritingError(err);
+  }
 }
 
 async function readWritingPost({ writingPostsFile, postId }) {
   if (!WRITING_POST_ID_PATTERN.test(postId)) {
     return { statusCode: 404, payload: { error: 'writing_post_not_found' } };
   }
-  const posts = await loadWritingPosts(writingPostsFile);
-  const post = posts.find((candidate) => candidate.post_id === postId);
-  if (!post) return { statusCode: 404, payload: { error: 'writing_post_not_found', message: 'Writing post was not found' } };
-  return { statusCode: 200, payload: { post, mode: 'read-only' } };
+  try {
+    const posts = await loadWritingPosts(writingPostsFile);
+    const post = posts.find((candidate) => candidate.post_id === postId);
+    if (!post) return { statusCode: 404, payload: { error: 'writing_post_not_found', message: 'Writing post was not found' } };
+    return { statusCode: 200, payload: { post, mode: 'read-only' } };
+  } catch (err) {
+    return safePublicWritingError(err);
+  }
 }
 
 const DEFAULT_DATASETS_ROOT = resolve(__dirname, '..', 'datasets');
