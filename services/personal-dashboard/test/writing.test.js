@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -249,6 +249,110 @@ test('writing CRUD rejects invalid bodies with sanitized API errors', async () =
     for (const forbidden of ['/root', '/mnt/nas', 'stderr', 'DATABASE_URL', 'TOKEN']) {
       assert.equal(serialized.includes(forbidden), false, `writing error leaked ${forbidden}`);
     }
+  } finally {
+    await server.close();
+  }
+});
+
+
+function assertSanitizedStorageUnavailable(responseBody) {
+  assert.equal(responseBody.error, 'writing_storage_unavailable');
+  const serialized = JSON.stringify(responseBody);
+  for (const forbidden of ['/root', '/tmp', 'posts.json', '{not json', 'SyntaxError', 'stack', 'stderr', 'DATABASE_URL', 'TOKEN']) {
+    assert.equal(serialized.includes(forbidden), false, `writing storage error leaked ${forbidden}`);
+  }
+}
+
+test('POST /api/writing/posts does not clobber an existing corrupt writing store', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'dashboard-writing-corrupt-'));
+  const writingPostsFile = join(dir, 'posts.json');
+  const corruptStore = '{not json';
+  await writeFile(writingPostsFile, corruptStore, 'utf8');
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, writingPostsFile, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true });
+  const server = await listen(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/writing/posts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Should not overwrite', status: 'draft', body_markdown: 'Keep old bytes.' })
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 503);
+    assertSanitizedStorageUnavailable(body);
+    assert.equal(await readFile(writingPostsFile, 'utf8'), corruptStore);
+  } finally {
+    await server.close();
+  }
+});
+
+test('PATCH /api/writing/posts/:id does not convert a corrupt writing store into not-found', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'dashboard-writing-corrupt-'));
+  const writingPostsFile = join(dir, 'posts.json');
+  const corruptStore = '{not json';
+  await writeFile(writingPostsFile, corruptStore, 'utf8');
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, writingPostsFile, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true });
+  const server = await listen(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/writing/posts/draft-dashboard-ideas`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Should not overwrite', status: 'draft', body_markdown: 'Keep old bytes.' })
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 503);
+    assertSanitizedStorageUnavailable(body);
+    assert.equal(await readFile(writingPostsFile, 'utf8'), corruptStore);
+  } finally {
+    await server.close();
+  }
+});
+
+test('DELETE /api/writing/posts/:id does not convert a corrupt writing store into not-found', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'dashboard-writing-corrupt-'));
+  const writingPostsFile = join(dir, 'posts.json');
+  const corruptStore = '{not json';
+  await writeFile(writingPostsFile, corruptStore, 'utf8');
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, writingPostsFile, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true });
+  const server = await listen(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/writing/posts/draft-dashboard-ideas`, { method: 'DELETE' });
+    const body = await response.json();
+
+    assert.equal(response.status, 503);
+    assertSanitizedStorageUnavailable(body);
+    assert.equal(await readFile(writingPostsFile, 'utf8'), corruptStore);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /api/writing/posts rejects a non-regular writing store without overwriting it', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'dashboard-writing-nonfile-'));
+  const writingPostsFile = join(dir, 'posts.json');
+  await mkdir(writingPostsFile);
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, writingPostsFile, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true });
+  const server = await listen(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/writing/posts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Should not overwrite', status: 'draft', body_markdown: 'Keep directory.' })
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 503);
+    assertSanitizedStorageUnavailable(body);
+    assert.equal((await stat(writingPostsFile)).isDirectory(), true);
   } finally {
     await server.close();
   }
