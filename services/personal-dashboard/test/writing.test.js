@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -381,6 +381,74 @@ test('POST /api/writing/posts rejects a non-regular writing store without overwr
     assert.equal(response.status, 503);
     assertSanitizedStorageUnavailable(body);
     assert.equal((await stat(writingPostsFile)).isDirectory(), true);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /api/writing/posts treats a broken symlink store as storage unavailable without replacing it', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'dashboard-writing-broken-symlink-'));
+  const writingPostsFile = join(dir, 'posts.json');
+  await symlink(join(dir, 'missing-target.json'), writingPostsFile);
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, writingPostsFile, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true });
+  const server = await listen(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/writing/posts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Should not overwrite', status: 'draft', body_markdown: 'Keep symlink.' })
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 503);
+    assertSanitizedStorageUnavailable(body);
+    assert.equal((await lstat(writingPostsFile)).isSymbolicLink(), true);
+  } finally {
+    await server.close();
+  }
+});
+
+test('PATCH /api/writing/posts/:id treats a broken symlink store as storage unavailable', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'dashboard-writing-broken-symlink-'));
+  const writingPostsFile = join(dir, 'posts.json');
+  await symlink(join(dir, 'missing-target.json'), writingPostsFile);
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, writingPostsFile, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true });
+  const server = await listen(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/writing/posts/draft-dashboard-ideas`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Should not overwrite', status: 'draft', body_markdown: 'Keep symlink.' })
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 503);
+    assertSanitizedStorageUnavailable(body);
+    assert.equal((await lstat(writingPostsFile)).isSymbolicLink(), true);
+  } finally {
+    await server.close();
+  }
+});
+
+test('DELETE /api/writing/posts/:id treats a broken symlink store as storage unavailable', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'dashboard-writing-broken-symlink-'));
+  const writingPostsFile = join(dir, 'posts.json');
+  await symlink(join(dir, 'missing-target.json'), writingPostsFile);
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, writingPostsFile, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true });
+  const server = await listen(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/writing/posts/draft-dashboard-ideas`, { method: 'DELETE' });
+    const body = await response.json();
+
+    assert.equal(response.status, 503);
+    assertSanitizedStorageUnavailable(body);
+    assert.equal((await lstat(writingPostsFile)).isSymbolicLink(), true);
   } finally {
     await server.close();
   }
