@@ -179,18 +179,17 @@ test('dataset API remains behind dashboard API auth when reverse proxy auth is e
   }
 });
 
-test('Knowledge panel exposes a read-only Dataset Curation workbench with no raw filename or innerHTML use', async () => {
+test('Knowledge panel does not expose the dashboard-owned Dataset Curation workbench UI', async () => {
   const indexSource = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
   const appSource = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   const dockerfileSource = await readFile(new URL('../Dockerfile', import.meta.url), 'utf8');
 
-  assert.match(indexSource, /id="datasets-panel"/);
-  assert.match(indexSource, /Dataset Curation/);
-  assert.match(indexSource, /read-only/i);
-  assert.match(appSource, /const datasetsList = document\.querySelector\('#datasets-list'\)/);
-  assert.match(appSource, /\/api\/datasets/);
-  assert.match(appSource, /append\/create are deferred/i);
+  assert.doesNotMatch(indexSource, /id="datasets-panel"/);
+  assert.doesNotMatch(indexSource, /Dataset Curation/);
+  assert.doesNotMatch(indexSource, /id="datasets-list"/);
+  assert.doesNotMatch(appSource, /const datasetsList = document\.querySelector\('#datasets-list'\)/);
+  assert.doesNotMatch(appSource, /refreshDatasets\(\)/);
+  assert.doesNotMatch(appSource, /loadDatasetRecords/);
+  // The read-only backend may remain for non-dashboard callers, but the browser UI must not call it.
   assert.match(dockerfileSource, /COPY datasets \.\/datasets/);
-  assert.doesNotMatch(appSource, /fileName/i);
-  assert.doesNotMatch(appSource, /datasets[\s\S]{0,120}innerHTML\s*=/i);
 });

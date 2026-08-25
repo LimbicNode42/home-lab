@@ -36,14 +36,6 @@ const writingPostsList = document.querySelector('#writing-posts-list');
 const writingPostPreview = document.querySelector('#writing-post-preview');
 const writingStatusFilter = document.querySelector('#writing-status-filter');
 const refreshWritingPostsButton = document.querySelector('#refresh-writing-posts');
-const datasetsList = document.querySelector('#datasets-list');
-const datasetRecordsPreview = document.querySelector('#dataset-records-preview');
-const refreshDatasetsButton = document.querySelector('#refresh-datasets');
-const kanbanPanel = document.querySelector('#kanban-panel');
-const kanbanBoard = document.querySelector('#kanban-board');
-const kanbanMessage = document.querySelector('#kanban-message');
-const refreshKanbanButton = document.querySelector('#refresh-kanban');
-const kanbanCompactToggle = document.querySelector('#toggle-kanban-density');
 const diaryEntryForm = document.querySelector('#diary-entry-form');
 const diaryEntryDate = document.querySelector('#diary-entry-date');
 const diaryEntryTitle = document.querySelector('#diary-entry-title');
@@ -65,13 +57,6 @@ const refreshGoalsButton = document.querySelector('#refresh-goals');
 const newGoalButton = document.querySelector('#new-goal');
 const goalFormMessage = document.querySelector('#goal-form-message');
 let currentGoalId = null;
-const KANBAN_COMPACT_STORAGE_KEY = 'personal-dashboard:kanban-compact';
-const KANBAN_COLLAPSED_LANES_STORAGE_KEY = 'personal-dashboard:kanban-collapsed-lanes';
-const KANBAN_COMPACT_CARD_LIMIT = 4;
-let currentDraggedTaskId = null;
-let currentKanbanMutations = { enabled: false, supported_statuses: [] };
-let kanbanCompactMode = readStoredBoolean(KANBAN_COMPACT_STORAGE_KEY, true);
-let collapsedKanbanLanes = readStoredJson(KANBAN_COLLAPSED_LANES_STORAGE_KEY, []);
 let dashboardBootComplete = false;
 const FEATURED_DOC_IDS = ['home-lab-service-catalog'];
 
@@ -202,7 +187,7 @@ async function refreshStatus() {
   }
 }
 
-const TAB_IDS = ['overview', 'work', 'knowledge', 'reports', 'investment-screener', 'diary-goals'];
+const TAB_IDS = ['overview', 'knowledge', 'reports', 'investment-screener', 'diary-goals'];
 const DEFAULT_TAB_ID = 'overview';
 const tabs = new Map(TAB_IDS.map((id) => [id, document.querySelector(`#tab-${id}`)]));
 const tabPanels = new Map(TAB_IDS.map((id) => [id, document.querySelector(`#panel-${id}`)]));
@@ -228,12 +213,9 @@ async function loadTabData(tabId) {
   loadedTabs.add(tabId);
   if (tabId === 'overview') {
     await loadOverviewData();
-  } else if (tabId === 'work') {
-    await refreshKanban();
   } else if (tabId === 'knowledge') {
     await refreshEpics();
     await refreshWritingPosts();
-    await refreshDatasets();
     await refreshDocs();
   } else if (tabId === 'reports') {
     await refreshFinnick();
@@ -988,94 +970,6 @@ if (writingStatusFilter) writingStatusFilter.addEventListener('change', () => {
 });
 
 
-function renderDatasetCard(dataset) {
-  const button = el('button', { className: 'entry-view-button', type: 'button', text: 'Preview' });
-  button.addEventListener('click', () => loadDatasetRecords(dataset.dataset_id));
-  const meta = [
-    dataset.schema_version,
-    dataset.mode,
-    Number.isInteger(dataset.record_count) ? `${dataset.record_count} record${dataset.record_count === 1 ? '' : 's'}` : 'records unavailable',
-    dataset.invalid_line_count ? `${dataset.invalid_line_count} invalid line${dataset.invalid_line_count === 1 ? '' : 's'}` : null
-  ].filter(Boolean).join(' · ');
-  return el('article', { className: 'dataset-card' }, [
-    el('div', { className: 'personal-entry-heading' }, [
-      el('strong', { text: dataset.display_name || dataset.dataset_id }),
-      button
-    ]),
-    el('p', { className: 'muted personal-entry-meta', text: meta }),
-    el('p', { text: dataset.description || 'Curated examples.' })
-  ]);
-}
-
-function renderDatasetRecord(record) {
-  return el('article', { className: 'dataset-record-card' }, [
-    el('div', { className: 'muted personal-entry-meta', text: `Line ${record.line_number} · source: ${record.source}` }),
-    el('h4', { text: record.instruction }),
-    el('p', { text: record.output })
-  ]);
-}
-
-function datasetErrorMessage(error) {
-  const message = String(error?.message ?? 'Dataset unavailable');
-  if (message.includes('422')) return 'Dataset contains invalid JSONL and is not being served until it is repaired.';
-  if (message.includes('404')) return 'Dataset is not registered in the server-side allowlist.';
-  if (message.includes('405')) return 'Dataset append/create are deferred until storage, locking, backups, and restore behavior are reviewed.';
-  return message.replace(/\/[^\s]+/g, '[redacted]');
-}
-
-async function loadDatasetRecords(datasetId) {
-  if (!datasetId || !datasetRecordsPreview) return;
-  datasetRecordsPreview.replaceChildren(el('p', { className: 'muted', text: 'Loading dataset records…' }));
-  try {
-    const data = await getJson(`/api/datasets/${encodeURIComponent(datasetId)}/records?limit=20&offset=0`);
-    const records = Array.isArray(data.records) ? data.records : [];
-    const dataset = data.dataset || {};
-    const children = [
-      el('div', { className: 'personal-entry-heading' }, [
-        el('h3', { text: dataset.display_name || dataset.dataset_id || 'Dataset' }),
-        el('span', { className: 'badge neutral', text: data.mode || 'read-only' })
-      ]),
-      el('p', { className: 'muted', text: 'Schema: source, instruction, output. Append/create are deferred pending reviewed storage and backup behavior.' })
-    ];
-    if (records.length === 0) {
-      children.push(el('p', { className: 'muted', text: 'No records available in this dataset.' }));
-    } else {
-      children.push(el('div', { className: 'dataset-record-list' }, records.map(renderDatasetRecord)));
-    }
-    datasetRecordsPreview.replaceChildren(el('div', { className: 'dataset-detail' }, children));
-  } catch (error) {
-    datasetRecordsPreview.replaceChildren(el('p', { className: 'error', text: `Dataset preview unavailable: ${datasetErrorMessage(error)}` }));
-  }
-}
-
-async function refreshDatasets() {
-  if (!datasetsList) return;
-  if (refreshDatasetsButton) refreshDatasetsButton.disabled = true;
-  try {
-    const data = await getJson('/api/datasets');
-    const datasets = Array.isArray(data.datasets) ? data.datasets : [];
-    datasetsList.replaceChildren();
-    if (datasets.length === 0) {
-      datasetsList.append(el('p', { className: 'muted', text: 'No allowlisted datasets are configured.' }));
-    } else {
-      datasetsList.append(...datasets.map(renderDatasetCard));
-    }
-    if (datasetRecordsPreview && datasets.length && !datasetRecordsPreview.dataset.loaded) {
-      datasetRecordsPreview.dataset.loaded = 'true';
-      await loadDatasetRecords(datasets[0].dataset_id);
-    }
-  } catch (error) {
-    datasetsList.replaceChildren(el('p', { className: 'error', text: `Datasets unavailable: ${datasetErrorMessage(error)}` }));
-  } finally {
-    if (refreshDatasetsButton) refreshDatasetsButton.disabled = false;
-  }
-}
-
-if (refreshDatasetsButton) refreshDatasetsButton.addEventListener('click', () => {
-  if (datasetRecordsPreview) delete datasetRecordsPreview.dataset.loaded;
-  refreshDatasets();
-});
-
 
 let selectedDocId = null;
 let selectedDocPath = null;
@@ -1620,254 +1514,3 @@ async function refreshEpics() {
     epicsList.replaceChildren(el('p', { className: 'error', text: `Epics unavailable: ${error.message}` }));
   }
 }
-
-
-function updateKanbanDensityUi() {
-  if (kanbanPanel) kanbanPanel.classList.toggle('kanban-compact', kanbanCompactMode);
-  if (!kanbanCompactToggle) return;
-  kanbanCompactToggle.textContent = kanbanCompactMode ? 'Expand board' : 'Compact board';
-  kanbanCompactToggle.setAttribute('aria-expanded', String(!kanbanCompactMode));
-  kanbanCompactToggle.setAttribute('aria-label', kanbanCompactMode ? 'Expand Kanban board cards' : 'Compact Kanban board cards');
-}
-
-function toggleKanbanDensity() {
-  kanbanCompactMode = !kanbanCompactMode;
-  setStoredBoolean(KANBAN_COMPACT_STORAGE_KEY, kanbanCompactMode);
-  updateKanbanDensityUi();
-}
-
-function isKanbanLaneCollapsed(status) {
-  return Array.isArray(collapsedKanbanLanes) && collapsedKanbanLanes.includes(status);
-}
-
-function toggleKanbanLane(status, laneNode, button) {
-  const collapsed = !isKanbanLaneCollapsed(status);
-  const next = new Set(Array.isArray(collapsedKanbanLanes) ? collapsedKanbanLanes : []);
-  if (collapsed) next.add(status);
-  else next.delete(status);
-  collapsedKanbanLanes = [...next];
-  writeStoredJson(KANBAN_COLLAPSED_LANES_STORAGE_KEY, collapsedKanbanLanes);
-  laneNode.classList.toggle('is-collapsed', collapsed);
-  button.setAttribute('aria-expanded', String(!collapsed));
-  button.setAttribute('aria-label', `${collapsed ? 'Show' : 'Hide'} ${laneTitle(status)} lane cards`);
-  button.textContent = collapsed ? 'Show' : 'Hide';
-}
-
-function laneTitle(status) {
-  return String(status || 'unknown').replace(/-/g, ' ').replace(/^./, (char) => char.toUpperCase());
-}
-
-function formatShortDate(isoString) {
-  if (!isoString) return 'no date';
-  const date = new Date(isoString);
-  if (Number.isNaN(date.getTime())) return 'no date';
-  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
-}
-
-function setKanbanMessage(message, kind = 'muted') {
-  if (!kanbanMessage) return;
-  kanbanMessage.className = `${kind} board-message`;
-  kanbanMessage.textContent = message;
-}
-
-function mutationPayloadForDrop(card, status) {
-  if (status === card.status) return null;
-  if (!currentKanbanMutations.supported_statuses?.includes(status)) {
-    setKanbanMessage(`Moving to ${status} is not supported by the safe dashboard API.`, 'error');
-    return null;
-  }
-  if (status === 'blocked') {
-    const reason = window.prompt(`Block ${card.id}? Enter the reason:`);
-    if (!reason) return null;
-    return { status, reason };
-  }
-  if (status === 'done') {
-    const summary = window.prompt(`Complete ${card.id}? Enter the completion summary:`);
-    if (!summary) return null;
-    return { status, summary };
-  }
-  if (status === 'archived') {
-    if (!window.confirm(`Archive ${card.id}? This hides it from the default board view.`)) return null;
-    return { status, confirm: true };
-  }
-  const reason = window.prompt(`Move ${card.id} to ready? Optional reason:`, 'Promoted from dashboard');
-  return { status, reason: reason || 'Promoted from dashboard' };
-}
-
-async function moveKanbanCard(card, status) {
-  if (!currentKanbanMutations.enabled) {
-    setKanbanMessage('Board is read-only: Kanban mutations are disabled on this dashboard instance.', 'error');
-    return;
-  }
-  const payload = mutationPayloadForDrop(card, status);
-  if (!payload) return;
-
-  setKanbanMessage(`Moving ${card.id} to ${status}…`);
-  try {
-    await postJson(`/api/kanban/tasks/${card.id}/move`, payload);
-    setKanbanMessage(`Moved ${card.id} to ${status}.`);
-    await refreshKanban();
-  } catch (error) {
-    setKanbanMessage(`Move failed: ${error.message}`, 'error');
-  }
-}
-
-function kanbanCardSummary(card, parentChildCue) {
-  const parts = [
-    card.id,
-    card.title ?? 'Untitled task',
-    `assignee: ${card.assignee ?? 'unassigned'}`,
-    `status: ${card.status ?? 'unknown'}`,
-    `priority: ${card.priority ?? 0}`
-  ];
-  if (parentChildCue.length) parts.push(parentChildCue.join(', '));
-  return parts.join(' · ');
-}
-
-function renderKanbanCard(card, compactHidden = false) {
-  const parentChildCue = [];
-  if (card.parent_count) parentChildCue.push(`${card.parent_count} parent${card.parent_count === 1 ? '' : 's'}`);
-  if (card.child_count) parentChildCue.push(`${card.child_count} child${card.child_count === 1 ? '' : 'ren'}`);
-
-  const actionButtons = [
-    ['ready', 'Ready'],
-    ['blocked', 'Block'],
-    ['done', 'Complete'],
-    ['archived', 'Archive']
-  ]
-    .filter(([status]) => status !== card.status)
-    .map(([status, label]) => {
-      const button = el('button', { className: 'kanban-card-action', type: 'button', text: label });
-      if (!currentKanbanMutations.enabled) {
-        button.disabled = true;
-        button.title = 'Kanban mutations are disabled on this dashboard instance';
-      }
-      button.addEventListener('click', () => moveKanbanCard(card, status));
-      return button;
-    });
-
-  const summary = kanbanCardSummary(card, parentChildCue);
-  const node = el('article', {
-    className: compactHidden ? 'kanban-card compact-overflow-card' : 'kanban-card',
-    draggable: currentKanbanMutations.enabled ? 'true' : 'false',
-    'data-task-id': card.id,
-    'data-task-status': card.status,
-    title: summary,
-    'aria-label': summary
-  }, [
-    el('div', { className: 'kanban-card-title', text: card.title ?? 'Untitled task' }),
-    el('div', { className: 'kanban-card-meta' }, [
-      el('span', { className: 'badge neutral', text: card.assignee ?? 'unassigned' }),
-      el('span', { className: statusBadgeClass(card.status), text: card.status ?? 'unknown' }),
-      el('span', { className: 'muted', text: `P${card.priority ?? 0}` })
-    ]),
-    el('div', { className: 'kanban-card-foot muted', text: `${card.id} · ${formatShortDate(card.created_at)}${parentChildCue.length ? ` · ${parentChildCue.join(' · ')}` : ''}` }),
-    el('div', { className: 'kanban-card-actions' }, actionButtons)
-  ]);
-
-  node.addEventListener('dragstart', (event) => {
-    if (!currentKanbanMutations.enabled) {
-      event.preventDefault();
-      setKanbanMessage('Board is read-only: Kanban mutations are disabled on this dashboard instance.', 'error');
-      return;
-    }
-    currentDraggedTaskId = card.id;
-    event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setData('text/plain', card.id);
-  });
-  node.addEventListener('dragend', () => {
-    currentDraggedTaskId = null;
-  });
-  return node;
-}
-
-function renderKanbanBoard(payload) {
-  if (!kanbanBoard) return;
-  const lanes = Array.isArray(payload.lanes) ? payload.lanes : [];
-  currentKanbanMutations = payload.mutations ?? { enabled: false, supported_statuses: [] };
-  updateKanbanDensityUi();
-  kanbanBoard.replaceChildren();
-
-  if (lanes.length === 0) {
-    kanbanBoard.append(el('p', { className: 'muted', text: 'No Kanban lanes available.' }));
-    return;
-  }
-
-  setKanbanMessage(currentKanbanMutations.enabled
-    ? 'Drag cards to supported lanes, or use card actions for Ready, Block, Complete, and Archive. Sensitive moves ask first.'
-    : 'Read-only board: mutations are disabled unless the dashboard is explicitly configured with safe Hermes CLI access.');
-
-  const cardsById = new Map(lanes.flatMap((lane) => (lane.cards ?? []).map((card) => [card.id, card])));
-  for (const lane of lanes) {
-    const cards = Array.isArray(lane.cards) ? lane.cards : [];
-    const collapsed = isKanbanLaneCollapsed(lane.status);
-    const laneNode = el('section', {
-      className: collapsed ? 'kanban-lane is-collapsed' : 'kanban-lane',
-      'data-status': lane.status
-    });
-    const laneToggle = el('button', {
-      className: 'kanban-lane-toggle',
-      type: 'button',
-      text: collapsed ? 'Show' : 'Hide',
-      'aria-expanded': String(!collapsed),
-      'aria-label': `${collapsed ? 'Show' : 'Hide'} ${laneTitle(lane.status)} lane cards`
-    });
-    laneToggle.addEventListener('click', () => toggleKanbanLane(lane.status, laneNode, laneToggle));
-    laneNode.append(el('div', { className: 'kanban-lane-heading' }, [
-      el('div', { className: 'kanban-lane-title' }, [
-        el('h3', { text: laneTitle(lane.status) }),
-        el('span', { className: 'muted kanban-lane-summary', text: `${cards.length} card${cards.length === 1 ? '' : 's'}` })
-      ]),
-      el('div', { className: 'kanban-lane-controls' }, [
-        el('span', { className: 'badge neutral', text: String(cards.length), 'aria-label': `${cards.length} cards` }),
-        laneToggle
-      ])
-    ]));
-
-    laneNode.addEventListener('dragover', (event) => {
-      event.preventDefault();
-      event.dataTransfer.dropEffect = currentKanbanMutations.supported_statuses?.includes(lane.status) ? 'move' : 'none';
-    });
-    laneNode.addEventListener('drop', async (event) => {
-      event.preventDefault();
-      const taskId = event.dataTransfer.getData('text/plain') || currentDraggedTaskId;
-      const card = cardsById.get(taskId);
-      if (card) await moveKanbanCard(card, lane.status);
-    });
-
-    if (cards.length === 0) {
-      laneNode.append(el('p', { className: 'muted kanban-empty', text: 'No cards' }));
-    } else {
-      laneNode.append(...cards.map((card, index) => renderKanbanCard(card, index >= KANBAN_COMPACT_CARD_LIMIT)));
-      if (cards.length > KANBAN_COMPACT_CARD_LIMIT) {
-        laneNode.append(el('p', {
-          className: 'muted kanban-overflow-note',
-          text: `${cards.length - KANBAN_COMPACT_CARD_LIMIT} more card${cards.length - KANBAN_COMPACT_CARD_LIMIT === 1 ? '' : 's'} hidden in compact mode — expand board to show all.`
-        }));
-      }
-    }
-    kanbanBoard.append(laneNode);
-  }
-}
-
-async function refreshKanban() {
-  if (!kanbanBoard) return;
-  if (refreshKanbanButton) refreshKanbanButton.disabled = true;
-  try {
-    renderKanbanBoard(await getJson('/api/kanban/board'));
-  } catch (error) {
-    kanbanBoard.replaceChildren(el('p', { className: 'error', text: `Kanban board unavailable: ${error.message}` }));
-  } finally {
-    if (refreshKanbanButton) refreshKanbanButton.disabled = false;
-  }
-}
-
-if (refreshKanbanButton) {
-  refreshKanbanButton.addEventListener('click', refreshKanban);
-}
-
-if (kanbanCompactToggle) {
-  kanbanCompactToggle.addEventListener('click', toggleKanbanDensity);
-}
-
-updateKanbanDensityUi();

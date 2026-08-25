@@ -63,3 +63,15 @@ test('toPublicConfig never exposes server-side probe target URLs', async () => {
   ]);
   assert.equal(JSON.stringify(publicConfig).includes('vaultwarden.internal'), false);
 });
+
+
+test('default public config includes external Hermes Kanban link and status check without leaking probe URL', async () => {
+  const config = await loadConfig({});
+  const publicConfig = toPublicConfig(config);
+  const serialized = JSON.stringify(publicConfig);
+
+  assert.ok(publicConfig.sections.some((section) => section.links.some((link) => link.label === 'Hermes Kanban' && link.href === 'http://192.168.0.20:9119/kanban')));
+  assert.ok(publicConfig.statusChecks.some((check) => check.id === 'hermes-kanban' && check.label === 'Hermes Kanban' && check.displayUrl === 'http://192.168.0.20:9119/kanban'));
+  assert.equal(serialized.includes('targetUrl'), false);
+  assert.equal(serialized.includes('192.168.0.20:9119/kanban'), true);
+});

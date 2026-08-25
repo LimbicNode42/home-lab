@@ -6,20 +6,22 @@ const indexSource = await readFile(new URL('../public/index.html', import.meta.u
 const appSource = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
 const stylesSource = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
 
-test('dashboard shell exposes six accessible hash-backed tabs', () => {
+test('dashboard shell exposes five accessible hash-backed tabs without the old Work tab', () => {
   assert.match(indexSource, /class="tab-list" role="tablist" aria-label="Dashboard sections"/);
-  for (const id of ['overview', 'work', 'knowledge', 'reports', 'investment-screener', 'diary-goals']) {
+  for (const id of ['overview', 'knowledge', 'reports', 'investment-screener', 'diary-goals']) {
     assert.match(indexSource, new RegExp(`id="tab-${id}"[^>]+role="tab"[^>]+href="#${id}"[^>]+aria-controls="panel-${id}"`));
     assert.match(indexSource, new RegExp(`id="panel-${id}"[^>]+class="tab-panel"[^>]+role="tabpanel"[^>]+aria-labelledby="tab-${id}"`));
   }
+  assert.doesNotMatch(indexSource, /id="tab-work"/);
+  assert.doesNotMatch(indexSource, /id="panel-work"/);
+  assert.doesNotMatch(indexSource, /id="kanban-panel"/);
   // Separate diary and goals tabs must no longer exist
   assert.doesNotMatch(indexSource, /id="tab-diary"[^-]/);
   assert.doesNotMatch(indexSource, /id="tab-goals"[^-]/);
 });
 
-test('dashboard panels are grouped into overview, work, knowledge, reports, investment screener, and diary-goals homes', () => {
-  assert.match(indexSource, /id="panel-overview"[\s\S]*id="status-list"[\s\S]*id="sections"[\s\S]*id="panel-work"/);
-  assert.match(indexSource, /id="panel-work"[\s\S]*id="kanban-panel"[\s\S]*id="panel-knowledge"/);
+test('dashboard panels are grouped into overview, knowledge, reports, investment screener, and diary-goals homes', () => {
+  assert.match(indexSource, /id="panel-overview"[\s\S]*id="status-list"[\s\S]*id="sections"[\s\S]*id="panel-knowledge"/);
   assert.match(indexSource, /id="panel-knowledge"[\s\S]*id="epics-panel"[\s\S]*id="docs-panel"[\s\S]*id="panel-reports"/);
   assert.match(indexSource, /id="panel-reports"[\s\S]*id="finnick-panel"[\s\S]*id="panel-investment-screener"/);
   assert.doesNotMatch(indexSource, /id="panel-reports"[\s\S]*id="investment-screener-panel"[\s\S]*id="panel-investment-screener"/);
@@ -28,7 +30,7 @@ test('dashboard panels are grouped into overview, work, knowledge, reports, inve
 });
 
 test('dashboard tabs select data lazily with hash, back/forward, and keyboard support', () => {
-  assert.match(appSource, /const TAB_IDS = \['overview', 'work', 'knowledge', 'reports', 'investment-screener', 'diary-goals'\]/);
+  assert.match(appSource, /const TAB_IDS = \['overview', 'knowledge', 'reports', 'investment-screener', 'diary-goals'\]/);
   assert.match(appSource, /const DEFAULT_TAB_ID = 'overview'/);
   assert.match(appSource, /function tabIdFromHash\(hash = window\.location\.hash\)/);
   assert.match(appSource, /window\.history\.pushState\(null, '', `#\$\{nextTabId\}`\)/);
@@ -44,10 +46,11 @@ test('hash redirect: tabIdFromHash returns diary-goals for legacy diary and goal
   assert.match(appSource, /if \(id === 'diary' \|\| id === 'goals'\) return 'diary-goals'/);
 });
 
-test('dashboard tabs load the expected existing read-only endpoints without new APIs', () => {
+test('dashboard tabs load the expected existing read-only endpoints without work or embedded kanban APIs', () => {
   assert.match(appSource, /async function loadOverviewData\(\)[\s\S]*getJson\('\/api\/config\/public'\)[\s\S]*refreshStatus\(\)/);
   assert.match(appSource, /tabId === 'overview'[\s\S]*loadOverviewData\(\)/);
-  assert.match(appSource, /tabId === 'work'[\s\S]*refreshKanban\(\)/);
+  assert.doesNotMatch(appSource, /tabId === 'work'/);
+  assert.doesNotMatch(appSource, /refreshKanban\(\)/);
   assert.match(appSource, /tabId === 'knowledge'[\s\S]*refreshEpics\(\)[\s\S]*refreshDocs\(\)/);
   assert.match(appSource, /} else if \(tabId === 'reports'\) \{\n    await refreshFinnick\(\);\n    await refreshHomelabHealth\(\);\n  \} else if \(tabId === 'investment-screener'\) \{\n    await refreshInvestmentScreener\(\);\n  \}/);
   // Merged tab calls both refresh functions

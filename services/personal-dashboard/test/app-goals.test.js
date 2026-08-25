@@ -24,7 +24,7 @@ test('goals frontend uses bounded fields and authenticated goal API paths only',
   assert.match(indexSource, /id="goal-description"[^>]+maxlength="5000"/);
   assert.match(indexSource, /<option value="active">Active<\/option>/);
   assert.match(indexSource, /<option value="archived">Archived<\/option>/);
-  assert.match(appSource, /const TAB_IDS = \['overview', 'work', 'knowledge', 'reports', 'investment-screener', 'diary-goals'\]/);
+  assert.match(appSource, /const TAB_IDS = \['overview', 'knowledge', 'reports', 'investment-screener', 'diary-goals'\]/);
   assert.match(appSource, /tabId === 'diary-goals'[\s\S]*refreshGoals\(\)/);
   assert.match(appSource, /postJson\('\/api\/goals'/);
   assert.match(appSource, /patchJson\(`\/api\/goals\/\$\{encodeURIComponent\((goal\.id|currentGoalId)\)\}`/);

@@ -8,11 +8,19 @@ const DEFAULT_CONFIG = {
       title: 'Core services',
       links: [
         { label: 'Vaultwarden', href: 'https://vault.wheeler-network.com' },
-        { label: 'Traefik', href: 'https://traefik.wheeler-network.com' }
+        { label: 'Traefik', href: 'https://traefik.wheeler-network.com' },
+        { label: 'Hermes Kanban', href: 'http://192.168.0.20:9119/kanban' }
       ]
     }
   ],
-  statusChecks: []
+  statusChecks: [
+    {
+      id: 'hermes-kanban',
+      label: 'Hermes Kanban',
+      targetUrl: 'http://192.168.0.20:9119/kanban',
+      displayUrl: 'http://192.168.0.20:9119/kanban'
+    }
+  ]
 };
 
 function isHttpUrl(value) {

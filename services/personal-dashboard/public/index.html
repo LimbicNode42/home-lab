@@ -11,13 +11,12 @@
       <header class="hero">
         <p class="eyebrow">Wheeler network</p>
         <h1 id="dashboard-title">Home Dashboard</h1>
-        <p class="muted">Private household dashboard for useful links, work state, generated reports, and lightweight service status.</p>
+        <p class="muted">Private household dashboard for useful links, homelab status, generated reports, and personal tools.</p>
       </header>
 
       <nav class="dashboard-tabs" aria-label="Dashboard sections">
         <div class="tab-list" role="tablist" aria-label="Dashboard sections">
           <a id="tab-overview" class="dashboard-tab" role="tab" href="#overview" aria-controls="panel-overview" aria-selected="true" tabindex="0">Overview</a>
-          <a id="tab-work" class="dashboard-tab" role="tab" href="#work" aria-controls="panel-work" aria-selected="false" tabindex="-1">Work</a>
           <a id="tab-knowledge" class="dashboard-tab" role="tab" href="#knowledge" aria-controls="panel-knowledge" aria-selected="false" tabindex="-1">Knowledge</a>
           <a id="tab-reports" class="dashboard-tab" role="tab" href="#reports" aria-controls="panel-reports" aria-selected="false" tabindex="-1">Reports</a>
           <a id="tab-investment-screener" class="dashboard-tab" role="tab" href="#investment-screener" aria-controls="panel-investment-screener" aria-selected="false" tabindex="-1">Investment Screener</a>
@@ -28,7 +27,7 @@
       <section id="panel-overview" class="tab-panel" role="tabpanel" aria-labelledby="tab-overview" data-tab-panel="overview">
         <section class="panel">
           <div class="panel-heading">
-            <h2>Service status</h2>
+            <h2>Homelab status</h2>
             <button id="refresh-status" type="button">Refresh</button>
           </div>
           <div id="status-list" class="status-grid" aria-live="polite">
@@ -43,24 +42,7 @@
           </div>
         </section>
       </section>
-
-      <section id="panel-work" class="tab-panel" role="tabpanel" aria-labelledby="tab-work" data-tab-panel="work" hidden>
-        <section class="panel" id="kanban-panel">
-          <div class="panel-heading">
-            <div>
-              <h2>Kanban Board</h2>
-              <p id="kanban-message" class="muted board-message" aria-live="polite">Loading board…</p>
-            </div>
-            <div class="panel-actions">
-              <button id="toggle-kanban-density" type="button" aria-expanded="false">Expand board</button>
-              <button id="refresh-kanban" type="button">Refresh</button>
-            </div>
-          </div>
-          <div id="kanban-board" class="kanban-board" aria-live="polite"></div>
-        </section>
-      </section>
-
-      <section id="panel-knowledge" class="tab-panel" role="tabpanel" aria-labelledby="tab-knowledge" data-tab-panel="knowledge" hidden>
+<section id="panel-knowledge" class="tab-panel" role="tabpanel" aria-labelledby="tab-knowledge" data-tab-panel="knowledge" hidden>
         <section class="panel" id="epics-panel">
           <div class="panel-heading">
             <h2>Completed Epics</h2>
@@ -98,26 +80,7 @@
             </article>
           </div>
         </section>
-
-        <section class="panel" id="datasets-panel">
-          <div class="panel-heading">
-            <div>
-              <h2>Dataset Curation</h2>
-              <p class="muted board-message">Read-only source/instruction/output workbench from allowlisted JSONL fixtures. Append/create are deferred until storage, locking, backups, and restore behavior are reviewed.</p>
-            </div>
-            <button id="refresh-datasets" type="button">Refresh</button>
-          </div>
-          <div class="datasets-layout">
-            <div id="datasets-list" class="datasets-list" aria-live="polite">
-              <p class="muted">Loading datasets…</p>
-            </div>
-            <article id="dataset-records-preview" class="dataset-records-preview" aria-live="polite">
-              <p class="muted">Select a dataset to preview curated examples.</p>
-            </article>
-          </div>
-        </section>
-
-        <section class="panel" id="docs-panel">
+<section class="panel" id="docs-panel">
           <div class="panel-heading">
             <div>
               <h2>Documentation</h2>
