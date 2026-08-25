@@ -155,6 +155,34 @@ test('GET /api/writing/posts rejects invalid filters and missing post ids safely
 });
 
 
+test('GET /api/writing/posts/:id rejects malformed encoded ids without unhandled rejections', async () => {
+  const app = await appWithPosts([]);
+  const server = await listen(app);
+  const unhandled = [];
+  const onUnhandled = (err) => unhandled.push(err);
+  process.on('unhandledRejection', onUnhandled);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 500);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/writing/posts/%E0%A4%A`, { signal: controller.signal });
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+
+    assert.equal(response.status, 400);
+    assert.equal(body.error, 'invalid_writing_post_id');
+    for (const forbidden of ['URIError', 'URI malformed', 'stack', '/root', '/tmp', 'posts.json', 'stderr', 'DATABASE_URL', 'TOKEN']) {
+      assert.equal(serialized.includes(forbidden), false, `malformed id response leaked ${forbidden}`);
+    }
+    assert.deepEqual(unhandled, []);
+  } finally {
+    clearTimeout(timeout);
+    process.off('unhandledRejection', onUnhandled);
+    await server.close();
+  }
+});
+
+
 test('POST/PATCH/DELETE /api/writing/posts performs sanitized durable CRUD against the posts file', async () => {
   const writingPostsFile = await writePosts(samplePosts);
   const configPath = await writeConfig(basicConfig);
