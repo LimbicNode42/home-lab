@@ -1,0 +1,36 @@
+{
+  "title": "Home Dashboard",
+  "sections": [
+    {
+      "title": "Core services",
+      "links": [
+        {
+          "label": "Vaultwarden",
+          "href": "https://vault.wheeler-network.com"
+        },
+        {
+          "label": "Traefik",
+          "href": "https://traefik.wheeler-network.com"
+        },
+        {
+          "label": "Hermes Kanban",
+          "href": "http://192.168.0.20:9119/kanban"
+        }
+      ]
+    }
+  ],
+  "statusChecks": [
+    {
+      "id": "vaultwarden",
+      "label": "Vaultwarden",
+      "targetUrl": "http://192.168.0.50:8084/alive",
+      "displayUrl": "https://vault.wheeler-network.com"
+    },
+    {
+      "id": "hermes-kanban",
+      "label": "Hermes Kanban",
+      "targetUrl": "http://192.168.0.20:9119/kanban",
+      "displayUrl": "http://192.168.0.20:9119/kanban"
+    }
+  ]
+}
