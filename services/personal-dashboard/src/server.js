@@ -1396,6 +1396,7 @@ function safeNumber(value) {
 }
 
 function safeIsoDate(value) {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
   const text = safeText(value, null, 80);
   if (!text) return null;
   const date = new Date(text);
@@ -1499,6 +1500,58 @@ function normalizeCoverageCounts(rawCoverage, fallbackUsable) {
   return { denominator, counts, inconsistent };
 }
 
+
+function hoursBetweenDates(later, earlier) {
+  if (!later || !earlier) return null;
+  return Number(((later.getTime() - earlier.getTime()) / 36e5).toFixed(1));
+}
+
+function daysBetweenDates(later, earlier) {
+  if (!later || !earlier) return null;
+  return Math.floor((later.getTime() - earlier.getTime()) / 864e5);
+}
+
+function parsedDateOrNull(value) {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const text = safeText(value, null, 80);
+  if (!text) return null;
+  const date = new Date(text);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function freshnessFromTimestamps({ generatedAt, latestRetrievedAt, dataAsOf, fixture = false, now = new Date(), thresholds = {} }) {
+  const maxGeneratedAgeHours = safeNumber(thresholds.max_generated_age_hours) ?? 26;
+  const maxSourceAgeHours = safeNumber(thresholds.max_source_age_hours) ?? 26;
+  const maxDataAsOfAgeDays = safeNumber(thresholds.max_data_as_of_age_days) ?? 370;
+  const generatedDate = parsedDateOrNull(generatedAt);
+  const latestRetrievedDate = parsedDateOrNull(latestRetrievedAt);
+  const dataAsOfDate = parsedDateOrNull(dataAsOf);
+  const generatedAgeHours = hoursBetweenDates(now, generatedDate);
+  const latestRetrievedAgeHours = hoursBetweenDates(now, latestRetrievedDate);
+  const dataAsOfAgeDays = daysBetweenDates(now, dataAsOfDate);
+  const warnings = [];
+  if (generatedAgeHours !== null && generatedAgeHours > maxGeneratedAgeHours) warnings.push(`Generated artifact is ${generatedAgeHours}h old, older than ${maxGeneratedAgeHours}h freshness threshold.`);
+  if (latestRetrievedAgeHours !== null && latestRetrievedAgeHours > maxSourceAgeHours) warnings.push(`Latest provider retrieval is ${latestRetrievedAgeHours}h old, older than ${maxSourceAgeHours}h freshness threshold.`);
+  if (dataAsOfAgeDays !== null && dataAsOfAgeDays > maxDataAsOfAgeDays) warnings.push(`Source data_as_of is ${dataAsOfAgeDays}d old, older than ${maxDataAsOfAgeDays}d freshness threshold.`);
+  if (!latestRetrievedAt && !fixture) warnings.push('No provider retrieved_at timestamp is available for this non-fixture run.');
+  return {
+    freshness: {
+      generated_at: safeIsoDate(generatedAt),
+      generated_age_hours: generatedAgeHours,
+      latest_retrieved_at: safeIsoDate(latestRetrievedAt),
+      latest_retrieved_age_hours: latestRetrievedAgeHours,
+      data_as_of: isoDateOnly(dataAsOf),
+      data_as_of_age_days: dataAsOfAgeDays,
+      stale: warnings.length > 0,
+      stale_thresholds: {
+        max_generated_age_hours: maxGeneratedAgeHours,
+        max_source_age_hours: maxSourceAgeHours,
+        max_data_as_of_age_days: maxDataAsOfAgeDays
+      }
+    },
+    warnings
+  };
+}
 
 function sanitizeFreshness(rawFreshness = {}) {
   if (!rawFreshness || typeof rawFreshness !== 'object' || Array.isArray(rawFreshness)) return null;
@@ -1706,6 +1759,13 @@ async function coverageFromPostgres(pool, market = 'ASX') {
     : configuredUniverse.count;
   const denominatorLabel = mode === 'fixture' ? 'fixture sample universe' : configuredUniverse.label;
   const denominatorStatus = mode === 'fixture' ? 'sample' : configuredUniverse.status;
+  const postgresFreshness = freshnessFromTimestamps({
+    generatedAt: row.completed_at,
+    latestRetrievedAt: row.latest_retrieved_at,
+    dataAsOf: row.data_as_of ?? row.latest_provenance_data_as_of,
+    fixture: mode === 'fixture'
+  });
+  const staleCount = postgresFreshness.freshness.stale ? (safeInteger(row.scraped) ?? safeInteger(row.usable) ?? 1) : 0;
   const coverage = finalizeCoverage({
     market: selectedMarket,
     mode,
@@ -1717,7 +1777,10 @@ async function coverageFromPostgres(pool, market = 'ASX') {
       scraped: row.scraped,
       scored: row.scored,
       excluded: row.excluded,
+      stale: staleCount,
       missing_required_fields: row.missing_required_fields,
+      freshness: postgresFreshness.freshness,
+      warnings: postgresFreshness.warnings,
       caveats: mode === 'fixture'
         ? ['Coverage is against the fixture sample universe, not all ASX-listed companies.']
         : ['Coverage is for the configured bootstrap watchlist, not the full ASX exchange.']

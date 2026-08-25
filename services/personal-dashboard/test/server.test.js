@@ -841,8 +841,8 @@ test('GET /api/investment-screener/coverage prefers Postgres latest completed ma
         run_key: 'investment-screener:ASX:asx-yahoo-timeseries:test',
         mode: 'asx-yahoo-timeseries',
         market: 'ASX',
-        started_at: '2026-08-22T10:00:00.000Z',
-        completed_at: '2026-08-22T10:05:00.000Z',
+        started_at: new Date('2026-08-22T10:00:00.000Z'),
+        completed_at: new Date('2026-08-22T10:05:00.000Z'),
         universe_version: 'sha256:test',
         source_mix: { providers: ['yahoo-finance'], universe: ['BHP.AX', 'CSL.AX', 'CBA.AX', 'WES.AX'] },
         usable: '3',
@@ -853,8 +853,8 @@ test('GET /api/investment-screener/coverage prefers Postgres latest completed ma
         provenance_rows: '12',
         provenance_fields: '6',
         source_families: ['yahoo-finance'],
-        latest_retrieved_at: '2026-08-22T10:04:00.000Z',
-        data_as_of: '2025-06-30'
+        latest_retrieved_at: new Date('2026-08-22T10:04:00.000Z'),
+        data_as_of: new Date('2025-06-30T00:00:00.000Z')
       }] };
     }
   };
@@ -878,6 +878,13 @@ test('GET /api/investment-screener/coverage prefers Postgres latest completed ma
     assert.equal(body.coverage.excluded, 1);
     assert.equal(body.coverage.missing_required_fields, 1);
     assert.equal(body.coverage.percent, 30);
+    assert.equal(body.coverage.freshness.latest_retrieved_at, '2026-08-22T10:04:00.000Z');
+    assert.equal(body.coverage.freshness.data_as_of, '2025-06-30');
+    assert.equal(body.coverage.freshness.stale, true);
+    assert.equal(body.coverage.stale, 4);
+    assert.ok(body.coverage.warnings.some((warning) => warning.includes('Latest provider retrieval is')));
+    assert.ok(body.coverage.warnings.some((warning) => warning.includes('Source data_as_of is')));
+    assert.equal(JSON.stringify(body).includes('/root/'), false);
     assert.equal(body.coverage.window.run_key, 'investment-screener:ASX:asx-yahoo-timeseries:test');
     assert.equal(queries[0].params[0], 'ASX');
   } finally {

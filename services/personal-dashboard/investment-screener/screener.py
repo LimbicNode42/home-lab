@@ -1219,6 +1219,13 @@ def hydrate_companies_from_asx_tickers(
 
 
 
+def _provenance_scalar(value: Any) -> Any:
+    if isinstance(value, (list, tuple, set)):
+        values = sorted(str(item) for item in value if item)
+        return values[-1] if values else None
+    return value
+
+
 def _safe_timestamp(value: Optional[str] = None) -> str:
     if value:
         parsed = _parse_provenance_time(value)
@@ -1228,34 +1235,38 @@ def _safe_timestamp(value: Optional[str] = None) -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _row_observable_fields(row: dict) -> dict:
+    return {**_row_raw_fields(row), **_row_derived_fields(row)}
+
+
 def _row_field_observations(row: dict) -> list[dict]:
     observations: list[dict] = []
-    for field_name, field_data in _row_raw_fields(row).items():
+    for field_name, field_data in _row_observable_fields(row).items():
         prov = field_data.get("provenance") or {}
         observations.append({
             "ticker": row.get("ticker"),
             "field_name": field_name,
             "value": field_data.get("value"),
-            "source_family": prov.get("source_family") or prov.get("provider") or "unknown",
-            "retrieved_at": _parse_iso_timestamp(prov.get("retrieved_at") or prov.get("retrieved_from_source_at")),
-            "data_as_of": _parse_iso_date(prov.get("data_as_of")),
+            "source_family": prov.get("source_family") or prov.get("provider") or ("derived" if field_name not in RAW_FIELDS else "unknown"),
+            "retrieved_at": _parse_iso_timestamp(_provenance_scalar(prov.get("retrieved_at") or prov.get("retrieved_from_source_at"))),
+            "data_as_of": _parse_iso_date(_provenance_scalar(prov.get("data_as_of"))),
         })
     return observations
 
 
 def _row_file_first_provenance(row: dict) -> list[dict]:
     provenance: list[dict] = []
-    for field_name, field_data in _row_raw_fields(row).items():
+    for field_name, field_data in _row_observable_fields(row).items():
         prov = field_data.get("provenance") or {}
         if not prov:
             continue
         provenance.append({
             "ticker": row.get("ticker"),
             "field_name": field_name,
-            "source_family": prov.get("source_family") or prov.get("provider") or "unknown",
-            "provider": prov.get("provider") or prov.get("source_family") or "unknown",
-            "retrieved_at": _parse_iso_timestamp(prov.get("retrieved_at") or prov.get("retrieved_from_source_at")),
-            "data_as_of": _parse_iso_date(prov.get("data_as_of")),
+            "source_family": prov.get("source_family") or prov.get("provider") or ("derived" if field_name not in RAW_FIELDS else "unknown"),
+            "provider": prov.get("provider") or prov.get("source_family") or ("derived" if field_name not in RAW_FIELDS else "unknown"),
+            "retrieved_at": _parse_iso_timestamp(_provenance_scalar(prov.get("retrieved_at") or prov.get("retrieved_from_source_at"))),
+            "data_as_of": _parse_iso_date(_provenance_scalar(prov.get("data_as_of"))),
         })
     return provenance
 
@@ -1622,21 +1633,27 @@ def _parse_iso_timestamp(value: Any) -> Optional[str]:
 def _provenance_rows(row: dict) -> list[tuple]:
     rows: list[tuple] = []
     seen: set[tuple] = set()
-    for field_name, field_data in _row_raw_fields(row).items():
+    for field_name, field_data in _row_observable_fields(row).items():
         prov = field_data.get("provenance") or {}
         if not prov:
             continue
-        source_family = prov.get("source_family") or prov.get("provider") or prov.get("yahoo_type") or prov.get("freshness") or "unknown"
+        source_family = (
+            prov.get("source_family")
+            or prov.get("provider")
+            or prov.get("yahoo_type")
+            or ("derived" if field_name not in RAW_FIELDS else _provenance_scalar(prov.get("freshness")))
+            or "unknown"
+        )
         item = (
             field_name,
             str(source_family)[:80],
-            prov.get("source_url"),
-            _parse_iso_timestamp(prov.get("retrieved_at") or prov.get("retrieved_from_source_at")),
-            _parse_iso_date(prov.get("source_reported_at")),
-            _parse_iso_date(prov.get("data_as_of")),
-            prov.get("trust_level") or prov.get("source_quality") or prov.get("freshness"),
-            prov.get("extraction_status") or "not_attempted",
-            prov.get("notes") or prov.get("freshness"),
+            _provenance_scalar(prov.get("source_url")),
+            _parse_iso_timestamp(_provenance_scalar(prov.get("retrieved_at") or prov.get("retrieved_from_source_at"))),
+            _parse_iso_date(_provenance_scalar(prov.get("source_reported_at"))),
+            _parse_iso_date(_provenance_scalar(prov.get("data_as_of"))),
+            _provenance_scalar(prov.get("trust_level") or prov.get("source_quality") or prov.get("freshness")),
+            _provenance_scalar(prov.get("extraction_status")) or "not_attempted",
+            _provenance_scalar(prov.get("notes") or prov.get("freshness")),
         )
         key = (item[0], item[1], item[2], item[5])
         if key not in seen:

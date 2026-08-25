@@ -173,6 +173,84 @@ test('readInvestmentScreenerCompanyDetail maps latest file-first fundamentals wi
   }
 });
 
+
+test('readInvestmentScreenerCompanyDetail consumes Python file-first payload with canonical derived fundamentals', async () => {
+  const dataRoot = await mkdtemp(join(tmpdir(), 'screener-python-file-first-detail-'));
+  try {
+    const python = String.raw`
+import importlib.util, json, pathlib, sys
+module_path = pathlib.Path('investment-screener/screener.py')
+spec = importlib.util.spec_from_file_location('asx_screener', module_path)
+screener = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = screener
+spec.loader.exec_module(screener)
+base_provenance = {
+    'provider': 'yahoo-finance',
+    'source_family': 'yahoo-finance',
+    'retrieved_at': '2026-08-23T10:00:30Z',
+    'data_as_of': '2026-06-30',
+}
+ranked = [{
+    'rank': 1,
+    'ticker': 'BHP.AX',
+    'name': 'BHP Group',
+    'market': 'ASX',
+    'currency': 'AUD',
+    'composite_score': 91.4,
+    'sub_scores': {'quality': 22, 'valuation': 19, 'growth': 18},
+    'fields': {
+        'price': {'value': 45.0, 'status': 'present', 'provenance': base_provenance},
+        'shares_outstanding': {'value': 5000000000, 'status': 'present', 'provenance': base_provenance},
+        'revenue': {'value': 56642000000, 'status': 'present', 'provenance': base_provenance},
+        'prior_revenue': {'value': 54000000000, 'status': 'present', 'provenance': base_provenance},
+        'net_income': {'value': 7810000000, 'status': 'present', 'provenance': base_provenance},
+        'operating_cash_flow': {'value': 18000000000, 'status': 'present', 'provenance': base_provenance},
+        'capital_expenditures': {'value': -7600000000, 'status': 'present', 'provenance': base_provenance},
+        'total_assets': {'value': 100000000000, 'status': 'present', 'provenance': base_provenance},
+        'total_liabilities': {'value': 45000000000, 'status': 'present', 'provenance': base_provenance},
+        'current_assets': {'value': 25000000000, 'status': 'present', 'provenance': base_provenance},
+        'current_liabilities': {'value': 12000000000, 'status': 'present', 'provenance': base_provenance},
+        'market_cap': {'value': 225000000000, 'status': 'present', 'provenance': {'source_fields': ['price', 'shares_outstanding'], 'retrieved_at': ['2026-08-23T10:00:30Z'], 'data_as_of': ['2026-06-30']}},
+        'price_to_sales': {'value': 3.972, 'status': 'present', 'provenance': {'source_fields': ['price', 'shares_outstanding', 'revenue'], 'retrieved_at': ['2026-08-23T10:00:30Z'], 'data_as_of': ['2026-06-30']}},
+        'fcf': {'value': None, 'status': 'missing', 'provenance': {'source_fields': ['operating_cash_flow', 'capital_expenditures'], 'retrieved_at': ['2026-08-23T10:00:30Z'], 'data_as_of': ['2026-06-30']}},
+        'fcf_margin': {'value': None, 'status': 'missing', 'provenance': {'source_fields': ['operating_cash_flow', 'capital_expenditures', 'revenue'], 'retrieved_at': ['2026-08-23T10:00:30Z'], 'data_as_of': ['2026-06-30']}},
+        'debt_to_assets': {'value': 0.45, 'status': 'present', 'provenance': {'source_fields': ['total_liabilities', 'total_assets'], 'retrieved_at': ['2026-08-23T10:00:30Z'], 'data_as_of': ['2026-06-30']}},
+    },
+    'missing_fields': ['fcf', 'fcf_margin'],
+}]
+payload = screener.build_file_first_run_payload(ranked, source='yahoo-finance', mode='asx-yahoo-timeseries', universe=['BHP.AX'], completed_at='2026-08-23T10:01:00Z')
+print(json.dumps(payload, sort_keys=True))
+`;
+    const { stdout } = await execFileAsync('python3', ['-c', python], { cwd: new URL('..', import.meta.url), maxBuffer: 1024 * 1024 });
+    const run = JSON.parse(stdout);
+    const published = await publishInvestmentScreenerRun({ dataRoot, run, now: new Date('2026-08-23T10:02:00.000Z') });
+    const observations = (await readFile(join(published.run_dir, 'observations.jsonl'), 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+    const provenance = (await readFile(join(published.run_dir, 'provenance.jsonl'), 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+
+    assert.ok(observations.some((row) => row.field_name === 'price_to_sales' && row.value_json === '3.972'));
+    assert.ok(observations.some((row) => row.field_name === 'fcf' && row.value_json === 'null'));
+    assert.ok(provenance.some((row) => row.field_name === 'debt_to_assets' && row.source_family === 'derived'));
+    const derivedMarketCap = observations.find((row) => row.field_name === 'market_cap');
+    assert.equal(derivedMarketCap.retrieved_at, '2026-08-23T10:00:30.000Z');
+    assert.equal(derivedMarketCap.data_as_of, '2026-06-30');
+    assert.equal(JSON.stringify(observations).includes("['2026-06"), false);
+
+    const detail = await readInvestmentScreenerCompanyDetail({ dataRoot, ticker: 'BHP.AX', market: 'ASX', source: 'yahoo-finance' });
+    assert.equal(detail.valuation.price_to_sales.field, 'price_to_sales');
+    assert.equal(detail.valuation.price_to_sales.value, 3.972);
+    assert.equal(detail.quality_growth_safety.fcf.field, 'fcf');
+    assert.equal(detail.quality_growth_safety.fcf.state, 'missing');
+    assert.equal(detail.quality_growth_safety.debt_to_assets.field, 'debt_to_assets');
+    assert.equal(detail.quality_growth_safety.debt_to_assets.value, 0.45);
+    assert.equal(detail.statements_summary.capital_expenditures.field, 'capital_expenditures');
+    assert.equal(detail.statements_summary.capital_expenditures.value, -7600000000);
+    assert.equal(detail.earnings.eps.state, 'unavailable');
+    assert.equal(detail.unavailable_data.some((item) => item.field === 'price_sales' || item.field === 'free_cash_flow' || item.field === 'debt_assets' || item.field === 'capital_expenditure'), false);
+  } finally {
+    await rm(dataRoot, { recursive: true, force: true });
+  }
+});
+
 test('publishInvestmentScreenerRun preserves prior latest pointer when validation fails before promote', async () => {
   const dataRoot = await mkdtemp(join(tmpdir(), 'screener-storage-atomic-'));
   try {
