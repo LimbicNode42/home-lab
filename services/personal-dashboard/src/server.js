@@ -1,5 +1,5 @@
 import { accessSync, constants, createReadStream, readFileSync } from 'node:fs';
-import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { mkdir, lstat, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import { execFileSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
@@ -871,7 +871,7 @@ function writingStorageUnavailable() {
 async function loadWritingPosts(writingPostsFile) {
   let fileStats;
   try {
-    fileStats = await stat(writingPostsFile);
+    fileStats = await lstat(writingPostsFile);
   } catch (err) {
     if (err?.code === 'ENOENT') return [];
     throw writingStorageUnavailable();
