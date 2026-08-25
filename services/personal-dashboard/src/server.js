@@ -1,5 +1,5 @@
 import { accessSync, constants, createReadStream, readFileSync } from 'node:fs';
-import { mkdir, lstat, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, lstat, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import { execFileSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
@@ -987,6 +987,7 @@ async function writeWritingPostsFile(writingPostsFile, posts) {
   await mkdir(dirname(writingPostsFile), { recursive: true });
   const temp = join(dirname(writingPostsFile), `.${basename(writingPostsFile)}.${process.pid}.${Date.now()}.tmp`);
   await writeFile(temp, `${JSON.stringify({ posts }, null, 2)}\n`, 'utf8');
+  await chmod(temp, 0o640);
   await rename(temp, writingPostsFile);
 }
 

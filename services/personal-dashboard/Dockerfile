@@ -11,7 +11,7 @@ RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit
 COPY src ./src
 COPY public ./public
 COPY config ./config
-COPY data ./data
+COPY --chown=node:node data ./data
 COPY datasets ./datasets
 RUN mkdir -p /app/repo-docs/services/personal-dashboard
 COPY README.md ./repo-docs/services/personal-dashboard/README.md

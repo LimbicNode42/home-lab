@@ -245,6 +245,7 @@ test('POST/PATCH/DELETE /api/writing/posts performs sanitized durable CRUD again
     const storedAfterDelete = JSON.parse(await readFile(writingPostsFile, 'utf8'));
     assert.equal(storedAfterDelete.posts.some((post) => post.post_id === createBody.post.post_id), false);
     assert.equal(storedAfterDelete.posts.some((post) => post.post_id === 'draft-dashboard-ideas'), true, 'existing posts are preserved');
+    assert.equal((await stat(writingPostsFile)).mode & 0o777, 0o640, 'rewrites keep the private writing store non-world-readable');
   } finally {
     await server.close();
   }
@@ -492,7 +493,7 @@ test('Blog and Drafts lives outside Knowledge with CRUD modal controls and safe 
   assert.match(appSource, /patchJson\(`\/api\/writing\/posts\/\$\{encodeURIComponent\(currentWritingPostId\)\}`/);
   assert.match(appSource, /deleteJson\(`\/api\/writing\/posts\/\$\{encodeURIComponent\(currentWritingPostId\)\}`/);
   assert.match(appSource, /renderMarkdownDocument\(post\.body_markdown/);
-  assert.match(dockerfileSource, /COPY data \.\/data/);
+  assert.match(dockerfileSource, /COPY --chown=node:node data \.\/data/, 'default image writing data must be writable by USER node');
   assert.match(stylesSource, /\.writing-editor-dialog/);
   assert.match(stylesSource, /\.danger-button/);
   assert.doesNotMatch(appSource, /writing[\s\S]{0,80}innerHTML\s*=/i);
