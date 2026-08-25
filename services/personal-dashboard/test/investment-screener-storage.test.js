@@ -1,9 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+
+const execFileAsync = promisify(execFile);
 
 import {
   buildInvestmentScreenerDuckDbSummary,
@@ -221,4 +225,69 @@ test('buildInvestmentScreenerDuckDbSummary reads non-fixture source coverage and
   } finally {
     await rm(dataRoot, { recursive: true, force: true });
   }
+});
+
+
+test('publishInvestmentScreenerRun adds freshness metadata and stale warnings to manifest and dashboard coverage', async () => {
+  const dataRoot = await mkdtemp(join(tmpdir(), 'screener-freshness-'));
+  try {
+    const staleRun = {
+      ...nonFixtureRun,
+      completed_at: '2026-08-23T10:01:00.000Z',
+      generated_at: '2026-08-23T10:01:00.000Z',
+      data_as_of: '2025-06-30',
+      provenance: [
+        { ticker: 'BHP.AX', field_name: 'revenue', source_family: 'yahoo-finance', provider: 'yahoo-finance', retrieved_at: '2026-08-20T10:00:30.000Z', data_as_of: '2025-06-30' }
+      ]
+    };
+    const published = await publishInvestmentScreenerRun({ dataRoot, run: staleRun, now: new Date('2026-08-25T10:02:00.000Z') });
+
+    assert.equal(published.manifest.latest_retrieved_at, '2026-08-20T10:00:30.000Z');
+    assert.equal(published.manifest.coverage.freshness.latest_retrieved_at, '2026-08-20T10:00:30.000Z');
+    assert.equal(published.manifest.coverage.freshness.generated_age_hours, 48);
+    assert.equal(published.manifest.coverage.freshness.data_as_of_age_days, 421);
+    assert.equal(published.manifest.coverage.freshness.stale, true);
+    assert.ok(published.manifest.coverage.warnings.some((warning) => warning.includes('older than 26h')));
+
+    const latestCoverage = JSON.parse(await readFile(join(dataRoot, 'investment-screener', 'exports', 'dashboard', 'market=ASX', 'latest_coverage.json'), 'utf8'));
+    assert.equal(latestCoverage.coverage.freshness.stale, true);
+    assert.equal(latestCoverage.source_summary.latest_retrieved_at, '2026-08-20T10:00:30.000Z');
+  } finally {
+    await rm(dataRoot, { recursive: true, force: true });
+  }
+});
+
+test('preflight-investment-screener-artifacts validates canonical latest pointer and checksums', async () => {
+  const dataRoot = await mkdtemp(join(tmpdir(), 'screener-preflight-'));
+  try {
+    const published = await publishInvestmentScreenerRun({ dataRoot, run: nonFixtureRun, now: new Date('2026-08-23T10:02:00.000Z') });
+    const { stdout } = await execFileAsync('node', [
+      'scripts/preflight-investment-screener-artifacts.mjs',
+      '--data-root', dataRoot,
+      '--market', 'ASX',
+      '--source', 'yahoo-finance',
+      '--max-generated-age-hours', '72'
+    ], { cwd: new URL('..', import.meta.url) });
+    const report = JSON.parse(stdout);
+
+    assert.equal(report.ok, true);
+    assert.equal(report.run_id, published.run_id);
+    assert.equal(report.mode, 'asx-yahoo-timeseries');
+    assert.equal(report.fixture, false);
+    assert.equal(report.coverage.denominator_status, 'known_sample_universe');
+    assert.ok(report.required_artifacts.includes('ranked_candidates.parquet'));
+  } finally {
+    await rm(dataRoot, { recursive: true, force: true });
+  }
+});
+
+
+test('run-asx-screener-hydration.sh uses canonical non-fixture file-first publication workflow', async () => {
+  const script = await readFile(new URL('../scripts/run-asx-screener-hydration.sh', import.meta.url), 'utf8');
+
+  assert.match(script, /--asx-universe-seed/);
+  assert.match(script, /--file-first-run-json/);
+  assert.match(script, /publish-investment-screener-run\.mjs/);
+  assert.match(script, /preflight-investment-screener-artifacts\.mjs/);
+  assert.doesNotMatch(script, /--fixture/);
 });

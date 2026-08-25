@@ -751,6 +751,50 @@ test('GET /api/investment-screener/coverage clamps inconsistent artifact counts 
 });
 
 
+
+test('GET /api/investment-screener/coverage preserves sanitized freshness metadata and warnings', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'investment-coverage-freshness-'));
+  const rankedPath = join(dir, 'latest_ranked.json');
+  await writeFile(rankedPath, JSON.stringify({
+    mode: 'asx-yahoo-timeseries',
+    generated_at: '2026-08-25T08:00:00Z',
+    data_as_of: '2026-06-30',
+    source_summary: { latest_retrieved_at: '2026-08-25T07:59:00Z', providers: ['yahoo-finance'] },
+    coverage: {
+      denominator: 1, usable: 1, stale: true,
+      freshness: {
+        generated_at: '2026-08-25T08:00:00Z',
+        generated_age_hours: 2,
+        latest_retrieved_at: '2026-08-25T07:59:00Z',
+        latest_retrieved_age_hours: 2.1,
+        data_as_of: '2026-06-30',
+        data_as_of_age_days: 56,
+        stale: false,
+        stale_thresholds: { max_generated_age_hours: 26, max_source_age_hours: 26, max_data_as_of_age_days: 370 }
+      },
+      warnings: ['safe freshness warning', '/root/private leaked warning']
+    },
+    candidates: [{ rank: 1, ticker: 'BHP.AX', name: 'BHP Group', market: 'ASX', currency: 'AUD', score: 88 }]
+  }), 'utf8');
+
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerRankedFile: rankedPath });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/investment-screener/coverage?market=ASX`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.coverage.freshness.latest_retrieved_at, '2026-08-25T07:59:00.000Z');
+    assert.equal(body.coverage.freshness.generated_age_hours, 2);
+    assert.equal(body.coverage.freshness.stale, false);
+    assert.deepEqual(body.coverage.warnings, ['safe freshness warning']);
+    assert.equal(JSON.stringify(body).includes('/root/private'), false);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('GET /api/investment-screener/coverage clamps artifact fallback candidate counts to configured universe denominator', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'investment-coverage-over-universe-'));
   const rankedPath = join(dir, 'latest_ranked.json');

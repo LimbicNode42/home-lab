@@ -18,6 +18,7 @@ import sys
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+import urllib.error
 
 # Add investment-screener directory to path so we can import screener
 _SCREENER_DIR = Path(__file__).resolve().parent.parent
@@ -209,6 +210,44 @@ def bhp_timeseries_fixture():
             ]
         }
     }
+
+
+
+
+class TestFetchJsonUrlRetries(unittest.TestCase):
+
+    def test_fetch_json_url_retries_transient_url_errors_then_succeeds(self):
+        attempts = []
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+            def __exit__(self, exc_type, exc, tb):
+                return False
+            def read(self):
+                return b'{"ok": true}'
+
+        def flaky_urlopen(request, timeout):
+            attempts.append(timeout)
+            if len(attempts) < 3:
+                raise urllib.error.URLError("temporary reset")
+            return FakeResponse()
+
+        with patch.object(scr.urllib.request, "urlopen", side_effect=flaky_urlopen), \
+             patch.object(scr.time, "sleep") as sleep:
+            result = scr._fetch_json_url("https://example.test/data.json", timeout=20, max_attempts=3, backoff_seconds=0.5, jitter_seconds=0)
+
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(len(attempts), 3)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [0.5, 1.0])
+
+    def test_fetch_json_url_raises_after_configured_retry_budget(self):
+        with patch.object(scr.urllib.request, "urlopen", side_effect=TimeoutError("too slow")), \
+             patch.object(scr.time, "sleep") as sleep:
+            with self.assertRaises(TimeoutError):
+                scr._fetch_json_url("https://example.test/data.json", timeout=20, max_attempts=2, backoff_seconds=0.25, jitter_seconds=0)
+
+        self.assertEqual(sleep.call_count, 1)
 
 
 # ---------------------------------------------------------------------------

@@ -1424,6 +1424,28 @@ function normalizeCoverageCounts(rawCoverage, fallbackUsable) {
   return { denominator, counts, inconsistent };
 }
 
+
+function sanitizeFreshness(rawFreshness = {}) {
+  if (!rawFreshness || typeof rawFreshness !== 'object' || Array.isArray(rawFreshness)) return null;
+  const thresholds = rawFreshness.stale_thresholds && typeof rawFreshness.stale_thresholds === 'object' && !Array.isArray(rawFreshness.stale_thresholds)
+    ? {
+        max_generated_age_hours: safeNumber(rawFreshness.stale_thresholds.max_generated_age_hours),
+        max_source_age_hours: safeNumber(rawFreshness.stale_thresholds.max_source_age_hours),
+        max_data_as_of_age_days: safeNumber(rawFreshness.stale_thresholds.max_data_as_of_age_days)
+      }
+    : null;
+  return {
+    generated_at: safeIsoDate(rawFreshness.generated_at),
+    generated_age_hours: safeNumber(rawFreshness.generated_age_hours),
+    latest_retrieved_at: safeIsoDate(rawFreshness.latest_retrieved_at),
+    latest_retrieved_age_hours: safeNumber(rawFreshness.latest_retrieved_age_hours),
+    data_as_of: isoDateOnly(rawFreshness.data_as_of),
+    data_as_of_age_days: safeInteger(rawFreshness.data_as_of_age_days),
+    stale: rawFreshness.stale === true,
+    ...(thresholds ? { stale_thresholds: thresholds } : {})
+  };
+}
+
 function finalizeCoverage({ market, mode, rawCoverage = {}, fallbackUsable = 0, denominatorOverride = null, denominatorLabelOverride = null, denominatorStatusOverride = null, window = null, caveats = [], alternateDenominators = [] }) {
   const normalized = normalizeCoverageCounts(rawCoverage, fallbackUsable);
   const denominator = denominatorOverride ?? normalized.denominator;
@@ -1442,6 +1464,8 @@ function finalizeCoverage({ market, mode, rawCoverage = {}, fallbackUsable = 0, 
   const usable = counts.usable ?? 0;
   const percent = denominator && denominator > 0 ? Math.min(100, Number(((usable / denominator) * 100).toFixed(1))) : null;
   const outputCaveats = safeTextArray(caveats.length ? caveats : rawCoverage?.caveats, 8, 240);
+  const freshness = sanitizeFreshness(rawCoverage?.freshness);
+  const warnings = safeTextArray(rawCoverage?.warnings, 12, 240);
   if (coverageInconsistent) outputCaveats.push('Coverage counts exceeded the denominator and were clamped for display.');
   if (mode === 'fixture' && !outputCaveats.some((item) => /fixture|sample/i.test(item))) {
     outputCaveats.push('Coverage is against the fixture sample universe, not all ASX-listed companies.');
@@ -1465,6 +1489,8 @@ function finalizeCoverage({ market, mode, rawCoverage = {}, fallbackUsable = 0, 
     coverage_label: buildCoverageLabel({ usable, denominator, denominatorLabel, mode, percent }),
     window,
     caveats: outputCaveats,
+    ...(freshness ? { freshness } : {}),
+    ...(warnings.length ? { warnings } : {}),
     ...(coverageInconsistent ? { coverage_inconsistent: true } : {}),
     ...(alternateDenominators.length ? { alternate_denominators: alternateDenominators } : {})
   };

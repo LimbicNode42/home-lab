@@ -26,6 +26,7 @@ import datetime
 import hashlib
 import json
 import os
+import random
 import re
 import sys
 import time
@@ -989,18 +990,44 @@ def _cache_path(cache_dir: Optional[Path], url: str) -> Optional[Path]:
     return cache_dir / f"{digest}.json"
 
 
-def _fetch_json_url(url: str, timeout: int, cache_dir: Optional[Path] = None) -> dict:
+def _fetch_json_url(
+    url: str,
+    timeout: int,
+    cache_dir: Optional[Path] = None,
+    max_attempts: int = 3,
+    backoff_seconds: float = 0.75,
+    jitter_seconds: float = 0.25,
+) -> dict:
     path = _cache_path(cache_dir, url)
     if path and path.exists():
         with open(path) as fh:
             return json.load(fh)
+
+    attempts = max(1, int(max_attempts))
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        data = json.loads(resp.read().decode())
-    if path:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, default=str))
-    return data
+    last_exc: Optional[BaseException] = None
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = json.loads(resp.read().decode())
+            if path:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(json.dumps(data, default=str))
+            return data
+        except Exception as exc:
+            last_exc = exc
+            if attempt >= attempts:
+                raise
+            delay = max(0.0, backoff_seconds * (2 ** (attempt - 1)))
+            if jitter_seconds:
+                delay += random.uniform(0, jitter_seconds)
+            print(
+                f"WARNING: provider fetch failed attempt {attempt}/{attempts}; "
+                f"retrying in {delay:.2f}s: {exc}",
+                file=sys.stderr,
+            )
+            time.sleep(delay)
+    raise RuntimeError(f"failed to fetch JSON after {attempts} attempt(s): {last_exc}")
 
 
 def fetch_yahoo_chart_quote(ticker: str, cache_dir: Optional[Path] = None) -> dict:

@@ -101,6 +101,11 @@ function numberOrNull(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function sanitizeTextArray(values, maxItems = 12, maxLength = 240) {
+  if (!Array.isArray(values)) return [];
+  return values.map((value) => sanitizeText(value, null, maxLength)).filter(Boolean).slice(0, maxItems);
+}
+
 function sanitizeCompany(row, fallbackMarket) {
   const ticker = sanitizeText(row?.ticker, null, 32);
   const name = sanitizeText(row?.name, null, 180);
@@ -214,17 +219,77 @@ function normalizeRun(run) {
     scores,
     provenance,
     failures,
-    exclusions
+    exclusions,
+    coverage: run?.coverage && typeof run.coverage === 'object' && !Array.isArray(run.coverage) ? run.coverage : {}
   };
 }
 
-function coverageForRun(run) {
+function parseDateOrNull(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function hoursBetween(later, earlier) {
+  if (!later || !earlier) return null;
+  return Number(((later.getTime() - earlier.getTime()) / 36e5).toFixed(1));
+}
+
+function daysBetween(later, earlier) {
+  if (!later || !earlier) return null;
+  return Math.floor((later.getTime() - earlier.getTime()) / 864e5);
+}
+
+function freshnessForRun(run, now = new Date()) {
+  const latestRetrievedAt = run.provenance.map((row) => row.retrieved_at).filter(Boolean).sort().at(-1) ?? null;
+  const generatedAt = parseDateOrNull(run.generated_at);
+  const latestRetrievedDate = parseDateOrNull(latestRetrievedAt);
+  const dataAsOfDate = parseDateOrNull(run.data_as_of);
+  const generatedAgeHours = hoursBetween(now, generatedAt);
+  const latestRetrievedAgeHours = hoursBetween(now, latestRetrievedDate);
+  const dataAsOfAgeDays = daysBetween(now, dataAsOfDate);
+  const maxGeneratedAgeHours = Number.isFinite(Number(run.coverage?.max_generated_age_hours)) ? Number(run.coverage.max_generated_age_hours) : 26;
+  const maxSourceAgeHours = Number.isFinite(Number(run.coverage?.max_source_age_hours)) ? Number(run.coverage.max_source_age_hours) : 26;
+  const maxDataAsOfAgeDays = Number.isFinite(Number(run.coverage?.max_data_as_of_age_days)) ? Number(run.coverage.max_data_as_of_age_days) : 370;
+  const warnings = [];
+  if (generatedAgeHours !== null && generatedAgeHours > maxGeneratedAgeHours) warnings.push(`Generated artifact is ${generatedAgeHours}h old, older than ${maxGeneratedAgeHours}h freshness threshold.`);
+  if (latestRetrievedAgeHours !== null && latestRetrievedAgeHours > maxSourceAgeHours) warnings.push(`Latest provider retrieval is ${latestRetrievedAgeHours}h old, older than ${maxSourceAgeHours}h freshness threshold.`);
+  if (dataAsOfAgeDays !== null && dataAsOfAgeDays > maxDataAsOfAgeDays) warnings.push(`Source data_as_of is ${dataAsOfAgeDays}d old, older than ${maxDataAsOfAgeDays}d freshness threshold.`);
+  if (!latestRetrievedAt && !run.fixture) warnings.push('No provider retrieved_at timestamp is available for this non-fixture run.');
+  return {
+    generated_at: run.generated_at,
+    generated_age_hours: generatedAgeHours,
+    latest_retrieved_at: latestRetrievedAt,
+    latest_retrieved_age_hours: latestRetrievedAgeHours,
+    data_as_of: run.data_as_of,
+    data_as_of_age_days: dataAsOfAgeDays,
+    stale: warnings.length > 0,
+    stale_thresholds: {
+      max_generated_age_hours: maxGeneratedAgeHours,
+      max_source_age_hours: maxSourceAgeHours,
+      max_data_as_of_age_days: maxDataAsOfAgeDays
+    }
+  };
+}
+
+function coverageForRun(run, now = new Date()) {
   const supplied = run.coverage && typeof run.coverage === 'object' ? run.coverage : {};
   const usable = run.scores.filter((score) => !score.excluded && score.composite_score !== null).length;
   const scored = run.scores.filter((score) => score.composite_score !== null).length;
   const excluded = run.scores.filter((score) => score.excluded).length;
   const denominator = run.universe.count || run.companies.length;
   const status = sanitizeText(supplied.denominator_status, null, 80) ?? (run.fixture ? 'sample' : (run.universe.complete_exchange_listing ? 'complete_exchange_listing' : 'known_sample_universe'));
+  const freshness = freshnessForRun(run, now);
+  const warnings = [...(Array.isArray(supplied.warnings) ? sanitizeTextArray(supplied.warnings, 12, 240) : [])];
+  if (freshness.stale) {
+    const generatedAge = freshness.generated_age_hours;
+    if (generatedAge !== null && generatedAge > freshness.stale_thresholds.max_generated_age_hours) warnings.push(`Generated artifact is ${generatedAge}h old, older than ${freshness.stale_thresholds.max_generated_age_hours}h freshness threshold.`);
+    const sourceAge = freshness.latest_retrieved_age_hours;
+    if (sourceAge !== null && sourceAge > freshness.stale_thresholds.max_source_age_hours) warnings.push(`Latest provider retrieval is ${sourceAge}h old, older than ${freshness.stale_thresholds.max_source_age_hours}h freshness threshold.`);
+    const dataAge = freshness.data_as_of_age_days;
+    if (dataAge !== null && dataAge > freshness.stale_thresholds.max_data_as_of_age_days) warnings.push(`Source data_as_of is ${dataAge}d old, older than ${freshness.stale_thresholds.max_data_as_of_age_days}d freshness threshold.`);
+    if (!freshness.latest_retrieved_at && !run.fixture) warnings.push('No provider retrieved_at timestamp is available for this non-fixture run.');
+  }
   return {
     denominator,
     denominator_label: sanitizeText(supplied.denominator_label, run.universe.source, 240),
@@ -234,9 +299,11 @@ function coverageForRun(run) {
     usable,
     excluded,
     failed: run.failures.length,
-    stale: Number.isInteger(Number(supplied.stale)) ? Number(supplied.stale) : 0,
+    stale: freshness.stale,
     missing_required_fields: run.exclusions.length,
     percent: denominator > 0 ? Number(((usable / denominator) * 100).toFixed(1)) : null,
+    freshness,
+    warnings,
     caveats: run.fixture
       ? ['Fixture/sample data only — not a real ASX scrape/backfill.']
       : ['Coverage is for the configured universe, not necessarily the full exchange.']
@@ -330,7 +397,7 @@ export async function publishInvestmentScreenerRun({ dataRoot, run, now = new Da
   await mkdir(stageDir, { recursive: true });
 
   try {
-    const coverage = coverageForRun(normalized);
+    const coverage = coverageForRun(normalized, now);
     const ranked = rankedCandidates(normalized);
     const scoreRows = normalized.scores.map((score) => ({ ...score, sub_scores_json: JSON.stringify(score.sub_scores) }));
     const dashboard = {
@@ -347,7 +414,7 @@ export async function publishInvestmentScreenerRun({ dataRoot, run, now = new Da
         source_families: [...new Set(normalized.provenance.map((row) => row.source_family).filter(Boolean))],
         universe_source: normalized.universe.source,
         universe_version: normalized.universe.version,
-        latest_retrieved_at: normalized.provenance.map((row) => row.retrieved_at).filter(Boolean).sort().at(-1) ?? null,
+        latest_retrieved_at: coverage.freshness.latest_retrieved_at,
         latest_hydrated_at: normalized.completed_at,
         data_as_of: normalized.data_as_of,
         provenance_rows: normalized.provenance.length,
@@ -421,7 +488,7 @@ export async function publishInvestmentScreenerRun({ dataRoot, run, now = new Da
       universe: normalized.universe,
       coverage,
       provenance_sources: [...new Set(normalized.provenance.map((row) => row.source_family).filter(Boolean))],
-      latest_retrieved_at: normalized.provenance.map((row) => row.retrieved_at).filter(Boolean).sort().at(-1) ?? null,
+      latest_retrieved_at: coverage.freshness.latest_retrieved_at,
       artifacts,
       relative_manifest_path: `runs/market=${normalized.market}/source=${normalized.source}/mode=${normalized.mode}/run_date=${runDate}/${runId}/manifest.json`
     };
