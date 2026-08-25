@@ -103,13 +103,20 @@ const DEFAULT_REPO_DOCS_ROOT = HOME_LAB_ROOT;
 const GITHUB_BASE = 'https://github.com/LimbicNode42/home-lab/blob/master';
 const DEFAULT_DOCS_MANIFEST = [
   { id: 'dashboard-readme', title: 'Personal Dashboard README', category: 'Dashboard', path: 'services/personal-dashboard/README.md' },
+  { id: 'dashboard-overview', title: 'Dashboard Overview', category: 'Dashboard', path: 'services/personal-dashboard/docs/products/dashboard/overview.md' },
+  { id: 'dashboard-documentation-panel', title: 'Documentation Panel Guide', category: 'Dashboard', path: 'services/personal-dashboard/docs/products/dashboard/documentation-panel.md' },
   { id: 'home-lab-service-catalog', title: 'Home Lab Service Catalog', category: 'Home Lab', path: 'services/personal-dashboard/docs/products/home-lab/service-catalog.md' },
+  { id: 'blog-drafts-guide', title: 'Blog / Drafts Guide', category: 'Blog / Drafts', path: 'services/personal-dashboard/docs/products/blog-drafts/README.md' },
+  { id: 'reports-homelab-health', title: 'Homelab Health Report Guide', category: 'Reports', path: 'services/personal-dashboard/docs/products/reports/homelab-health.md' },
+  { id: 'reports-finnick', title: 'Finnick Report Guide', category: 'Reports', path: 'services/personal-dashboard/docs/products/reports/finnick.md' },
+  { id: 'diary-goals-guide', title: 'Diary & Goals Guide', category: 'Diary & Goals', path: 'services/personal-dashboard/docs/products/diary-goals/README.md' },
   { id: 'investment-screener-overview', title: 'Investment Screener Product Guide', category: 'Investment Screener', path: 'services/personal-dashboard/docs/products/investment-screener/README.md' },
   { id: 'investment-screener-cli-generator', title: 'Investment Screener CLI and Generator', category: 'Investment Screener', path: 'services/personal-dashboard/docs/products/investment-screener/cli-generator.md' },
   { id: 'investment-screener-dashboard-panel', title: 'Investment Screener Dashboard Panel', category: 'Investment Screener', path: 'services/personal-dashboard/docs/products/investment-screener/dashboard-panel.md' },
   { id: 'investment-screener-interpreting-results', title: 'Interpreting Investment Screener Results', category: 'Investment Screener', path: 'services/personal-dashboard/docs/products/investment-screener/interpreting-results.md' },
   { id: 'investment-screener-historical-pipeline', title: 'ASX Screener Historical Pipeline Architecture', category: 'Investment Screener', path: 'services/personal-dashboard/docs/products/investment-screener/historical-pipeline-architecture.md' },
   { id: 'investment-screener-operations-limitations', title: 'Investment Screener Operations and Limitations', category: 'Investment Screener', path: 'services/personal-dashboard/docs/products/investment-screener/operations-limitations.md' },
+  { id: 'investment-screener-data-source-coverage', title: 'Investment Screener Data Source and Coverage', category: 'Investment Screener', path: 'services/personal-dashboard/docs/products/investment-screener/data-source-coverage.md' },
   { id: 'service-catalog', title: 'Service Catalog', category: 'Operations', path: 'docs/service-catalog.md' },
   { id: 'backup-coverage', title: 'Backup Coverage Matrix', category: 'Operations', path: 'docs/backup-coverage-matrix.md' }
 ];
