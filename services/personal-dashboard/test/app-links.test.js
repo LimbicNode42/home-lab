@@ -161,3 +161,13 @@ test('dashboard investment screener renders fixture and degraded coverage caveat
   assert.match(appSource, /Postgres history is unavailable/);
   assert.match(appSource, /alternate_denominators/);
 });
+
+test('dashboard investment screener links candidates to company fundamentals detail states', async () => {
+  const indexSource = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.match(indexSource, /id="investment-company-detail"/);
+  assert.match(appSource, /\/api\/investment-screener\/company\/\$\{encodeURIComponent\(ticker\)\}/);
+  assert.match(appSource, /renderInvestmentCompanyDetail/);
+  assert.match(appSource, /Unavailable from current source/);
+  assert.match(appSource, /Missing in latest source/);
+  assert.match(appSource, /Fundamentals/);
+});

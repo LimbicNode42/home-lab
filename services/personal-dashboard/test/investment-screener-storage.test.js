@@ -12,6 +12,7 @@ const execFileAsync = promisify(execFile);
 import {
   buildInvestmentScreenerDuckDbSummary,
   publishInvestmentScreenerRun,
+  readInvestmentScreenerCompanyDetail,
   readLatestInvestmentScreenerManifest
 } from '../src/investment-screener-storage.js';
 
@@ -70,6 +71,9 @@ const nonFixtureRun = {
   ],
   observations: [
     { ticker: 'BHP.AX', field_name: 'revenue', value: 56642000000, source_family: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:30.000Z', data_as_of: '2026-06-30' },
+    { ticker: 'BHP.AX', field_name: 'net_income', value: 7810000000, source_family: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:31.000Z', data_as_of: '2026-06-30' },
+    { ticker: 'BHP.AX', field_name: 'market_cap', value: 225000000000, source_family: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:32.000Z', data_as_of: '2026-08-23' },
+    { ticker: 'BHP.AX', field_name: 'dividend_yield', value: null, source_family: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:33.000Z', data_as_of: '2026-08-23' },
     { ticker: 'CSL.AX', field_name: 'revenue', value: 16000000000, source_family: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:35.000Z', data_as_of: '2026-06-30' }
   ],
   scores: [
@@ -79,6 +83,8 @@ const nonFixtureRun = {
   ],
   provenance: [
     { ticker: 'BHP.AX', field_name: 'revenue', source_family: 'yahoo-finance', provider: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:30.000Z', data_as_of: '2026-06-30' },
+    { ticker: 'BHP.AX', field_name: 'net_income', source_family: 'yahoo-finance', provider: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:31.000Z', data_as_of: '2026-06-30' },
+    { ticker: 'BHP.AX', field_name: 'market_cap', source_family: 'yahoo-finance', provider: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:32.000Z', data_as_of: '2026-08-23' },
     { ticker: 'CSL.AX', field_name: 'revenue', source_family: 'yahoo-finance', provider: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:35.000Z', data_as_of: '2026-06-30' }
   ],
   failures: [{ ticker: 'CBA.AX', reason: 'missing required valuation fields', provider: 'yahoo-finance', source_family: 'yahoo-finance', recoverable: true }],
@@ -131,6 +137,37 @@ test('publishInvestmentScreenerRun writes immutable NAS-style artifacts, manifes
     const latestCoverage = JSON.parse(await readFile(join(dataRoot, 'investment-screener', 'exports', 'dashboard', 'market=ASX', 'latest_coverage.json'), 'utf8'));
     assert.equal(latestCoverage.source, 'published-artifact');
     assert.equal(latestCoverage.coverage.denominator, 3);
+  } finally {
+    await rm(dataRoot, { recursive: true, force: true });
+  }
+});
+
+test('readInvestmentScreenerCompanyDetail maps latest file-first fundamentals without fabricating missing values', async () => {
+  const dataRoot = await mkdtemp(join(tmpdir(), 'screener-company-detail-'));
+  try {
+    await publishInvestmentScreenerRun({ dataRoot, run: nonFixtureRun, now: new Date('2026-08-23T10:02:00.000Z') });
+
+    const detail = await readInvestmentScreenerCompanyDetail({ dataRoot, ticker: 'bhp.ax', market: 'ASX', source: 'yahoo-finance' });
+
+    assert.equal(detail.ticker, 'BHP.AX');
+    assert.equal(detail.identity.name, 'BHP Group');
+    assert.deepEqual(detail.identity.unavailable, ['exchange', 'region', 'sector', 'industry']);
+    assert.equal(detail.valuation.market_cap.value, 225000000000);
+    assert.equal(detail.statements_summary.revenue.value, 56642000000);
+    assert.equal(detail.statements_summary.net_income.value, 7810000000);
+    assert.equal(detail.dividends.dividend_yield.state, 'missing');
+    assert.equal(detail.dividends.dividend_yield.value, null);
+    assert.equal(detail.earnings.eps.state, 'unavailable');
+    assert.ok(detail.unavailable_data.some((item) => item.field === 'sector' && item.state === 'unavailable'));
+    assert.equal(detail.freshness.latest_retrieved_at, '2026-08-23T10:00:32.000Z');
+    assert.equal(detail.source_notes.providers.includes('yahoo-finance'), true);
+    assert.equal(JSON.stringify(detail).includes(dataRoot), false);
+    assert.equal(JSON.stringify(detail).includes('DATABASE_URL'), false);
+
+    await assert.rejects(
+      () => readInvestmentScreenerCompanyDetail({ dataRoot, ticker: 'UNKNOWN.AX', market: 'ASX', source: 'yahoo-finance' }),
+      /company not found/i
+    );
   } finally {
     await rm(dataRoot, { recursive: true, force: true });
   }

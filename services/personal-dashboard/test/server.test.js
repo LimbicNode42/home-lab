@@ -966,6 +966,61 @@ test('GET /api/investment-screener/ranked can query NAS-backed DuckDB screener a
   }
 });
 
+test('GET /api/investment-screener/company/:ticker returns sanitized file-first fundamentals detail', async () => {
+  const { publishInvestmentScreenerRun } = await import('../src/investment-screener-storage.js');
+  const dataRoot = await mkdtemp(join(tmpdir(), 'investment-company-api-'));
+  await publishInvestmentScreenerRun({
+    dataRoot,
+    run: {
+      market: 'ASX',
+      source: 'yahoo-finance',
+      mode: 'asx-yahoo-timeseries',
+      started_at: '2026-08-23T09:00:00.000Z',
+      completed_at: '2026-08-23T09:01:00.000Z',
+      data_as_of: '2026-06-30',
+      universe: { source: 'configured ASX bootstrap watchlist', count: 1, market: 'ASX', complete_exchange_listing: false },
+      companies: [{ ticker: 'BHP.AX', name: 'BHP Group', market: 'ASX', currency: 'AUD' }],
+      scores: [{ rank: 1, ticker: 'BHP.AX', name: 'BHP Group', market: 'ASX', currency: 'AUD', composite_score: 91.4, sub_scores: { quality: 22, valuation: 19 }, excluded: false }],
+      observations: [
+        { ticker: 'BHP.AX', field_name: 'revenue', value: 56642000000, source_family: 'yahoo-finance', retrieved_at: '2026-08-23T09:00:30.000Z', data_as_of: '2026-06-30' },
+        { ticker: 'BHP.AX', field_name: 'market_cap', value: 225000000000, source_family: 'yahoo-finance', retrieved_at: '2026-08-23T09:00:31.000Z', data_as_of: '2026-08-23' }
+      ],
+      provenance: [
+        { ticker: 'BHP.AX', field_name: 'revenue', source_family: 'yahoo-finance', provider: 'yahoo-finance', retrieved_at: '2026-08-23T09:00:30.000Z', data_as_of: '2026-06-30' },
+        { ticker: 'BHP.AX', field_name: 'market_cap', source_family: 'yahoo-finance', provider: 'yahoo-finance', retrieved_at: '2026-08-23T09:00:31.000Z', data_as_of: '2026-08-23' }
+      ]
+    }
+  });
+
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerRankedFile: null, investmentScreenerDataRoot: dataRoot });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/investment-screener/company/BHP.AX?market=ASX`);
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+
+    assert.equal(response.status, 200);
+    assert.equal(body.ticker, 'BHP.AX');
+    assert.equal(body.identity.name, 'BHP Group');
+    assert.equal(body.valuation.market_cap.value, 225000000000);
+    assert.equal(body.statements_summary.revenue.value, 56642000000);
+    assert.equal(body.quality_growth_safety.quality.value, 22);
+    assert.equal(body.identity.unavailable.includes('sector'), true);
+    assert.equal(body.earnings.eps.state, 'unavailable');
+    assert.equal(serialized.includes(dataRoot), false);
+    assert.equal(serialized.includes('/root/'), false);
+
+    const missing = await fetch(`${server.baseUrl}/api/investment-screener/company/NOPE.AX?market=ASX`);
+    assert.equal(missing.status, 404);
+    const invalid = await fetch(`${server.baseUrl}/api/investment-screener/company/%2Froot%2Fsecret?market=ASX`);
+    assert.equal(invalid.status, 400);
+  } finally {
+    await server.close();
+    await rm(dataRoot, { recursive: true, force: true });
+  }
+});
+
 test('GET /api/investment-screener/ranked reads DuckDB-backed artifacts without writing to the canonical screener tree', async () => {
   const { publishInvestmentScreenerRun } = await import('../src/investment-screener-storage.js');
   const dataRoot = await mkdtemp(join(tmpdir(), 'investment-api-readonly-duckdb-'));

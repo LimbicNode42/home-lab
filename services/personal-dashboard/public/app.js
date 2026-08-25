@@ -15,6 +15,7 @@ const homelabHealthBadge = document.querySelector('#homelab-health-badge');
 const homelabHealthFreshness = document.querySelector('#homelab-health-freshness');
 const refreshHomelabHealthButton = document.querySelector('#refresh-homelab-health');
 const investmentScreenerContent = document.querySelector('#investment-screener-content');
+const investmentCompanyDetail = document.querySelector('#investment-company-detail');
 const refreshInvestmentScreenerButton = document.querySelector('#refresh-investment-screener');
 const investmentScreenerControls = document.querySelector('#investment-screener-controls');
 const investmentSearchFilter = document.querySelector('#investment-search-filter');
@@ -655,6 +656,14 @@ function investmentScreenerRequestPath() {
   return query ? `/api/investment-screener/ranked?${query}` : '/api/investment-screener/ranked';
 }
 
+function investmentCompanyDetailRequestPath(ticker) {
+  const searchParams = new URLSearchParams();
+  const market = investmentMarketFilter?.value?.trim();
+  if (market) searchParams.set('market', market);
+  const query = searchParams.toString();
+  return `/api/investment-screener/company/${encodeURIComponent(ticker)}${query ? `?${query}` : ''}`;
+}
+
 function investmentSuggestionLimit(payload) {
   const serverLimit = payload?.pagination?.limit ?? payload?.applied_filters?.limit ?? payload?.applied_filters?.topN;
   const controlLimit = Number(investmentTopNFilter?.value ?? 6);
@@ -812,11 +821,14 @@ function renderInvestmentCandidate(candidate) {
   const meta = [candidate.market, candidate.currency].filter(Boolean).join(' · ');
   const riskFlags = Array.isArray(candidate.risk_flags) ? candidate.risk_flags.slice(0, 3) : [];
   const caveats = Array.isArray(candidate.caveats) ? candidate.caveats.slice(0, 2) : [];
+  const detailButton = el('button', { className: 'investment-detail-button', type: 'button', text: 'Fundamentals' });
+  detailButton.addEventListener('click', () => loadInvestmentCompanyDetail(candidate.ticker));
   const children = [
     el('div', { className: 'investment-candidate-heading' }, [
       el('span', { className: 'badge neutral', text: `#${candidate.rank ?? '?'}` }),
       el('strong', { text: candidate.ticker ?? 'UNKNOWN' }),
-      candidate.score == null ? el('span', { className: 'muted', text: 'No score' }) : el('span', { className: 'badge up', text: String(candidate.score) })
+      candidate.score == null ? el('span', { className: 'muted', text: 'No score' }) : el('span', { className: 'badge up', text: String(candidate.score) }),
+      detailButton
     ]),
     el('div', { className: 'investment-candidate-name', text: candidate.name ?? 'Unknown candidate' })
   ];
@@ -831,6 +843,72 @@ function renderInvestmentCandidate(candidate) {
     children.push(el('p', { className: 'investment-provenance muted', text: `Provenance: ${candidate.sanitized_provenance_summary}` }));
   }
   return el('article', { className: 'investment-candidate' }, children);
+}
+
+function formatInvestmentField(field) {
+  if (!field || typeof field !== 'object') return 'Unavailable from current source';
+  if (field.state === 'present') return field.value == null ? 'Present' : String(field.value);
+  if (field.state === 'missing') return 'Missing in latest source';
+  return 'Unavailable from current source';
+}
+
+function renderInvestmentFieldList(title, fields) {
+  const rows = Object.values(fields ?? {}).slice(0, 12).map((field) => el('li', {}, [
+    el('span', { text: `${field.label ?? field.field}: ` }),
+    el('strong', { text: formatInvestmentField(field) }),
+    field.data_as_of ? el('span', { className: 'muted', text: ` · data as of ${field.data_as_of}` }) : document.createTextNode('')
+  ]));
+  return el('section', { className: 'investment-detail-section' }, [
+    el('h4', { text: title }),
+    rows.length ? el('ul', { className: 'investment-detail-fields' }, rows) : el('p', { className: 'muted', text: 'Unavailable from current source' })
+  ]);
+}
+
+function renderInvestmentCompanyDetail(detail) {
+  if (!investmentCompanyDetail) return;
+  const identity = detail.identity ?? {};
+  const sourceNotes = detail.source_notes ?? {};
+  const unavailable = Array.isArray(detail.unavailable_data) ? detail.unavailable_data.slice(0, 8) : [];
+  const sourceLine = [
+    detail.mode,
+    Array.isArray(sourceNotes.providers) && sourceNotes.providers.length ? sourceNotes.providers.join(', ') : null,
+    detail.freshness?.latest_retrieved_at ? `retrieved ${formatDateTime(detail.freshness.latest_retrieved_at)}` : null
+  ].filter(Boolean).join(' · ');
+  const children = [
+    el('div', { className: 'investment-detail-heading' }, [
+      el('h3', { text: `${identity.ticker ?? detail.ticker ?? 'Company'} fundamentals` }),
+      el('p', { className: 'muted', text: [identity.name, identity.market, identity.currency].filter(Boolean).join(' · ') || 'Identity unavailable from current source' })
+    ]),
+    el('p', { className: 'muted', text: sourceLine || 'Source freshness unavailable' }),
+    renderInvestmentFieldList('Valuation', detail.valuation),
+    renderInvestmentFieldList('Quality, growth, and safety', detail.quality_growth_safety),
+    renderInvestmentFieldList('Statements summary', detail.statements_summary),
+    renderInvestmentFieldList('Dividends', detail.dividends),
+    renderInvestmentFieldList('Earnings', detail.earnings),
+    renderInvestmentFieldList('Balance and cashflow summary', detail.balance_cashflow_summary)
+  ];
+  if (unavailable.length) {
+    children.push(el('section', { className: 'investment-detail-section' }, [
+      el('h4', { text: 'Unavailable data' }),
+      el('ul', { className: 'investment-detail-unavailable muted' }, unavailable.map((item) => el('li', { text: `${item.label ?? item.field}: ${item.state === 'missing' ? 'Missing in latest source' : 'Unavailable from current source'}` })))
+    ]));
+  }
+  investmentCompanyDetail.replaceChildren(el('article', { className: 'investment-company-detail-card' }, children));
+}
+
+async function loadInvestmentCompanyDetail(ticker) {
+  if (!investmentCompanyDetail || !ticker) return;
+  investmentCompanyDetail.replaceChildren(el('p', { className: 'muted', text: `Loading fundamentals for ${ticker}…` }));
+  try {
+    renderInvestmentCompanyDetail(await getJson(investmentCompanyDetailRequestPath(ticker)));
+  } catch (error) {
+    const msg = error.message.includes('404')
+      ? 'No company fundamentals detail is available for that ticker in the latest screener artifacts.'
+      : error.message.includes('503')
+        ? 'Company fundamentals detail is not configured on this instance.'
+        : `Company fundamentals unavailable: ${error.message}`;
+    investmentCompanyDetail.replaceChildren(el('p', { className: 'error', text: msg }));
+  }
 }
 
 function formatDateTime(isoString) {

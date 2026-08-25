@@ -536,6 +536,244 @@ export async function readLatestInvestmentScreenerManifest({ dataRoot, market = 
   return JSON.parse(await readFile(latestPath, 'utf8'));
 }
 
+function normalizeTicker(value) {
+  const ticker = sanitizeText(value, null, 32)?.toUpperCase();
+  if (!ticker || !/^[A-Z0-9][A-Z0-9._-]{0,31}$/.test(ticker)) {
+    const error = new Error('invalid company ticker');
+    error.code = 'invalid_ticker';
+    throw error;
+  }
+  return ticker;
+}
+
+function parseJsonlRows(content) {
+  return String(content)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
+
+async function readManifestArtifactRows({ dataRoot, manifest, runDir, artifactName }) {
+  const artifact = manifest?.artifacts?.[artifactName];
+  if (!artifact?.path) return [];
+  const artifactPath = join(runDir, artifact.path);
+  const relativePath = relative(join(dataRoot, ROOT_DIR), artifactPath);
+  if (relativePath.startsWith('..') || relativePath.startsWith('/')) throw new Error('artifact path escaped screener root');
+  return parseJsonlRows(await readFile(artifactPath, 'utf8'));
+}
+
+function parsedObservationValue(row) {
+  if (Object.prototype.hasOwnProperty.call(row, 'value')) return row.value;
+  if (!Object.prototype.hasOwnProperty.call(row, 'value_json')) return null;
+  try {
+    return JSON.parse(row.value_json);
+  } catch {
+    return null;
+  }
+}
+
+function observationMap(rows, ticker) {
+  const wanted = normalizeTicker(ticker);
+  const byField = new Map();
+  for (const row of rows) {
+    if (normalizeTicker(row?.ticker ?? 'UNKNOWN') !== wanted) continue;
+    const field = sanitizeText(row?.field_name, null, 80);
+    if (!field) continue;
+    byField.set(field, {
+      field,
+      value: parsedObservationValue(row),
+      source_family: sanitizeText(row?.source_family, null, 80),
+      retrieved_at: row?.retrieved_at ? isoDate(row.retrieved_at, 'retrieved_at') : null,
+      data_as_of: sanitizeText(row?.data_as_of, null, 32)
+    });
+  }
+  return byField;
+}
+
+function provenanceMap(rows, ticker) {
+  const wanted = normalizeTicker(ticker);
+  const byField = new Map();
+  for (const row of rows) {
+    if (normalizeTicker(row?.ticker ?? 'UNKNOWN') !== wanted) continue;
+    const field = sanitizeText(row?.field_name, null, 80);
+    if (!field) continue;
+    byField.set(field, {
+      field,
+      source_family: sanitizeText(row?.source_family, null, 80),
+      provider: sanitizeText(row?.provider, null, 80),
+      retrieved_at: row?.retrieved_at ? isoDate(row.retrieved_at, 'retrieved_at') : null,
+      data_as_of: sanitizeText(row?.data_as_of, null, 32)
+    });
+  }
+  return byField;
+}
+
+function valueState(value, hasEvidence) {
+  if (!hasEvidence) return 'unavailable';
+  if (value === null || value === undefined || value === '') return 'missing';
+  return 'present';
+}
+
+function observedField(field, label, observations, provenance, unsupportedReason = null) {
+  const observation = observations.get(field);
+  const source = provenance.get(field) ?? null;
+  const state = unsupportedReason ? 'unavailable' : valueState(observation?.value, Boolean(observation));
+  return {
+    field,
+    label,
+    state,
+    value: state === 'present' ? observation.value : null,
+    source_family: source?.source_family ?? observation?.source_family ?? null,
+    retrieved_at: source?.retrieved_at ?? observation?.retrieved_at ?? null,
+    data_as_of: source?.data_as_of ?? observation?.data_as_of ?? null,
+    ...(unsupportedReason && state === 'unavailable' ? { note: unsupportedReason } : {})
+  };
+}
+
+function scoreField(field, label, score) {
+  const raw = field === 'composite_score' ? score?.composite_score : score?.sub_scores?.[field];
+  const value = numberOrNull(raw);
+  return { field, label, state: value === null ? 'unavailable' : 'present', value };
+}
+
+function latestIso(values) {
+  return values.filter(Boolean).sort().at(-1) ?? null;
+}
+
+function unavailableRows(sections) {
+  const rows = [];
+  for (const section of sections) {
+    for (const field of Object.values(section)) {
+      if (field && typeof field === 'object' && ['missing', 'unavailable'].includes(field.state)) {
+        rows.push({ field: field.field, label: field.label, state: field.state, note: field.note ?? (field.state === 'missing' ? 'Missing in latest source.' : 'Unavailable from current source.') });
+      }
+    }
+  }
+  return rows;
+}
+
+export async function readInvestmentScreenerCompanyDetail({ dataRoot, ticker, market = 'ASX', source = 'yahoo-finance' }) {
+  if (!dataRoot) {
+    const error = new Error('investment screener data root is not configured');
+    error.code = 'not_configured';
+    throw error;
+  }
+  const wantedTicker = normalizeTicker(ticker);
+  const safeMarket = assertSafeSlug(String(market).toUpperCase(), 'market');
+  const safeSource = assertSafeSlug(String(source), 'source');
+  const latest = await readLatestInvestmentScreenerManifest({ dataRoot, market: safeMarket, source: safeSource });
+  const manifestPath = join(dataRoot, ROOT_DIR, latest.run_manifest);
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  const runDir = dirname(manifestPath);
+  const [companies, scores, observationsRows, provenanceRows] = await Promise.all([
+    readManifestArtifactRows({ dataRoot, manifest, runDir, artifactName: 'companies_jsonl' }),
+    readManifestArtifactRows({ dataRoot, manifest, runDir, artifactName: 'scores_jsonl' }),
+    readManifestArtifactRows({ dataRoot, manifest, runDir, artifactName: 'observations_jsonl' }),
+    readManifestArtifactRows({ dataRoot, manifest, runDir, artifactName: 'provenance_jsonl' })
+  ]);
+  const company = companies.find((row) => normalizeTicker(row?.ticker ?? 'UNKNOWN') === wantedTicker);
+  const score = scores.find((row) => normalizeTicker(row?.ticker ?? 'UNKNOWN') === wantedTicker) ?? null;
+  if (!company && !score) {
+    const error = new Error('company not found');
+    error.code = 'not_found';
+    throw error;
+  }
+  const observations = observationMap(observationsRows, wantedTicker);
+  const provenance = provenanceMap(provenanceRows, wantedTicker);
+  const unsupported = 'Unavailable from current source; the current sanitized ASX/Yahoo export does not include this field.';
+  const valuation = {
+    market_cap: observedField('market_cap', 'Market cap', observations, provenance),
+    pe_ratio: observedField('pe_ratio', 'P/E ratio', observations, provenance),
+    price_sales: observedField('price_sales', 'Price / sales', observations, provenance)
+  };
+  const qualityGrowthSafety = {
+    composite_score: scoreField('composite_score', 'Composite score', score),
+    quality: scoreField('quality', 'Quality score', score),
+    valuation: scoreField('valuation', 'Valuation score', score),
+    growth: scoreField('growth', 'Growth score', score),
+    net_margin: observedField('net_margin', 'Net margin', observations, provenance),
+    roe: observedField('roe', 'Return on equity', observations, provenance),
+    fcf: observedField('free_cash_flow', 'Free cash flow', observations, provenance),
+    fcf_margin: observedField('fcf_margin', 'FCF margin', observations, provenance),
+    revenue_growth: observedField('revenue_growth', 'Revenue growth', observations, provenance),
+    current_ratio: observedField('current_ratio', 'Current ratio', observations, provenance),
+    debt_assets: observedField('debt_assets', 'Debt / assets', observations, provenance)
+  };
+  const statements = {
+    revenue: observedField('revenue', 'Revenue', observations, provenance),
+    prior_revenue: observedField('prior_revenue', 'Prior revenue', observations, provenance),
+    net_income: observedField('net_income', 'Net income', observations, provenance),
+    operating_cash_flow: observedField('operating_cash_flow', 'Operating cash flow', observations, provenance),
+    capital_expenditure: observedField('capital_expenditure', 'Capital expenditure', observations, provenance),
+    total_assets: observedField('total_assets', 'Total assets', observations, provenance),
+    current_assets: observedField('current_assets', 'Current assets', observations, provenance),
+    total_liabilities: observedField('total_liabilities', 'Total liabilities', observations, provenance),
+    current_liabilities: observedField('current_liabilities', 'Current liabilities', observations, provenance)
+  };
+  const dividends = {
+    dividend_yield: observedField('dividend_yield', 'Dividend yield', observations, provenance),
+    dividend_per_share: observedField('dividend_per_share', 'Dividend per share', observations, provenance)
+  };
+  const earnings = {
+    eps: observedField('eps', 'Earnings per share', observations, provenance, unsupported),
+    earnings_date: observedField('earnings_date', 'Next earnings date', observations, provenance, unsupported)
+  };
+  const balanceCashflow = {
+    total_assets: statements.total_assets,
+    current_assets: statements.current_assets,
+    total_liabilities: statements.total_liabilities,
+    current_liabilities: statements.current_liabilities,
+    operating_cash_flow: statements.operating_cash_flow,
+    capital_expenditure: statements.capital_expenditure
+  };
+  const provenanceValues = [...provenance.values()];
+  const providerNames = [...new Set(provenanceValues.map((row) => row.provider).filter(Boolean))];
+  const sourceFamilies = [...new Set(provenanceValues.map((row) => row.source_family).filter(Boolean))];
+  const identityUnavailable = ['exchange', 'region', 'sector', 'industry'];
+  return {
+    schema_version: 'investment-screener-company-detail/v1',
+    ticker: wantedTicker,
+    market: safeMarket,
+    run_id: sanitizeText(manifest.run_id, null, 160),
+    mode: sanitizeText(manifest.mode, 'unknown', 80),
+    identity: {
+      ticker: wantedTicker,
+      name: sanitizeText(company?.name ?? score?.name, wantedTicker, 180),
+      market: sanitizeText(company?.market ?? score?.market, safeMarket, 32),
+      exchange: null,
+      region: null,
+      sector: null,
+      industry: null,
+      currency: sanitizeText(company?.currency ?? score?.currency, null, 16),
+      unavailable: identityUnavailable
+    },
+    valuation,
+    quality_growth_safety: qualityGrowthSafety,
+    statements_summary: statements,
+    dividends,
+    earnings,
+    balance_cashflow_summary: balanceCashflow,
+    freshness: {
+      generated_at: sanitizeText(manifest.generated_at, null, 80),
+      data_as_of: sanitizeText(manifest.data_as_of, null, 32),
+      latest_retrieved_at: latestIso(provenanceValues.map((row) => row.retrieved_at))
+    },
+    source_notes: {
+      providers: providerNames,
+      source_families: sourceFamilies,
+      caveats: manifest.fixture
+        ? ['Fixture/sample data only — not a real ASX scrape/backfill.']
+        : ['Yahoo Finance public endpoints are unofficial bootstrap evidence; verify against ASX filings before acting.'],
+      provenance_rows: provenanceValues.length
+    },
+    unavailable_data: [
+      ...identityUnavailable.map((field) => ({ field, label: field.replaceAll('_', ' '), state: 'unavailable', note: unsupported })),
+      ...unavailableRows([valuation, qualityGrowthSafety, statements, dividends, earnings])
+    ]
+  };
+}
+
 async function duckRows(connection, sql) {
   const reader = await connection.runAndReadAll(sql);
   return reader.getRowObjectsJS();
