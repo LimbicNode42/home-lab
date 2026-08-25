@@ -8,7 +8,7 @@ import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 import { loadConfig, toPublicConfig } from './config.js';
-import { buildInvestmentScreenerDuckDbSummary } from './investment-screener-storage.js';
+import { buildInvestmentScreenerDuckDbSummary, readInvestmentScreenerCompanyDetail } from './investment-screener-storage.js';
 import { createPostgresPersonalDataStore } from './personal-data-store.js';
 import { StatusService } from './status.js';
 
@@ -2147,6 +2147,32 @@ async function readInvestmentScreenerRanked({ rankedFile, historyPool, dataRoot 
   }
 }
 
+async function readInvestmentScreenerCompany({ dataRoot = null, ticker, searchParams = null }) {
+  if (!dataRoot) {
+    return { statusCode: 503, payload: { error: 'investment_screener_not_configured', message: 'Investment screener data root is not configured' } };
+  }
+  try {
+    const detail = await readInvestmentScreenerCompanyDetail({
+      dataRoot,
+      ticker,
+      market: safeMarket(searchParams?.get?.('market') ?? 'ASX'),
+      source: 'yahoo-finance'
+    });
+    return { statusCode: 200, payload: detail };
+  } catch (err) {
+    if (err?.code === 'invalid_ticker') {
+      return { statusCode: 400, payload: { error: 'invalid_investment_screener_ticker', message: 'Investment screener ticker must be a plain market symbol.' } };
+    }
+    if (err?.code === 'not_found') {
+      return { statusCode: 404, payload: { error: 'investment_screener_company_not_found', message: 'No company detail is available for that ticker in the latest screener artifacts.' } };
+    }
+    if (err?.code === 'not_configured') {
+      return { statusCode: 503, payload: { error: 'investment_screener_not_configured', message: 'Investment screener data root is not configured' } };
+    }
+    return { statusCode: 502, payload: { error: 'investment_screener_company_read_error', message: 'Unable to read investment screener company detail' } };
+  }
+}
+
 function getRunMetadataRows(dbPath, taskId) {
   return queryKanbanDb(
     dbPath,
@@ -2492,6 +2518,16 @@ export async function createApp(options = {}) {
 
       if (request.method === 'GET' && url.pathname === '/api/investment-screener/ranked') {
         const result = await readInvestmentScreenerRanked({ rankedFile: investmentScreenerRankedFile, historyPool: investmentScreenerHistoryPool, dataRoot: investmentScreenerDataRoot, searchParams: url.searchParams });
+        return json(response, result.statusCode, result.payload);
+      }
+
+      const investmentCompanyMatch = /^\/api\/investment-screener\/company\/([^/]+)$/.exec(url.pathname);
+      if (request.method === 'GET' && investmentCompanyMatch) {
+        const ticker = decodePathSegment(investmentCompanyMatch[1]);
+        if (ticker === null) {
+          return json(response, 400, { error: 'invalid_investment_screener_ticker', message: 'Investment screener ticker is not valid.' });
+        }
+        const result = await readInvestmentScreenerCompany({ dataRoot: investmentScreenerDataRoot, ticker, searchParams: url.searchParams });
         return json(response, result.statusCode, result.payload);
       }
 

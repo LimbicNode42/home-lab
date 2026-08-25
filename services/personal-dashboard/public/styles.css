@@ -137,6 +137,7 @@ h2, h3 { margin-top: 0; }
 
 /* Investment screener panel */
 .investment-screener-content { margin-top: 0.75rem; }
+.investment-company-detail { margin-top: 1rem; }
 .investment-screener-controls {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
@@ -181,9 +182,20 @@ h2, h3 { margin-top: 0; }
 .investment-applied-filters { margin: 0.35rem 0 0.8rem; font-size: 0.84rem; }
 .investment-candidate-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 0.75rem;
 }
+.investment-detail-button { margin-left: auto; }
+.investment-company-detail-card {
+  padding: 1rem;
+  border: 1px solid #273244;
+  border-radius: 0.8rem;
+  background: #0e1626;
+}
+.investment-detail-heading { display: flex; flex-direction: column; gap: 0.2rem; }
+.investment-detail-section { margin-top: 0.8rem; }
+.investment-detail-section h4 { margin: 0 0 0.35rem; }
+.investment-detail-fields, .investment-detail-unavailable { margin: 0; padding-left: 1.2rem; }
 .investment-candidate {
   min-width: 0;
   padding: 0.85rem;
