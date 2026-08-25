@@ -694,12 +694,20 @@ function loadEpicDocsIndex(indexPath = DEFAULT_EPIC_DOCS_INDEX) {
   }
 }
 
-function defaultDocsManifest(epicDocsIndexPath = DEFAULT_EPIC_DOCS_INDEX) {
-  return [...DEFAULT_DOCS_MANIFEST, ...loadEpicDocsIndex(epicDocsIndexPath)];
+function defaultDocsManifest() {
+  return [...DEFAULT_DOCS_MANIFEST];
 }
 
-function docsManifestFromOption(value, epicDocsIndexPath) {
-  return Array.isArray(value) ? value : defaultDocsManifest(epicDocsIndexPath);
+function docsManifestFromOption(value) {
+  return Array.isArray(value) ? value : defaultDocsManifest();
+}
+
+function approvedEpicDocs(epicDocsIndexPath = DEFAULT_EPIC_DOCS_INDEX) {
+  return approvedDocs(loadEpicDocsIndex(epicDocsIndexPath));
+}
+
+function approvedReadableDocs(manifest, epicDocsIndexPath) {
+  return [...approvedDocs(manifest), ...approvedEpicDocs(epicDocsIndexPath)];
 }
 
 function safeDocMetadata(value, maxLength = 80) {
@@ -754,13 +762,26 @@ async function assertRuntimeDocAvailable(doc, repoDocsRoot) {
 
 async function availableDocs(manifest, repoDocsRoot, epicDocsIndexPath) {
   const documents = [];
-  for (const doc of approvedDocs(manifest, epicDocsIndexPath)) {
+  for (const doc of approvedDocs(manifest)) {
     try {
       await assertRuntimeDocAvailable(doc, repoDocsRoot);
       documents.push(doc);
     } catch {
       // The container may carry a narrower /app/repo-docs tree than the source checkout.
       // Do not advertise a doc id unless /api/docs/:id can actually serve it.
+    }
+  }
+  return documents;
+}
+
+async function availableReadableDocs(manifest, repoDocsRoot, epicDocsIndexPath) {
+  const documents = [];
+  for (const doc of approvedReadableDocs(manifest, epicDocsIndexPath)) {
+    try {
+      await assertRuntimeDocAvailable(doc, repoDocsRoot);
+      documents.push(doc);
+    } catch {
+      // Keep broken or uncopied runtime docs out of generated doc links.
     }
   }
   return documents;
@@ -2562,7 +2583,7 @@ export async function createApp(options = {}) {
         if (!DOC_ID_PATTERN.test(docId)) {
           return json(response, 404, { error: 'document_not_found' });
         }
-        const doc = approvedDocs(docsManifest, epicDocsIndexPath).find((candidate) => candidate.id === docId);
+        const doc = approvedReadableDocs(docsManifest, epicDocsIndexPath).find((candidate) => candidate.id === docId);
         if (!doc) {
           return json(response, 404, { error: 'document_not_found' });
         }
@@ -2587,7 +2608,7 @@ export async function createApp(options = {}) {
           return json(response, 503, kanbanDbUnavailablePayload());
         }
         try {
-          const docs = await availableDocs(docsManifest, repoDocsRoot, epicDocsIndexPath);
+          const docs = await availableReadableDocs(docsManifest, repoDocsRoot, epicDocsIndexPath);
           const epics = getEpics(kanbanDbPath, docs);
           return json(response, 200, { epics });
         } catch {
