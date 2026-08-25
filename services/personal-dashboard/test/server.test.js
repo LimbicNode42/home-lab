@@ -1820,7 +1820,7 @@ test('GET /api/docs requires authentication in reverse-proxy mode', async () => 
   }
 });
 
-test('GET /api/docs excludes completed-epic documents from the default documentation list', async () => {
+test('GET /api/docs surfaces completed feature guides without completed-epic docs', async () => {
   const configPath = await writeConfig(basicConfig);
   const app = await createApp({
     configPath,
@@ -1832,13 +1832,29 @@ test('GET /api/docs excludes completed-epic documents from the default documenta
   try {
     const response = await fetch(`${server.baseUrl}/api/docs`);
     const body = await response.json();
-    const serialized = JSON.stringify(body);
     assert.equal(response.status, 200);
 
+    const docsById = new Map(body.documents.map((doc) => [doc.id, doc]));
+    const expectedFeatureDocs = [
+      ['dashboard-overview', 'Dashboard', 'services/personal-dashboard/docs/products/dashboard/overview.md'],
+      ['dashboard-documentation-panel', 'Dashboard', 'services/personal-dashboard/docs/products/dashboard/documentation-panel.md'],
+      ['blog-drafts-guide', 'Blog / Drafts', 'services/personal-dashboard/docs/products/blog-drafts/README.md'],
+      ['reports-homelab-health', 'Reports', 'services/personal-dashboard/docs/products/reports/homelab-health.md'],
+      ['reports-finnick', 'Reports', 'services/personal-dashboard/docs/products/reports/finnick.md'],
+      ['diary-goals-guide', 'Diary & Goals', 'services/personal-dashboard/docs/products/diary-goals/README.md'],
+      ['investment-screener-data-source-coverage', 'Investment Screener', 'services/personal-dashboard/docs/products/investment-screener/data-source-coverage.md']
+    ];
+
+    for (const [id, category, path] of expectedFeatureDocs) {
+      const doc = docsById.get(id);
+      assert.ok(doc, `${id} should be listed in the Documentation panel registry`);
+      assert.equal(doc.category, category);
+      assert.equal(doc.path, path);
+    }
+
+    assert.equal(docsById.has('dashboard-completed-epics'), false);
     const epicDocs = body.documents.filter((doc) => doc.id.startsWith('epic-t-') || doc.category === 'Completed Epics' || doc.path?.startsWith('services/personal-dashboard/docs/epics/'));
     assert.deepEqual(epicDocs, []);
-    assert.equal(serialized.includes('Completed Epics'), false);
-    assert.equal(serialized.includes('services/personal-dashboard/docs/epics/'), false);
     assert.equal(JSON.stringify(body).includes('/root/'), false);
   } finally {
     await server.close();
