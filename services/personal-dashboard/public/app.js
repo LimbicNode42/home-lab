@@ -625,6 +625,7 @@ if (refreshHomelabHealthButton) {
 }
 
 function investmentScreenerRequestPath() {
+  const searchParams = new URLSearchParams();
   const queryText = investmentSearchFilter?.value?.trim();
   const market = investmentMarketFilter?.value?.trim();
   const metric = investmentMetricFilter?.value?.trim();
