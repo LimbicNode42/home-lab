@@ -135,6 +135,97 @@ test('GET /api/writing/posts/:id returns sanitized markdown preview data without
   }
 });
 
+
+
+test('GET /api/writing/posts/:id lazily normalizes legacy writing posts without rewriting the store', async () => {
+  const legacyPosts = [{
+    post_id: 'legacy-body-post',
+    title: 'Legacy body post',
+    status: 'draft',
+    tags: ['legacy'],
+    body: 'Legacy plain text body.\n\nSecond paragraph.',
+    created_at: '2026-08-18T09:00:00.000Z',
+    updated_at: '2026-08-18T10:00:00.000Z'
+  }];
+  const writingPostsFile = await writePosts(legacyPosts);
+  const beforeRead = await readFile(writingPostsFile, 'utf8');
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, writingPostsFile, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true });
+  const server = await listen(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/writing/posts/legacy-body-post`);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.post.schema_version, 'writing-post/v2');
+    assert.equal(body.post.body_markdown, 'Legacy plain text body.\n\nSecond paragraph.');
+    assert.equal(body.post.body, undefined);
+    assert.equal(await readFile(writingPostsFile, 'utf8'), beforeRead, 'legacy reads must not rewrite the JSON store');
+  } finally {
+    await server.close();
+  }
+});
+
+test('writing CRUD persists v2 schema and sanitizes rich embed fenced blocks', async () => {
+  const writingPostsFile = await writePosts([]);
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, writingPostsFile, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true });
+  const server = await listen(app);
+  const richBody = [
+    '# Rich post',
+    '',
+    '```embed',
+    'type: image',
+    'src: /assets/writing/rack.webp',
+    'alt: Rack hero',
+    'caption: Safe caption',
+    'align: right',
+    'width: half',
+    'onclick: alert(1)',
+    'style: width:999px',
+    '```',
+    '',
+    '```embed',
+    'type: image',
+    'src: javascript:alert(1)',
+    'alt: Unsafe hero',
+    'align: sideways',
+    'width: galaxy',
+    '```',
+    '',
+    '```embed',
+    'type: iframe',
+    'src: https://example.com/embed',
+    '```'
+  ].join('\n');
+
+  try {
+    const createResponse = await fetch(`${server.baseUrl}/api/writing/posts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Rich embed post', status: 'draft', tags: 'rich', body_markdown: richBody })
+    });
+    const createBody = await createResponse.json();
+    const serialized = JSON.stringify(createBody);
+
+    assert.equal(createResponse.status, 201);
+    assert.equal(createBody.post.schema_version, 'writing-post/v2');
+    assert.match(createBody.post.body_markdown, /type: image/);
+    assert.match(createBody.post.body_markdown, /src: \/assets\/writing\/rack\.webp/);
+    assert.match(createBody.post.body_markdown, /align: right/);
+    assert.match(createBody.post.body_markdown, /width: half/);
+    for (const forbidden of ['javascript:', 'iframe', 'onclick', 'style:', 'sideways', 'galaxy', 'https://example.com/embed']) {
+      assert.equal(serialized.includes(forbidden), false, `rich writing response leaked ${forbidden}`);
+    }
+
+    const stored = JSON.parse(await readFile(writingPostsFile, 'utf8'));
+    assert.equal(stored.posts[0].schema_version, 'writing-post/v2');
+  } finally {
+    await server.close();
+  }
+});
+
 test('GET /api/writing/posts rejects invalid filters and missing post ids safely', async () => {
   const app = await appWithPosts();
   const server = await listen(app);
@@ -492,7 +583,7 @@ test('Blog and Drafts lives outside Knowledge with CRUD modal controls and safe 
   assert.match(appSource, /postJson\('\/api\/writing\/posts'/);
   assert.match(appSource, /patchJson\(`\/api\/writing\/posts\/\$\{encodeURIComponent\(currentWritingPostId\)\}`/);
   assert.match(appSource, /deleteJson\(`\/api\/writing\/posts\/\$\{encodeURIComponent\(currentWritingPostId\)\}`/);
-  assert.match(appSource, /renderMarkdownDocument\(post\.body_markdown/);
+  assert.match(appSource, /renderRichMarkdownDocument\(post\.body_markdown \|\| '', document\)/);
   assert.match(dockerfileSource, /COPY --chown=node:node data \.\/data/, 'default image writing data must be writable by USER node');
   assert.match(stylesSource, /\.writing-editor-dialog/);
   assert.match(stylesSource, /\.danger-button/);

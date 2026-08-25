@@ -1,3 +1,9 @@
+const { applyWritingFormat, createEmbedTemplate, renderRichMarkdownDocument } = globalThis.WritingRichText ?? {
+  applyWritingFormat: (value) => ({ value, selectionStart: 0, selectionEnd: 0 }),
+  createEmbedTemplate: () => '```embed\ntype: image\nsrc: /assets/writing/example.webp\nalt: Describe this media\nalign: none\nwidth: full\n```',
+  renderRichMarkdownDocument: (markdown) => renderMarkdownDocument(markdown)
+};
+
 const title = document.querySelector('#dashboard-title');
 const sections = document.querySelector('#sections');
 const statusList = document.querySelector('#status-list');
@@ -46,6 +52,9 @@ const writingEditorPostTitle = document.querySelector('#writing-editor-post-titl
 const writingEditorStatus = document.querySelector('#writing-editor-status');
 const writingEditorTags = document.querySelector('#writing-editor-tags');
 const writingEditorBody = document.querySelector('#writing-editor-body');
+const writingEditorToolbar = document.querySelector('#writing-editor-toolbar');
+const writingEditorPreview = document.querySelector('#writing-editor-preview');
+const writingEditorInsertEmbedButton = document.querySelector('#writing-editor-insert-embed');
 const closeWritingEditorButton = document.querySelector('#close-writing-editor');
 const cancelWritingEditorButton = document.querySelector('#cancel-writing-editor');
 const deleteWritingPostButton = document.querySelector('#delete-writing-post');
@@ -945,7 +954,45 @@ function fillWritingEditor(post = null) {
   if (writingEditorTags) writingEditorTags.value = Array.isArray(post?.tags) ? post.tags.join(', ') : '';
   if (writingEditorBody) writingEditorBody.value = post?.body_markdown || '';
   if (deleteWritingPostButton) deleteWritingPostButton.hidden = !currentWritingPostId;
+  renderWritingEditorPreview();
   setWritingEditorMessage(currentWritingPostId ? 'Editing existing post.' : 'Ready to create a new post.');
+}
+
+function renderWritingEditorPreview() {
+  if (!writingEditorPreview) return;
+  const body = writingEditorBody?.value || '';
+  writingEditorPreview.replaceChildren(body.trim()
+    ? renderRichMarkdownDocument(body, document)
+    : el('p', { className: 'muted', text: 'Preview will appear here as you write.' }));
+}
+
+function replaceWritingEditorSelection(result) {
+  if (!writingEditorBody) return;
+  writingEditorBody.value = result.value;
+  writingEditorBody.setSelectionRange?.(result.selectionStart, result.selectionEnd);
+  renderWritingEditorPreview();
+  writingEditorBody.focus?.();
+}
+
+function applyWritingEditorFormat(format) {
+  if (!writingEditorBody) return;
+  replaceWritingEditorSelection(applyWritingFormat(writingEditorBody.value, {
+    start: writingEditorBody.selectionStart ?? 0,
+    end: writingEditorBody.selectionEnd ?? writingEditorBody.selectionStart ?? 0
+  }, format));
+}
+
+function insertWritingEditorEmbedTemplate() {
+  if (!writingEditorBody) return;
+  const template = createEmbedTemplate({ align: 'right', width: 'half', caption: 'Optional caption' });
+  const start = writingEditorBody.selectionStart ?? writingEditorBody.value.length;
+  const end = writingEditorBody.selectionEnd ?? start;
+  const prefix = start > 0 && !writingEditorBody.value.slice(0, start).endsWith('\n\n') ? '\n\n' : '';
+  const suffix = end < writingEditorBody.value.length && !writingEditorBody.value.slice(end).startsWith('\n\n') ? '\n\n' : '';
+  const value = `${writingEditorBody.value.slice(0, start)}${prefix}${template}${suffix}${writingEditorBody.value.slice(end)}`;
+  const selectionStart = start + prefix.length + template.indexOf('/assets/writing/example.webp');
+  const selectionEnd = selectionStart + '/assets/writing/example.webp'.length;
+  replaceWritingEditorSelection({ value, selectionStart, selectionEnd });
 }
 
 function openWritingEditor(post = null) {
@@ -1003,7 +1050,7 @@ function renderWritingPostPreview(post) {
     el('p', { className: 'muted', text: [post.updated_at ? `Updated ${formatDateTime(post.updated_at)}` : null, post.published_at ? `published ${formatDateTime(post.published_at)}` : null, post.storage].filter(Boolean).join(' · ') }),
     editButton,
     tags,
-    renderMarkdownDocument(post.body_markdown || ''),
+    renderRichMarkdownDocument(post.body_markdown || '', document),
     el('h4', { text: 'Attachments' }),
     attachments
   ]));
@@ -1090,6 +1137,14 @@ if (writingEditorForm) writingEditorForm.addEventListener('submit', submitWritin
 if (closeWritingEditorButton) closeWritingEditorButton.addEventListener('click', closeWritingEditor);
 if (cancelWritingEditorButton) cancelWritingEditorButton.addEventListener('click', closeWritingEditor);
 if (deleteWritingPostButton) deleteWritingPostButton.addEventListener('click', deleteCurrentWritingPost);
+if (writingEditorBody) writingEditorBody.addEventListener('input', renderWritingEditorPreview);
+if (writingEditorToolbar) writingEditorToolbar.addEventListener('click', (event) => {
+  const button = event.target?.closest?.('button[data-writing-format]');
+  if (!button) return;
+  event.preventDefault();
+  applyWritingEditorFormat(button.dataset.writingFormat);
+});
+if (writingEditorInsertEmbedButton) writingEditorInsertEmbedButton.addEventListener('click', insertWritingEditorEmbedTemplate);
 if (writingEditorModal) writingEditorModal.addEventListener('click', (event) => {
   if (event.target === writingEditorModal || event.target.classList?.contains('doc-reader-backdrop')) closeWritingEditor();
 });

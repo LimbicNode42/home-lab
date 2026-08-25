@@ -134,6 +134,28 @@ The dashboard is organised into six hash-backed tabs. `/` defaults to Overview; 
 - **Investment Screener**: latest generated value-growth screener output, promoted to its own top-level destination because it is a full feature rather than a report subpage.
 - **Diary & Goals**: private diary entries and goal tracking backed by the same personal-data store. There is no LLM assessment/scoring in the MVP.
 
+
+### Blog / Drafts rich authoring
+
+Blog / Drafts stores canonical post content as sanitized Markdown in `body_markdown` with `schema_version: writing-post/v2` on normalized API responses and new writes. Existing legacy posts without `schema_version`, or with `body`/`text` instead of `body_markdown`, are lazily normalized on read/edit; reading does not rewrite the JSON store.
+
+Supported authoring primitives include headings, paragraphs, `**bold**`, `*italic*`, inline code, links, lists, quotes, fenced code blocks, and typed fenced media blocks. The editor keeps a Markdown textarea, adds toolbar buttons for common formatting, and renders an in-modal preview through the same safe renderer used by saved posts.
+
+Image/video embeds use allowlisted local writing assets only:
+
+````markdown
+```embed
+type: image
+src: /assets/writing/hero.webp
+alt: Short accessible description
+align: right
+width: half
+caption: Optional caption
+```
+````
+
+`align` is limited to `none`, `left`, `right`, or `center`; `width` is limited to `full`, `wide`, `half`, or `third`. Raw HTML, scripts, event handlers, inline styles/classes, unsafe URL schemes, arbitrary iframe HTML, and paths outside `/assets/writing/...` are stripped or rendered as an omitted-embed warning. Very rude to arbitrary iframes. Correct, but rude.
+
 Tabs support click, Back/Forward hash changes, and ArrowLeft/ArrowRight/Home/End keyboard navigation. The mobile layout keeps the tab strip horizontal and scrollable rather than turning into a tiny accordion hydra.
 
 To exercise reverse-proxy auth locally:

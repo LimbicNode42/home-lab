@@ -810,6 +810,10 @@ const WRITING_BODY_MAX_CHARS = 40 * 1024;
 const WRITING_TAG_MAX_COUNT = 12;
 const WRITING_ATTACHMENT_CONTENT_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'application/pdf', 'text/plain']);
 const WRITING_ATTACHMENT_URL_PATTERN = /^\/assets\/writing\/[a-z0-9][a-z0-9._/-]{0,180}$/i;
+const WRITING_SCHEMA_VERSION = 'writing-post/v2';
+const WRITING_EMBED_ALIGN_VALUES = new Set(['none', 'left', 'right', 'center']);
+const WRITING_EMBED_WIDTH_VALUES = new Set(['full', 'wide', 'half', 'third']);
+const WRITING_EMBED_TYPES = new Set(['image', 'video']);
 
 function stripUnsafeMarkdown(value) {
   return String(value ?? '')
@@ -828,8 +832,70 @@ function normalizeWritingTag(value) {
   return text;
 }
 
+function parseWritingEmbedKeyValues(rawBlock) {
+  const values = new Map();
+  for (const line of String(rawBlock ?? '').split(/\r?\n/)) {
+    const match = /^([a-z][a-z0-9_-]{0,30})\s*:\s*(.*)$/i.exec(line.trim());
+    if (!match) continue;
+    values.set(match[1].toLowerCase(), safeText(match[2], '', 600));
+  }
+  return values;
+}
+
+function safeWritingEmbedAssetUrl(value) {
+  const url = safeText(value, null, 220);
+  if (!url || !WRITING_ATTACHMENT_URL_PATTERN.test(url) || url.includes('..') || url.includes('\\')) return null;
+  return url;
+}
+
+function writingEmbedWarningMarkdown() {
+  return ['```embed', 'type: warning', 'message: Unsupported or unsafe embed omitted.', '```'].join('\n');
+}
+
+function sanitizeWritingEmbedBlock(rawBlock) {
+  const values = parseWritingEmbedKeyValues(rawBlock);
+  const type = values.get('type');
+  if (!WRITING_EMBED_TYPES.has(type)) return writingEmbedWarningMarkdown();
+  const src = safeWritingEmbedAssetUrl(values.get('src'));
+  if (!src) return writingEmbedWarningMarkdown();
+  const alt = safeText(values.get('alt'), '', 220);
+  if (type === 'image' && !alt) return writingEmbedWarningMarkdown();
+  const align = WRITING_EMBED_ALIGN_VALUES.has(values.get('align')) ? values.get('align') : 'none';
+  const width = WRITING_EMBED_WIDTH_VALUES.has(values.get('width')) ? values.get('width') : 'full';
+  const caption = safeText(values.get('caption'), '', 500);
+  const lines = ['```embed', `type: ${type}`, `src: ${src}`, `alt: ${alt}`, `align: ${align}`, `width: ${width}`];
+  if (caption) lines.push(`caption: ${caption}`);
+  lines.push('```');
+  return lines.join('\n');
+}
+
+function sanitizeWritingRichMarkdown(value) {
+  const markdown = stripUnsafeMarkdown(value);
+  const lines = markdown.split(/\r?\n/);
+  const output = [];
+  let index = 0;
+  while (index < lines.length) {
+    const fence = /^```\s*([a-z0-9_-]*)\s*$/i.exec(lines[index].trim());
+    if (!fence || fence[1].toLowerCase() !== 'embed') {
+      output.push(lines[index]);
+      index += 1;
+      continue;
+    }
+    const blockLines = [];
+    index += 1;
+    while (index < lines.length && !/^```\s*$/.test(lines[index].trim())) {
+      blockLines.push(lines[index]);
+      index += 1;
+    }
+    if (index < lines.length) index += 1;
+    output.push(sanitizeWritingEmbedBlock(blockLines.join('\n')));
+  }
+  return output.join('\n').trim().slice(0, WRITING_BODY_MAX_CHARS);
+}
+
 function writingPreview(markdown) {
-  return stripUnsafeMarkdown(markdown)
+  return sanitizeWritingRichMarkdown(markdown)
+    .replace(/```embed[\s\S]*?```/g, ' media embed ')
     .replace(/[`*_#>\[\]()]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -857,7 +923,7 @@ function sanitizeWritingPost(rawPost) {
   if (!postId || !WRITING_POST_ID_PATTERN.test(postId)) return null;
   const title = safeText(rawPost.title, 'Untitled draft', 160);
   const status = WRITING_STATUS_VALUES.has(rawPost.status) ? rawPost.status : 'draft';
-  const body = stripUnsafeMarkdown(rawPost.body_markdown ?? rawPost.text ?? rawPost.body ?? '');
+  const body = sanitizeWritingRichMarkdown(rawPost.body_markdown ?? rawPost.body ?? rawPost.text ?? '');
   const tags = [];
   for (const rawTag of Array.isArray(rawPost.tags) ? rawPost.tags : []) {
     const tag = normalizeWritingTag(rawTag);
@@ -870,6 +936,7 @@ function sanitizeWritingPost(rawPost) {
     .slice(0, 12);
   return {
     post_id: postId,
+    schema_version: WRITING_SCHEMA_VERSION,
     title,
     status,
     tags,
@@ -984,7 +1051,7 @@ function normalizeWritingPayload(body, existingPost = null, now = new Date()) {
   const title = safeText(body.title, null, 160);
   const status = body.status ?? existingPost?.status ?? 'draft';
   if (!title || !WRITING_STATUS_VALUES.has(status)) validationFailed();
-  const bodyMarkdown = stripUnsafeMarkdown(body.body_markdown ?? body.body ?? body.text ?? existingPost?.body_markdown ?? '');
+  const bodyMarkdown = sanitizeWritingRichMarkdown(body.body_markdown ?? body.body ?? body.text ?? existingPost?.body_markdown ?? '');
   if (!bodyMarkdown) validationFailed();
   const nowIso = now.toISOString();
   const previousStatus = existingPost?.status;
@@ -993,6 +1060,7 @@ function normalizeWritingPayload(body, existingPost = null, now = new Date()) {
     : null;
   return {
     ...(existingPost ?? {}),
+    schema_version: WRITING_SCHEMA_VERSION,
     title,
     status,
     tags: normalizeWritingTagsInput(body.tags ?? existingPost?.tags ?? []),
