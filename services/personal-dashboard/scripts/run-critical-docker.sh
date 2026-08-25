@@ -16,11 +16,13 @@ FINNICK_REPORT_HOST_DIR=${FINNICK_REPORT_HOST_DIR:-/mnt/nas/services/personal-da
 INVESTMENT_SCREENER_HOST_DIR=${INVESTMENT_SCREENER_HOST_DIR:-/mnt/nas/services/personal-dashboard/investment-screener}
 KANBAN_DB_HOST_DIR=${KANBAN_DB_HOST_DIR:-/mnt/nas/services/personal-dashboard/kanban}
 HOMELAB_HEALTH_HOST_DIR=${HOMELAB_HEALTH_HOST_DIR:-/mnt/nas/services/personal-dashboard/homelab-health}
+WRITING_POSTS_HOST_DIR=${WRITING_POSTS_HOST_DIR:-/var/lib/personal-dashboard/writing}
 FINNICK_REPORT_HOST_PATH=$FINNICK_REPORT_HOST_DIR/latest_report.txt
 INVESTMENT_SCREENER_REPORT_HOST_PATH=$INVESTMENT_SCREENER_HOST_DIR/latest_report.txt
 INVESTMENT_SCREENER_RANKED_HOST_PATH=$INVESTMENT_SCREENER_HOST_DIR/latest_ranked.json
 KANBAN_DB_HOST_PATH=$KANBAN_DB_HOST_DIR/kanban.db
 HOMELAB_HEALTH_HOST_PATH=$HOMELAB_HEALTH_HOST_DIR/latest_report.txt
+WRITING_POSTS_HOST_PATH=$WRITING_POSTS_HOST_DIR/writing-posts.json
 PERSONAL_DASHBOARD_ENV_FILE=${PERSONAL_DASHBOARD_ENV_FILE:-/root/.hermes/rendered/personal-dashboard.env}
 
 # Source an operator-local rendered secret file when present. This keeps the
@@ -82,6 +84,26 @@ if [ ! -f "$HOMELAB_HEALTH_HOST_PATH" ]; then
   exit 1
 fi
 
+# Blog/Drafts is the only writable filesystem-backed dashboard store. Keep it
+# host-local and separate from /app/data so Diary/Goals do not regress to the old
+# writable SQLite mount. On first run, preserve the existing in-container JSON
+# before recreating the container; if there is no prior runtime copy, seed from
+# the committed fixture without deleting existing host data.
+mkdir -p "$WRITING_POSTS_HOST_DIR"
+if [ ! -f "$WRITING_POSTS_HOST_PATH" ]; then
+  tmp_writing_posts="$WRITING_POSTS_HOST_PATH.tmp.$$"
+  if docker inspect "$CONTAINER" >/dev/null 2>&1 \
+    && docker cp "$CONTAINER:/app/data/writing-posts.json" "$tmp_writing_posts" >/dev/null 2>&1; then
+    mv "$tmp_writing_posts" "$WRITING_POSTS_HOST_PATH"
+  else
+    rm -f "$tmp_writing_posts"
+    cp "$APP_DIR/data/writing-posts.json" "$WRITING_POSTS_HOST_PATH"
+  fi
+fi
+chown 1000:1000 "$WRITING_POSTS_HOST_DIR" "$WRITING_POSTS_HOST_PATH"
+chmod 0750 "$WRITING_POSTS_HOST_DIR"
+chmod 0640 "$WRITING_POSTS_HOST_PATH"
+
 PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR="$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR" \
 FINNICK_REPORT_HOST_DIR="$FINNICK_REPORT_HOST_DIR" \
 INVESTMENT_SCREENER_HOST_DIR="$INVESTMENT_SCREENER_HOST_DIR" \
@@ -128,6 +150,7 @@ docker run -d \
   -e DASHBOARD_STATUS_CACHE_TTL_MS=${DASHBOARD_STATUS_CACHE_TTL_MS:-30000} \
   -e DASHBOARD_STATUS_PROBE_TIMEOUT_MS=${DASHBOARD_STATUS_PROBE_TIMEOUT_MS:-2500} \
   -e KANBAN_DB_PATH=/app/kanban/kanban.db \
+  -e WRITING_POSTS_FILE=/app/writing/writing-posts.json \
   -e PERSONAL_DASHBOARD_DATABASE_URL \
   -e PGSSLMODE=${PGSSLMODE:-require} \
   -e REPO_DOCS_ROOT=/app/repo-docs \
@@ -136,6 +159,7 @@ docker run -d \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/investment-screener,target=/app/investment-screener,readonly" \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/kanban,target=/app/kanban,readonly" \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/homelab-health,target=/app/homelab-health,readonly" \
+  --mount "type=bind,source=$WRITING_POSTS_HOST_DIR,target=/app/writing" \
   "$IMAGE"
 
 docker network connect "$DB_NETWORK" "$CONTAINER"

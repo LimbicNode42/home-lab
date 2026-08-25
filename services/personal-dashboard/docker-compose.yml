@@ -22,6 +22,7 @@ services:
       DASHBOARD_STATUS_CACHE_TTL_MS: ${DASHBOARD_STATUS_CACHE_TTL_MS:-30000}
       DASHBOARD_STATUS_PROBE_TIMEOUT_MS: ${DASHBOARD_STATUS_PROBE_TIMEOUT_MS:-2500}
       KANBAN_DB_PATH: /app/kanban/kanban.db
+      WRITING_POSTS_FILE: /app/writing/writing-posts.json
       FINNICK_REPORT_FILE: /app/finnick/latest_report.txt
       INVESTMENT_SCREENER_REPORT_FILE: /app/investment-screener/latest_report.txt
       INVESTMENT_SCREENER_RANKED_FILE: /app/investment-screener/latest_ranked.json
@@ -62,6 +63,13 @@ services:
         source: ${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}/homelab-health
         target: /app/homelab-health
         read_only: true
+        bind:
+          create_host_path: false
+      # Writable Blog/Drafts store. This is deliberately not /app/data, which
+      # previously held the removed Diary/Goals SQLite store.
+      - type: bind
+        source: ${WRITING_POSTS_HOST_DIR:-/var/lib/personal-dashboard/writing}
+        target: /app/writing
         bind:
           create_host_path: false
     labels:

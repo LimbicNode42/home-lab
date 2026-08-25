@@ -80,6 +80,23 @@ test('run-critical-docker.sh no longer bind-mounts a writable SQLite personal da
   assert.doesNotMatch(script, /PERSONAL_DASHBOARD_DB_FILE/, 'fallback script should not pass the old SQLite DB file env var');
 });
 
+test('run-critical-docker.sh mounts a persistent writable Blog/Drafts store without using /app/data', async () => {
+  const script = await loadScript();
+
+  assert.match(
+    script,
+    /WRITING_POSTS_HOST_DIR=\$\{WRITING_POSTS_HOST_DIR:-\/var\/lib\/personal-dashboard\/writing\}/,
+    'fallback script must declare the host-local writable writing store directory'
+  );
+  assert.match(script, /WRITING_POSTS_HOST_PATH=\$WRITING_POSTS_HOST_DIR\/writing-posts\.json/);
+  assert.match(script, /docker cp "\$CONTAINER:\/app\/data\/writing-posts\.json" "\$tmp_writing_posts"/, 'fallback script must preserve the existing in-container posts JSON before recreate');
+  assert.match(script, /cp "\$APP_DIR\/data\/writing-posts\.json" "\$WRITING_POSTS_HOST_PATH"/, 'fallback script must seed from committed data only when no runtime copy exists');
+  assert.match(script, /chown 1000:1000 "\$WRITING_POSTS_HOST_DIR" "\$WRITING_POSTS_HOST_PATH"/, 'node uid/gid must own the writable store');
+  assert.match(script, /-e\s+WRITING_POSTS_FILE=\/app\/writing\/writing-posts\.json/, 'container must use the writable writing store env path');
+  assert.match(script, /--mount[^\n]*source=\$WRITING_POSTS_HOST_DIR[^\n]*target=\/app\/writing(?![^\n]*readonly)/, 'writing store mount must be writable and separate from /app/data');
+  assert.doesNotMatch(script, /target=\/app\/data/, 'writing store must not reintroduce a writable /app/data mount');
+});
+
 test('run-critical-docker.sh syncs NAS artifacts into a host-local runtime cache before docker run', async () => {
   const script = await loadScript();
 
@@ -176,6 +193,10 @@ test('docker-compose.yml mounts host-local runtime cache for read-only artifacts
       `Compose must not bind individual file target ${fileTarget}`
     );
   }
+
+  assert.match(compose, /WRITING_POSTS_FILE:\s*\/app\/writing\/writing-posts\.json/, 'Compose must point Blog/Drafts at the writable writing store');
+  assert.match(compose, /source: \${WRITING_POSTS_HOST_DIR:-\/var\/lib\/personal-dashboard\/writing}[\s\S]*?target: \/app\/writing/, 'Compose must mount a host-local writable writing store directory');
+  assert.doesNotMatch(compose, /target:\s*\/app\/writing[\s\S]{0,80}read_only:\s*true/, 'Compose writing store must be writable');
 
   assert.match(compose, /PERSONAL_DASHBOARD_DATABASE_URL:\s*\$\{PERSONAL_DASHBOARD_DATABASE_URL:-\}/, 'Compose must pass the Postgres database URL from the rendered environment');
   assert.match(compose, /PGSSLMODE:\s*\$\{PGSSLMODE:-require\}/, 'Compose must default PGSSLMODE=require');

@@ -20,10 +20,11 @@ Prevention: copy the NAS/repo-backed read-only artifacts into a host-local runti
 - runtime cache `investment-screener/` → `/app/investment-screener` read-only
 - runtime cache `kanban/` → `/app/kanban` read-only
 - runtime cache `homelab-health/` → `/app/homelab-health` read-only
+- host-local `WRITING_POSTS_HOST_DIR` → `/app/writing` writable for Blog/Drafts only
 
 Keep `PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR` on local storage, not under `/mnt/nas`. The app still reads the same explicit in-container file paths; only the host bind source changes.
 
-The private Diary/Goals store is different: it now lives in the shared critical Postgres service and is reached only through `PERSONAL_DASHBOARD_DATABASE_URL` plus `PGSSLMODE`; do not add a writable SQLite `/app/data` bind back to the dashboard container. The dashboard container still must not receive Docker socket access, SSH keys, the Hermes runtime DB, or writable access to report/config/Kanban sources. Tiny blast radii, not a NAS buffet.
+Blog/Drafts is also different from the read-only report/cache model: it uses `WRITING_POSTS_FILE=/app/writing/writing-posts.json` on a host-local writable directory so posts survive container recreate. The critical fallback script copies an existing container `/app/data/writing-posts.json` into that directory before removing the old container; if the host file already exists, it leaves it in place. The private Diary/Goals store now lives in the shared critical Postgres service and is reached only through `PERSONAL_DASHBOARD_DATABASE_URL` plus `PGSSLMODE`; do not add a writable SQLite `/app/data` bind back to the dashboard container. The dashboard container still must not receive Docker socket access, SSH keys, the Hermes runtime DB, or writable access to report/config/Kanban sources. Tiny blast radii, not a NAS buffet.
 
 ## Stable Postgres network alias
 
