@@ -1721,7 +1721,7 @@ test('GET /api/docs requires authentication in reverse-proxy mode', async () => 
   }
 });
 
-test('GET /api/docs lists completed-epic documents from the committed epic docs manifest', async () => {
+test('GET /api/docs excludes completed-epic documents from the default documentation list', async () => {
   const configPath = await writeConfig(basicConfig);
   const app = await createApp({
     configPath,
@@ -1733,12 +1733,13 @@ test('GET /api/docs lists completed-epic documents from the committed epic docs 
   try {
     const response = await fetch(`${server.baseUrl}/api/docs`);
     const body = await response.json();
+    const serialized = JSON.stringify(body);
     assert.equal(response.status, 200);
 
-    const epicDocs = body.documents.filter((doc) => doc.id.startsWith('epic-t-'));
-    assert.ok(epicDocs.length >= 17, `expected at least 17 completed-epic docs, got ${epicDocs.length}`);
-    assert.ok(epicDocs.some((doc) => doc.id === 'epic-t-a1193120'), 'investment screener epic doc should be listed');
-    assert.ok(epicDocs.every((doc) => doc.path.startsWith('services/personal-dashboard/docs/epics/')));
+    const epicDocs = body.documents.filter((doc) => doc.id.startsWith('epic-t-') || doc.category === 'Completed Epics' || doc.path?.startsWith('services/personal-dashboard/docs/epics/'));
+    assert.deepEqual(epicDocs, []);
+    assert.equal(serialized.includes('Completed Epics'), false);
+    assert.equal(serialized.includes('services/personal-dashboard/docs/epics/'), false);
     assert.equal(JSON.stringify(body).includes('/root/'), false);
   } finally {
     await server.close();
@@ -1760,22 +1761,23 @@ test('GET /api/epics links every completed fixture epic to an opaque dashboard d
   try {
     const docsResponse = await fetch(`${server.baseUrl}/api/docs`);
     const docsBody = await docsResponse.json();
-    const docIds = new Set(docsBody.documents.map((doc) => doc.id));
     const epicsResponse = await fetch(`${server.baseUrl}/api/epics`);
     const epicsBody = await epicsResponse.json();
 
     assert.equal(docsResponse.status, 200);
     assert.equal(epicsResponse.status, 200);
     assert.equal(epicsBody.epics.length, 2);
-    assert.ok(docsBody.documents.length >= epicsBody.epics.length);
 
     for (const epic of epicsBody.epics) {
       assert.ok(epic.doc_links.length >= 1, `${epic.id} should have a dashboard doc link`);
       const docLink = epic.doc_links[0];
       assert.equal(docLink.doc_id, `epic-${epic.id.replaceAll('_', '-')}`);
-      assert.equal(docIds.has(docLink.doc_id), true);
+      assert.equal(docsBody.documents.some((doc) => doc.id === docLink.doc_id), false);
       assert.equal(docLink.url, `/api/docs/${docLink.doc_id}`);
       assert.equal(JSON.stringify(docLink).includes('/root/'), false);
+
+      const docResponse = await fetch(`${server.baseUrl}${docLink.url}`);
+      assert.equal(docResponse.status, 200);
     }
   } finally {
     await server.close();
