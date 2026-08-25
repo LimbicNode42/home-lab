@@ -378,10 +378,31 @@
             Tags <span class="muted">comma-separated</span>
             <input id="writing-editor-tags" name="tags" type="text" maxlength="480" autocomplete="off">
           </label>
-          <label class="form-wide">
-            Body
-            <textarea id="writing-editor-body" name="body_markdown" maxlength="40960" required rows="14"></textarea>
-          </label>
+          <div class="form-wide writing-editor-help">
+            <p class="muted">Markdown is supported for headings, emphasis, links, lists, quotes, and code. Raw HTML, scripts, unsafe URLs, arbitrary iframes, styles, and event handlers are stripped. Media embeds use fenced <code>embed</code> blocks.</p>
+          </div>
+          <div id="writing-editor-toolbar" class="writing-editor-toolbar form-wide" aria-label="Writing formatting toolbar">
+            <button type="button" data-writing-format="h2" aria-label="Insert heading level 2">H2</button>
+            <button type="button" data-writing-format="h3" aria-label="Insert heading level 3">H3</button>
+            <button type="button" data-writing-format="bold" aria-label="Bold selected text"><strong>B</strong></button>
+            <button type="button" data-writing-format="italic" aria-label="Italic selected text"><em>I</em></button>
+            <button type="button" data-writing-format="code" aria-label="Inline code selected text">Code</button>
+            <button type="button" data-writing-format="link" aria-label="Insert link">Link</button>
+            <button type="button" data-writing-format="quote" aria-label="Quote selected text">Quote</button>
+            <button type="button" data-writing-format="unordered-list" aria-label="Make unordered list">Bullets</button>
+            <button type="button" data-writing-format="ordered-list" aria-label="Make ordered list">Numbers</button>
+            <button type="button" data-writing-format="code-block" aria-label="Insert code block">Block code</button>
+            <button id="writing-editor-insert-embed" type="button" aria-label="Insert image embed block">Image embed</button>
+          </div>
+          <div class="form-wide writing-editor-split">
+            <label>
+              Body
+              <textarea id="writing-editor-body" name="body_markdown" maxlength="40960" required rows="14"></textarea>
+            </label>
+            <section id="writing-editor-preview" class="writing-editor-preview" aria-live="polite" aria-label="Writing preview">
+              <p class="muted">Preview will appear here as you write.</p>
+            </section>
+          </div>
           <div class="form-actions form-wide">
             <button id="save-writing-post" type="submit">Save post</button>
             <button id="delete-writing-post" type="button" class="danger-button">Delete</button>
@@ -390,6 +411,7 @@
         </form>
       </article>
     </div>
+    <script type="module" src="/writing-rich-text.js"></script>
     <script type="module" src="/app.js"></script>
   </body>
 </html>
