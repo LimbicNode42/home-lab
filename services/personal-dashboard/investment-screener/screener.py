@@ -1219,6 +1219,336 @@ def hydrate_companies_from_asx_tickers(
 
 
 
+# ---------------------------------------------------------------------------
+# Provider fallback framework (staged fundamentals fallback)
+# ---------------------------------------------------------------------------
+
+# Trust ranking for credentialed provider adapters. Lower index = higher
+# preference when multiple providers supply the same missing field.
+PROVIDER_TRUST_RANK = {
+    "fmp": 0,
+    "alpha_vantage": 1,
+}
+
+# Env var names (research note t_a8b454bb). Values are never committed; they are
+# injected at runtime from Vaultwarden/local secret storage.
+PROVIDER_ENV_VARS = {
+    "fmp": "FMP_API_KEY",
+    "alpha_vantage": "ALPHA_VANTAGE_API_KEY",
+}
+
+
+def missing_field_value(field_name: str, reason: str, source_family: str) -> FieldValue:
+    """Return a FieldValue(None) carrying an explicit missing/unavailable reason.
+
+    Distinguishes "provider has no value" from "fetch failed" so downstream
+    scoring never conflates a throttled fetch with a genuinely unreported metric.
+    """
+    return FieldValue(
+        value=None,
+        provenance={
+            "field_name": field_name,
+            "source_family": source_family,
+            "missing_reason": reason,
+        },
+    )
+
+
+def _now_iso() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _coerce_float(value: Any) -> Optional[float]:
+    """Coerce a provider numeric value (int/float/str) to float, or None."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip().replace(",", "")
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _first_dated(items: list[dict], date_keys: tuple[str, ...]) -> Optional[dict]:
+    """Return the most recent item by date across common provider date fields."""
+    dated = [
+        item for item in items
+        if any(str(item.get(key) or "").strip() for key in date_keys)
+    ]
+    if not dated:
+        return None
+    return max(
+        dated,
+        key=lambda item: str(next((item.get(key) for key in date_keys if item.get(key)), "")),
+    )
+
+
+class ProviderAdapter:
+    """Base class for a single credentialed fundamentals provider.
+
+    Fail-closed by default: an adapter with no credential/config is a no-op that
+    returns no fields and never touches the network. Subclasses define ``name``,
+    ``env_var``, ``trust_level`` and a ``_fetch_fields`` implementation.
+    """
+
+    name: str = "unknown"
+    env_var: str = ""
+    trust_level: str = "licensed"
+
+    def __init__(self, env: Optional[dict] = None, fetcher: Optional[Callable] = None):
+        self._env = dict(env or {})
+        self._fetcher = fetcher
+        self.last_error: Optional[BaseException] = None
+
+    def credential(self) -> Optional[str]:
+        value = self._env.get(self.env_var)
+        if value is None:
+            value = os.environ.get(self.env_var)
+        return str(value).strip() if value else None
+
+    def enabled(self) -> bool:
+        return bool(self.credential())
+
+    def status(self) -> dict:
+        if self.enabled():
+            return {"name": self.name, "enabled": True, "reason": None}
+        return {
+            "name": self.name,
+            "enabled": False,
+            "reason": f"missing {self.env_var} credential; adapter disabled (fail-closed)",
+        }
+
+    def _get_json(self, url: str, timeout: int = 30) -> dict:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode())
+
+    def fetch(self, ticker: str) -> dict[str, FieldValue]:
+        """Return normalized {field_name: FieldValue}. Empty when disabled/failed."""
+        if not self.enabled():
+            return {}
+        try:
+            return self._fetch_fields(ticker)
+        except Exception as exc:
+            # Rate-limit (429), 402, and other failures degrade to "no data",
+            # never to fabricated values. The caller records this as a partial
+            # run state, not a hard failure.
+            self.last_error = exc
+            return {}
+
+    def _fetch_fields(self, ticker: str) -> dict[str, FieldValue]:
+        raise NotImplementedError
+
+    def _field(self, name: str, value: Any, source_url: str, data_as_of: Optional[str]) -> FieldValue:
+        if name == "capital_expenditures" and value is not None:
+            value = -abs(float(value))
+        return FieldValue(
+            value=_coerce_float(value),
+            provenance={
+                "source_family": self.name,
+                "provider": self.name,
+                "source_url": source_url,
+                "retrieved_at": _now_iso(),
+                "retrieved_from_source_at": _now_iso(),
+                "data_as_of": data_as_of,
+                "field_name": name,
+                "trust_level": self.trust_level,
+                "freshness": (
+                    f"{self.name} licensed fundamentals; verify against ASX "
+                    "announcements/company reports before acting"
+                ),
+            },
+        )
+
+
+class FmpAdapter(ProviderAdapter):
+    """Financial Modeling Prep fundamentals adapter (recommended Stage 1 provider)."""
+
+    name = "fmp"
+    env_var = "FMP_API_KEY"
+
+    def _fetch_fields(self, ticker: str) -> dict[str, FieldValue]:
+        key = self.credential()
+        base = "https://financialmodelingprep.com/api/v3"
+        # FMP uses bare exchange codes for ASX (e.g. BHP.AX -> BHP).
+        symbol = normalise_asx_ticker(ticker).replace(".AX", "")
+        params = f"?apikey={urllib.parse.quote(key or '')}"
+
+        fields: dict[str, FieldValue] = {}
+
+        fetcher = self._fetcher or self._get_json
+        income_url = f"{base}/income-statement/{urllib.parse.quote(symbol)}{params}"
+        income = fetcher(income_url)
+        inc = _first_dated(income or [], ("date",)) if isinstance(income, list) else {}
+        if inc:
+            fields["revenue"] = self._field("revenue", inc.get("revenue"), income_url, str(inc.get("date") or ""))
+            fields["net_income"] = self._field("net_income", inc.get("netIncome"), income_url, str(inc.get("date") or ""))
+
+        bal_url = f"{base}/balance-sheet-statement/{urllib.parse.quote(symbol)}{params}"
+        balance = fetcher(bal_url)
+        bal = _first_dated(balance or [], ("date",)) if isinstance(balance, list) else {}
+        if bal:
+            fields["total_assets"] = self._field("total_assets", bal.get("totalAssets"), bal_url, str(bal.get("date") or ""))
+            fields["total_liabilities"] = self._field("total_liabilities", bal.get("totalLiabilities"), bal_url, str(bal.get("date") or ""))
+            fields["current_assets"] = self._field("current_assets", bal.get("totalCurrentAssets"), bal_url, str(bal.get("date") or ""))
+            fields["current_liabilities"] = self._field("current_liabilities", bal.get("totalCurrentLiabilities"), bal_url, str(bal.get("date") or ""))
+
+        cf_url = f"{base}/cash-flow-statement/{urllib.parse.quote(symbol)}{params}"
+        cashflow = fetcher(cf_url)
+        cf = _first_dated(cashflow or [], ("date",)) if isinstance(cashflow, list) else {}
+        if cf:
+            fields["operating_cash_flow"] = self._field("operating_cash_flow", cf.get("operatingCashFlow"), cf_url, str(cf.get("date") or ""))
+            fields["capital_expenditures"] = self._field("capital_expenditures", cf.get("capitalExpenditure"), cf_url, str(cf.get("date") or ""))
+
+        return fields
+
+
+class AlphaVantageAdapter(ProviderAdapter):
+    """Alpha Vantage fundamentals adapter (spot-fill only; 25 req/day free tier)."""
+
+    name = "alpha_vantage"
+    env_var = "ALPHA_VANTAGE_API_KEY"
+
+    def _fetch_fields(self, ticker: str) -> dict[str, FieldValue]:
+        key = self.credential()
+        symbol = normalise_asx_ticker(ticker).replace(".AX", "")
+        base = "https://www.alphavantage.co/query"
+        fields: dict[str, FieldValue] = {}
+        fetcher = self._fetcher or self._get_json
+
+        def q(function: str):
+            url = (
+                f"{base}?function={function}&symbol={urllib.parse.quote(symbol)}"
+                f"&apikey={urllib.parse.quote(key or '')}"
+            )
+            return fetcher(url), url
+
+        income, iurl = q("INCOME_STATEMENT")
+        reports = income.get("annualReports") or [] if isinstance(income, dict) else []
+        inc = reports[0] if reports else {}
+        if inc:
+            fields["revenue"] = self._field("revenue", inc.get("totalRevenue"), iurl, str(inc.get("fiscalDateEnding") or ""))
+            fields["net_income"] = self._field("net_income", inc.get("netIncome"), iurl, str(inc.get("fiscalDateEnding") or ""))
+
+        balance, burl = q("BALANCE_SHEET")
+        breports = balance.get("annualReports") or [] if isinstance(balance, dict) else []
+        bal = breports[0] if breports else {}
+        if bal:
+            fields["total_assets"] = self._field("total_assets", bal.get("totalAssets"), burl, str(bal.get("fiscalDateEnding") or ""))
+            fields["total_liabilities"] = self._field("total_liabilities", bal.get("totalLiabilities"), burl, str(bal.get("fiscalDateEnding") or ""))
+            fields["current_assets"] = self._field("current_assets", bal.get("totalCurrentAssets"), burl, str(bal.get("fiscalDateEnding") or ""))
+            fields["current_liabilities"] = self._field("current_liabilities", bal.get("totalCurrentLiabilities"), burl, str(bal.get("fiscalDateEnding") or ""))
+
+        cashflow, curl = q("CASH_FLOW")
+        creports = cashflow.get("annualReports") or [] if isinstance(cashflow, dict) else []
+        cf = creports[0] if creports else {}
+        if cf:
+            fields["operating_cash_flow"] = self._field("operating_cash_flow", cf.get("operatingCashflow"), curl, str(cf.get("fiscalDateEnding") or ""))
+            fields["capital_expenditures"] = self._field("capital_expenditures", cf.get("capitalExpenditures"), curl, str(cf.get("fiscalDateEnding") or ""))
+
+        return fields
+
+
+ADAPTER_CLASSES: dict[str, type] = {
+    "fmp": FmpAdapter,
+    "alpha_vantage": AlphaVantageAdapter,
+}
+
+
+def build_fallback_adapters(env: Optional[dict] = None) -> list[ProviderAdapter]:
+    """Build enabled, trust-ordered fallback adapters from available credentials.
+
+    Only adapters with a present credential/config are returned. Order follows
+    PROVIDER_TRUST_RANK so the merge can prefer the highest-trust provider.
+    """
+    env = dict(env or {})
+    adapters: list[ProviderAdapter] = []
+    for name in sorted(ADAPTER_CLASSES, key=lambda n: PROVIDER_TRUST_RANK.get(n, 99)):
+        adapter = ADAPTER_CLASSES[name](env=env)
+        if adapter.enabled():
+            adapters.append(adapter)
+    return adapters
+
+
+def merge_missing_fields(
+    company: dict,
+    provider_fields: list[tuple[str, dict[str, FieldValue]]],
+) -> tuple[dict, dict[str, str]]:
+    """Fill missing raw fields from fallback providers, preserving provenance.
+
+    For each raw field that is currently missing (value is None), prefer the
+    highest-trust provider (provider order as given) that supplied a non-None
+    value. Existing values are never overwritten. Fields still missing after the
+    merge are re-marked with ``missing_reason: unavailable``.
+
+    Returns ``(company, filled)`` where ``filled`` maps field_name -> provider
+    that supplied it.
+    """
+    company = dict(company)
+    filled: dict[str, str] = {}
+
+    for field_name in RAW_FIELDS:
+        fv: Optional[FieldValue] = company.get(field_name)
+        if fv is not None and fv.value is not None:
+            continue
+        for provider_name, fields in provider_fields:
+            candidate = fields.get(field_name)
+            if candidate is not None and candidate.value is not None:
+                company[field_name] = candidate
+                filled[field_name] = provider_name
+                break
+
+    # Any still-missing field gets an explicit unavailable reason so scoring can
+    # distinguish provider-absent from fetch-failed. This overwrites any earlier
+    # per-provider "provider_absent" marker with the post-merge truth: no
+    # configured source supplied a value.
+    for field_name in RAW_FIELDS:
+        fv: Optional[FieldValue] = company.get(field_name)
+        if fv is None:
+            company[field_name] = missing_field_value(field_name, "unavailable", "no-provider")
+        elif fv.value is None:
+            fv.provenance["missing_reason"] = "unavailable"
+
+    return company, filled
+
+
+def fill_company_missing_fields(
+    company: dict,
+    adapters: list[ProviderAdapter],
+) -> tuple[dict, list[dict]]:
+    """Fetch fallback fields from enabled adapters and merge them into a company.
+
+    Adapters are queried in trust order. Disabled/erroring adapters are skipped
+    silently (their absence is already represented by the missing field). Returns
+    ``(company, failures)``; failures records per-adapter fetch errors (e.g. 429)
+    as recoverable partial-run notes, never as fabricated data.
+    """
+    provider_fields: list[tuple[str, dict[str, FieldValue]]] = []
+    failures: list[dict] = []
+    for adapter in adapters:
+        try:
+            fields = adapter.fetch(str(company.get("ticker") or ""))
+        except Exception as exc:
+            failures.append({
+                "provider": adapter.name,
+                "ticker": company.get("ticker"),
+                "reason": str(exc),
+                "recoverable": True,
+            })
+            continue
+        if fields:
+            provider_fields.append((adapter.name, fields))
+
+    merged, _ = merge_missing_fields(company, provider_fields)
+    return merged, failures
+
+
 def _provenance_scalar(value: Any) -> Any:
     if isinstance(value, (list, tuple, set)):
         values = sorted(str(item) for item in value if item)
