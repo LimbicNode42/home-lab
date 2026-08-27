@@ -4,14 +4,15 @@
 
 ## Owner
 
-- **Job name:** `asx-screener-hydration` (pending Ben's approval — see "Deployment gate" below).
-- **Owner profile / operator:** Ben (homelab admin), executed by the Hermes scheduler as a **no-agent** cron job running a committed wrapper.
+- **Job name / ID:** `asx-screener-hydration` / `6bffd5f6fff6` (enabled in the default Hermes scheduler home, `/root/.hermes`).
+- **Owner profile / operator:** Ben (homelab admin), executed by the Hermes scheduler as a **no-agent** cron job running a local scheduler shim that delegates to the committed wrapper.
+- **Scheduler shim (local, executable):** `/root/.hermes/scripts/run-asx-screener-hydration-owner.sh`
 - **Wrapper script (committed, non-secret):** `services/personal-dashboard/scripts/run-asx-screener-hydration-owner.sh`
 - **Underlying canonical workflow (committed):** `services/personal-dashboard/scripts/run-asx-screener-hydration.sh`
 
 ## Cadence
 
-- **Proposed schedule:** `0 8 * * 6` — weekly, Saturday 08:00 AEST (tori local time). Weekly cadence matches the parent deploy note and keeps Yahoo egress well below throttle thresholds.
+- **Enabled schedule:** `0 8 * * 6` — weekly, Saturday 08:00 AEST (tori local time). Weekly cadence matches the parent deploy note and keeps Yahoo egress well below throttle thresholds.
 - **Mode:** non-fixture (`asx-yahoo-timeseries`) — real Yahoo Finance hydration, never `--fixture`.
 
 ## Universe (bounded denominator)
@@ -30,11 +31,24 @@ The recurring job hydrates a **bounded top-N batch** from the reviewed ASX compa
 
 - The job is a Hermes **no-agent** cron job; its stdout (the single sanitized `ASX_SCREENER …` line) is delivered to the approved ops channel (`discord:#👟-hermes-👟`), same as the homelab-health and Finnick report jobs.
 - On failure the wrapper prints `[asx-screener-owner] FAILED:` plus the canonical workflow output to stderr and exits non-zero. The scheduler surfaces a non-zero exit to the ops channel.
-- **Notification gap (pending):** if no dedicated ASX ops channel is approved, delivery falls to the shared ops channel documented here. No secrets are ever emitted — the summary line is exactly `run_id mode universe_hash usable failed excluded pointer`.
+- **Delivery path:** stdout is delivered to the approved shared ops channel (`discord:#👟-hermes-👟`), same as the homelab-health and Finnick report jobs. No dedicated ASX-only channel was configured for this task.
 
-## Deployment gate — REQUIRES EXPLICIT APPROVAL
+## Deployment record
 
-Creating/enabling this recurring job performs outbound Yahoo Finance egress and writes NAS artifacts. This is a **live mutation** and must not be enabled without Ben's approval. The exact proposed schedule and command are in the task handoff; the job is registered only after approval.
+Ben approved enabling the recurring job in kanban task `t_68024302` after reviewing the exact schedule, bounded top-50 universe, no-agent cron mechanism, and Discord delivery target. The default Hermes scheduler now has exactly one enabled ASX owner job: `asx-screener-hydration` (`6bffd5f6fff6`). The legacy kobold fixture-mode job (`11727e7f850f`, `ASX screener fixture run`) was paused rather than deleted.
+
+### Registered scheduler entry
+
+```yaml
+id: 6bffd5f6fff6
+name: asx-screener-hydration
+schedule: 0 8 * * 6
+script: run-asx-screener-hydration-owner.sh
+mode: no-agent
+deliver: discord:#👟-hermes-👟
+```
+
+The scheduler shim lives at `/root/.hermes/scripts/run-asx-screener-hydration-owner.sh` and delegates to this repo's committed wrapper. Keep the shim small; substantive workflow logic belongs in Git.
 
 ## Runbook
 
