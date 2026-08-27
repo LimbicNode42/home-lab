@@ -1033,6 +1033,71 @@ class TestProviderAdaptersNormalize(unittest.TestCase):
         self.assertIn("429", str(adapter.last_error))
 
 
+class TestProvenanceSourceUrlRedaction(unittest.TestCase):
+    """Persisted provenance.source_url must never carry provider secrets."""
+
+    FAKE_KEY = "SUPER_SECRET_FAKE_KEY_123"
+
+    def test_redact_url_secrets_strips_apikey_keeps_benign_params(self):
+        url = "https://financialmodelingprep.com/api/v3/income-statement/BHP?apikey=SUPER_SECRET_FAKE_KEY_123"
+        redacted = scr.redact_url_secrets(url)
+        self.assertNotIn("apikey", redacted)
+        self.assertNotIn("SUPER_SECRET_FAKE_KEY_123", redacted)
+        self.assertIn("income-statement/BHP", redacted)
+
+    def test_redact_url_secrets_preserves_benign_query_params(self):
+        url = "https://www.alphavantage.co/query?function=INCOME_STATEMENT&symbol=BHP&apikey=SUPER_SECRET_FAKE_KEY_123"
+        redacted = scr.redact_url_secrets(url)
+        self.assertIn("function=INCOME_STATEMENT", redacted)
+        self.assertIn("symbol=BHP", redacted)
+        self.assertNotIn("apikey", redacted)
+        self.assertNotIn("SUPER_SECRET_FAKE_KEY_123", redacted)
+
+    def test_redact_url_secrets_noop_without_query(self):
+        url = "https://financialmodelingprep.com/api/v3/income-statement/BHP"
+        self.assertEqual(scr.redact_url_secrets(url), url)
+
+    def test_fmp_persisted_source_url_has_no_apikey(self):
+        adapter = scr.FmpAdapter(env={"FMP_API_KEY": self.FAKE_KEY}, fetcher=self._fmp_fetcher())
+        fields = adapter.fetch("BHP.AX")
+        for fv in fields.values():
+            src = fv.provenance.get("source_url", "")
+            self.assertNotIn("apikey", src)
+            self.assertNotIn(self.FAKE_KEY, src)
+        self.assertIn("income-statement", fields["revenue"].provenance["source_url"])
+
+    def test_alpha_vantage_persisted_source_url_has_no_apikey(self):
+        adapter = scr.AlphaVantageAdapter(env={"ALPHA_VANTAGE_API_KEY": self.FAKE_KEY}, fetcher=self._av_fetcher())
+        fields = adapter.fetch("BHP.AX")
+        for fv in fields.values():
+            src = fv.provenance.get("source_url", "")
+            self.assertNotIn("apikey", src)
+            self.assertNotIn(self.FAKE_KEY, src)
+        self.assertIn("function=INCOME_STATEMENT", fields["revenue"].provenance["source_url"])
+
+    def _fmp_fetcher(self):
+        def fetcher(url, timeout=None, cache_dir=None):
+            if "income-statement" in url:
+                return [{"date": "2025-06-30", "revenue": 56_642_000_000.0, "netIncome": 9_845_000_000.0}]
+            if "balance-sheet-statement" in url:
+                return [{"date": "2025-06-30", "totalAssets": 113_137_000_000.0, "totalLiabilities": 65_066_000_000.0, "totalCurrentAssets": 25_269_000_000.0, "totalCurrentLiabilities": 17_050_000_000.0}]
+            if "cash-flow-statement" in url:
+                return [{"date": "2025-06-30", "operatingCashFlow": 18_831_000_000.0, "capitalExpenditure": -10_170_000_000.0}]
+            raise AssertionError("unexpected url " + url)
+        return fetcher
+
+    def _av_fetcher(self):
+        def fetcher(url, timeout=None, cache_dir=None):
+            if "INCOME_STATEMENT" in url:
+                return {"annualReports": [{"fiscalDateEnding": "2025-06-30", "totalRevenue": "56642000000", "netIncome": "9845000000"}]}
+            if "BALANCE_SHEET" in url:
+                return {"annualReports": [{"fiscalDateEnding": "2025-06-30", "totalAssets": "113137000000", "totalLiabilities": "65066000000", "totalCurrentAssets": "25269000000", "totalCurrentLiabilities": "17050000000"}]}
+            if "CASH_FLOW" in url:
+                return {"annualReports": [{"fiscalDateEnding": "2025-06-30", "operatingCashflow": "18831000000", "capitalExpenditures": "10170000000"}]}
+            raise AssertionError("unexpected url " + url)
+        return fetcher
+
+
 class TestMergeMissingFields(unittest.TestCase):
 
     def _company_with_missing(self):

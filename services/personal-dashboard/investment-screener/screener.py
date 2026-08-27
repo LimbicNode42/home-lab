@@ -1289,6 +1289,38 @@ def _first_dated(items: list[dict], date_keys: tuple[str, ...]) -> Optional[dict
     )
 
 
+_SECRET_QUERY_PARAMS = frozenset({"apikey", "api_key", "access_token", "key", "token"})
+
+
+def redact_url_secrets(url: str) -> str:
+    """Return ``url`` with secret query params (apikey, token, ...) removed.
+
+    Provider request URLs carry credentials in their query string (e.g.
+    ``?apikey=<KEY>``). Those URLs must never be persisted into provenance
+    artifacts (jsonl, parquet, Postgres ``source_url``), so strip secret params
+    before persistence while leaving benign params (``function``, ``symbol``,
+    ...) intact for provenance richness. The transient in-memory request keeps
+    the full URL; only persisted provenance is sanitized.
+    """
+    if not url or not isinstance(url, str):
+        return url
+    try:
+        parsed = urllib.parse.urlsplit(url)
+    except ValueError:
+        return url
+    if not parsed.query:
+        return url
+    kept = [
+        (k, v)
+        for k, v in urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+        if k.lower() not in _SECRET_QUERY_PARAMS
+    ]
+    new_query = urllib.parse.urlencode(kept) if kept else ""
+    return urllib.parse.urlunsplit(
+        (parsed.scheme, parsed.netloc, parsed.path, new_query, parsed.fragment)
+    )
+
+
 class ProviderAdapter:
     """Base class for a single credentialed fundamentals provider.
 
@@ -1353,7 +1385,7 @@ class ProviderAdapter:
             provenance={
                 "source_family": self.name,
                 "provider": self.name,
-                "source_url": source_url,
+                "source_url": redact_url_secrets(source_url),
                 "retrieved_at": _now_iso(),
                 "retrieved_from_source_at": _now_iso(),
                 "data_as_of": data_as_of,
