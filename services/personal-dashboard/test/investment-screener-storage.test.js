@@ -73,6 +73,16 @@ const nonFixtureRun = {
     { ticker: 'BHP.AX', field_name: 'revenue', value: 56642000000, source_family: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:30.000Z', data_as_of: '2026-06-30' },
     { ticker: 'BHP.AX', field_name: 'net_income', value: 7810000000, source_family: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:31.000Z', data_as_of: '2026-06-30' },
     { ticker: 'BHP.AX', field_name: 'market_cap', value: 225000000000, source_family: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:32.000Z', data_as_of: '2026-08-23' },
+    { ticker: 'BHP.AX', field_name: 'pe_ratio', value: 34.4, source_family: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:32.000Z', data_as_of: '2026-08-23' },
+    { ticker: 'BHP.AX', field_name: 'price_to_sales', value: 3.972, source_family: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:32.000Z', data_as_of: '2026-08-23' },
+    { ticker: 'BHP.AX', field_name: 'fcf', value: -1200000, source_family: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:32.000Z', data_as_of: '2026-06-30' },
+    { ticker: 'BHP.AX', field_name: 'net_margin', value: 0.167, source_family: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:32.000Z', data_as_of: '2026-06-30' },
+    { ticker: 'BHP.AX', field_name: 'roe', value: 0.203, source_family: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:32.000Z', data_as_of: '2026-06-30' },
+    { ticker: 'BHP.AX', field_name: 'fcf_margin', value: 0, source_family: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:32.000Z', data_as_of: '2026-06-30' },
+    { ticker: 'BHP.AX', field_name: 'revenue_growth', value: -0.125, source_family: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:32.000Z', data_as_of: '2026-06-30' },
+    { ticker: 'BHP.AX', field_name: 'current_ratio', value: 1.88, source_family: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:32.000Z', data_as_of: '2026-06-30' },
+    { ticker: 'BHP.AX', field_name: 'debt_to_assets', value: 0.45, source_family: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:32.000Z', data_as_of: '2026-06-30' },
+    { ticker: 'BHP.AX', field_name: 'total_assets', value: 1200000000000, source_family: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:32.000Z', data_as_of: '2026-06-30' },
     { ticker: 'BHP.AX', field_name: 'dividend_yield', value: null, source_family: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:33.000Z', data_as_of: '2026-08-23' },
     { ticker: 'CSL.AX', field_name: 'revenue', value: 16000000000, source_family: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:35.000Z', data_as_of: '2026-06-30' }
   ],
@@ -85,6 +95,16 @@ const nonFixtureRun = {
     { ticker: 'BHP.AX', field_name: 'revenue', source_family: 'yahoo-finance', provider: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:30.000Z', data_as_of: '2026-06-30' },
     { ticker: 'BHP.AX', field_name: 'net_income', source_family: 'yahoo-finance', provider: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:31.000Z', data_as_of: '2026-06-30' },
     { ticker: 'BHP.AX', field_name: 'market_cap', source_family: 'yahoo-finance', provider: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:32.000Z', data_as_of: '2026-08-23' },
+    { ticker: 'BHP.AX', field_name: 'pe_ratio', source_family: 'yahoo-finance', provider: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:32.000Z', data_as_of: '2026-08-23' },
+    { ticker: 'BHP.AX', field_name: 'price_to_sales', source_family: 'yahoo-finance', provider: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:32.000Z', data_as_of: '2026-08-23' },
+    { ticker: 'BHP.AX', field_name: 'fcf', source_family: 'yahoo-finance', provider: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:32.000Z', data_as_of: '2026-06-30' },
+    { ticker: 'BHP.AX', field_name: 'net_margin', source_family: 'yahoo-finance', provider: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:32.000Z', data_as_of: '2026-06-30' },
+    { ticker: 'BHP.AX', field_name: 'roe', source_family: 'yahoo-finance', provider: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:32.000Z', data_as_of: '2026-06-30' },
+    { ticker: 'BHP.AX', field_name: 'fcf_margin', source_family: 'yahoo-finance', provider: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:32.000Z', data_as_of: '2026-06-30' },
+    { ticker: 'BHP.AX', field_name: 'revenue_growth', source_family: 'yahoo-finance', provider: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:32.000Z', data_as_of: '2026-06-30' },
+    { ticker: 'BHP.AX', field_name: 'current_ratio', source_family: 'yahoo-finance', provider: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:32.000Z', data_as_of: '2026-06-30' },
+    { ticker: 'BHP.AX', field_name: 'debt_to_assets', source_family: 'yahoo-finance', provider: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:32.000Z', data_as_of: '2026-06-30' },
+    { ticker: 'BHP.AX', field_name: 'total_assets', source_family: 'yahoo-finance', provider: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:32.000Z', data_as_of: '2026-06-30' },
     { ticker: 'CSL.AX', field_name: 'revenue', source_family: 'yahoo-finance', provider: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:35.000Z', data_as_of: '2026-06-30' }
   ],
   failures: [{ ticker: 'CBA.AX', reason: 'missing required valuation fields', provider: 'yahoo-finance', source_family: 'yahoo-finance', recoverable: true }],
@@ -153,6 +173,22 @@ test('readInvestmentScreenerCompanyDetail maps latest file-first fundamentals wi
     assert.equal(detail.identity.name, 'BHP Group');
     assert.deepEqual(detail.identity.unavailable, ['exchange', 'region', 'sector', 'industry']);
     assert.equal(detail.valuation.market_cap.value, 225000000000);
+    assert.equal(detail.valuation.market_cap.display_value, '225.0B');
+    assert.equal(detail.valuation.market_cap.display_unit, 'AUD');
+    assert.equal(detail.valuation.market_cap.display_kind, 'currency');
+    assert.equal(detail.valuation.pe_ratio.display_value, '34.4x');
+    assert.equal(detail.valuation.price_to_sales.display_value, '3.97x');
+    assert.equal(detail.quality_growth_safety.fcf.display_value, '-1.2M');
+    assert.equal(detail.quality_growth_safety.fcf.display_unit, 'AUD');
+    assert.equal(detail.quality_growth_safety.net_margin.display_value, '16.7%');
+    assert.equal(detail.quality_growth_safety.roe.display_value, '20.3%');
+    assert.equal(detail.quality_growth_safety.fcf_margin.display_value, '0.0%');
+    assert.equal(detail.quality_growth_safety.revenue_growth.display_value, '-12.5%');
+    assert.equal(detail.quality_growth_safety.current_ratio.display_value, '1.88x');
+    assert.equal(detail.quality_growth_safety.debt_to_assets.display_value, '45.0%');
+    assert.equal(detail.statements_summary.total_assets.display_value, '1.2T');
+    assert.equal(detail.dividends.dividend_yield.display_value, 'Missing');
+    assert.equal(detail.earnings.eps.display_value, 'Unavailable');
     assert.equal(detail.statements_summary.revenue.value, 56642000000);
     assert.equal(detail.statements_summary.net_income.value, 7810000000);
     assert.equal(detail.dividends.dividend_yield.state, 'missing');
@@ -436,7 +472,7 @@ test('preflight-investment-screener-artifacts validates canonical latest pointer
       '--data-root', dataRoot,
       '--market', 'ASX',
       '--source', 'yahoo-finance',
-      '--max-generated-age-hours', '72'
+      '--max-generated-age-hours', '100000'
     ], { cwd: new URL('..', import.meta.url) });
     const report = JSON.parse(stdout);
 

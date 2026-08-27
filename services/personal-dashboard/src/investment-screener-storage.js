@@ -666,15 +666,64 @@ function valueState(value, hasEvidence) {
   return 'present';
 }
 
-function observedField(field, label, observations, provenance, unsupportedReason = null) {
+function trimFixed(value, decimals) {
+  const fixed = value.toFixed(decimals);
+  return fixed.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '.0');
+}
+
+function formatLargeNumber(value) {
+  const number = numberOrNull(value);
+  if (number === null) return null;
+  if (number === 0) return '0';
+  const sign = number < 0 ? '-' : '';
+  const absolute = Math.abs(number);
+  const units = [
+    { threshold: 1_000_000_000_000, suffix: 'T' },
+    { threshold: 1_000_000_000, suffix: 'B' },
+    { threshold: 1_000_000, suffix: 'M' }
+  ];
+  const unit = units.find((candidate) => absolute >= candidate.threshold);
+  if (!unit) return `${sign}${trimFixed(absolute, absolute >= 100 ? 0 : 2)}`;
+  return `${sign}${trimFixed(absolute / unit.threshold, 1)}${unit.suffix}`;
+}
+
+function formatRatio(value) {
+  const number = numberOrNull(value);
+  if (number === null) return null;
+  const decimals = Math.abs(number) >= 10 ? 1 : 2;
+  return `${trimFixed(number, decimals)}x`;
+}
+
+function formatPercent(value) {
+  const number = numberOrNull(value);
+  if (number === null) return null;
+  return `${trimFixed(number * 100, 1)}%`;
+}
+
+function displayForField({ state, value, kind, unit }) {
+  const base = {
+    display_kind: kind ?? 'raw',
+    ...(unit ? { display_unit: unit } : {})
+  };
+  if (state === 'missing') return { ...base, display_value: 'Missing' };
+  if (state !== 'present') return { ...base, display_value: 'Unavailable' };
+  if (kind === 'currency' || kind === 'large-number') return { ...base, display_value: formatLargeNumber(value) };
+  if (kind === 'ratio') return { ...base, display_value: formatRatio(value) };
+  if (kind === 'percentage') return { ...base, display_value: formatPercent(value) };
+  return { ...base, display_value: String(value) };
+}
+
+function observedField(field, label, observations, provenance, unsupportedReason = null, display = {}) {
   const observation = observations.get(field);
   const source = provenance.get(field) ?? null;
   const state = unsupportedReason ? 'unavailable' : valueState(observation?.value, Boolean(observation));
+  const value = state === 'present' ? observation.value : null;
   return {
     field,
     label,
     state,
-    value: state === 'present' ? observation.value : null,
+    value,
+    ...displayForField({ state, value, kind: display.kind, unit: display.unit }),
     source_family: source?.source_family ?? observation?.source_family ?? null,
     retrieved_at: source?.retrieved_at ?? observation?.retrieved_at ?? null,
     data_as_of: source?.data_as_of ?? observation?.data_as_of ?? null,
@@ -733,34 +782,38 @@ export async function readInvestmentScreenerCompanyDetail({ dataRoot, ticker, ma
   const observations = observationMap(observationsRows, wantedTicker);
   const provenance = provenanceMap(provenanceRows, wantedTicker);
   const unsupported = 'Unavailable from current source; the current sanitized ASX/Yahoo export does not include this field.';
+  const currency = sanitizeText(company?.currency ?? score?.currency, null, 16);
+  const currencyDisplay = { kind: 'currency', unit: currency };
+  const ratioDisplay = { kind: 'ratio' };
+  const percentageDisplay = { kind: 'percentage' };
   const valuation = {
-    market_cap: observedField('market_cap', 'Market cap', observations, provenance),
-    pe_ratio: observedField('pe_ratio', 'P/E ratio', observations, provenance),
-    price_to_sales: observedField('price_to_sales', 'Price / sales', observations, provenance)
+    market_cap: observedField('market_cap', 'Market cap', observations, provenance, null, currencyDisplay),
+    pe_ratio: observedField('pe_ratio', 'P/E ratio', observations, provenance, null, ratioDisplay),
+    price_to_sales: observedField('price_to_sales', 'Price / sales', observations, provenance, null, ratioDisplay)
   };
   const qualityGrowthSafety = {
     composite_score: scoreField('composite_score', 'Composite score', score),
     quality: scoreField('quality', 'Quality score', score),
     valuation: scoreField('valuation', 'Valuation score', score),
     growth: scoreField('growth', 'Growth score', score),
-    net_margin: observedField('net_margin', 'Net margin', observations, provenance),
-    roe: observedField('roe', 'Return on equity', observations, provenance),
-    fcf: observedField('fcf', 'Free cash flow', observations, provenance),
-    fcf_margin: observedField('fcf_margin', 'FCF margin', observations, provenance),
-    revenue_growth: observedField('revenue_growth', 'Revenue growth', observations, provenance),
-    current_ratio: observedField('current_ratio', 'Current ratio', observations, provenance),
-    debt_to_assets: observedField('debt_to_assets', 'Debt / assets', observations, provenance)
+    net_margin: observedField('net_margin', 'Net margin', observations, provenance, null, percentageDisplay),
+    roe: observedField('roe', 'Return on equity', observations, provenance, null, percentageDisplay),
+    fcf: observedField('fcf', 'Free cash flow', observations, provenance, null, currencyDisplay),
+    fcf_margin: observedField('fcf_margin', 'FCF margin', observations, provenance, null, percentageDisplay),
+    revenue_growth: observedField('revenue_growth', 'Revenue growth', observations, provenance, null, percentageDisplay),
+    current_ratio: observedField('current_ratio', 'Current ratio', observations, provenance, null, ratioDisplay),
+    debt_to_assets: observedField('debt_to_assets', 'Debt / assets', observations, provenance, null, percentageDisplay)
   };
   const statements = {
-    revenue: observedField('revenue', 'Revenue', observations, provenance),
-    prior_revenue: observedField('prior_revenue', 'Prior revenue', observations, provenance),
-    net_income: observedField('net_income', 'Net income', observations, provenance),
-    operating_cash_flow: observedField('operating_cash_flow', 'Operating cash flow', observations, provenance),
-    capital_expenditures: observedField('capital_expenditures', 'Capital expenditure', observations, provenance),
-    total_assets: observedField('total_assets', 'Total assets', observations, provenance),
-    current_assets: observedField('current_assets', 'Current assets', observations, provenance),
-    total_liabilities: observedField('total_liabilities', 'Total liabilities', observations, provenance),
-    current_liabilities: observedField('current_liabilities', 'Current liabilities', observations, provenance)
+    revenue: observedField('revenue', 'Revenue', observations, provenance, null, currencyDisplay),
+    prior_revenue: observedField('prior_revenue', 'Prior revenue', observations, provenance, null, currencyDisplay),
+    net_income: observedField('net_income', 'Net income', observations, provenance, null, currencyDisplay),
+    operating_cash_flow: observedField('operating_cash_flow', 'Operating cash flow', observations, provenance, null, currencyDisplay),
+    capital_expenditures: observedField('capital_expenditures', 'Capital expenditure', observations, provenance, null, currencyDisplay),
+    total_assets: observedField('total_assets', 'Total assets', observations, provenance, null, currencyDisplay),
+    current_assets: observedField('current_assets', 'Current assets', observations, provenance, null, currencyDisplay),
+    total_liabilities: observedField('total_liabilities', 'Total liabilities', observations, provenance, null, currencyDisplay),
+    current_liabilities: observedField('current_liabilities', 'Current liabilities', observations, provenance, null, currencyDisplay)
   };
   const dividends = {
     dividend_yield: observedField('dividend_yield', 'Dividend yield', observations, provenance),
@@ -796,7 +849,7 @@ export async function readInvestmentScreenerCompanyDetail({ dataRoot, ticker, ma
       region: null,
       sector: null,
       industry: null,
-      currency: sanitizeText(company?.currency ?? score?.currency, null, 16),
+      currency,
       unavailable: identityUnavailable
     },
     valuation,
