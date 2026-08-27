@@ -847,6 +847,7 @@ function renderInvestmentCandidate(candidate) {
 
 function formatInvestmentField(field) {
   if (!field || typeof field !== 'object') return 'Unavailable from current source';
+  if (field.display_value) return field.display_unit ? `${field.display_value} ${field.display_unit}` : field.display_value;
   if (field.state === 'present') return field.value == null ? 'Present' : String(field.value);
   if (field.state === 'missing') return 'Missing in latest source';
   return 'Unavailable from current source';
