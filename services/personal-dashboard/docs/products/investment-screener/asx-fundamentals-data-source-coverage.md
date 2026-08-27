@@ -107,3 +107,18 @@ Fallback alternative if Ben prefers lowest cost: **Alpha Vantage** free key, but
 - **Rate-limit starvation:** Alpha Vantage free (25/day) is a trap for batch work — it will look like a working source but silently starve a top-50 run. Guard any AV adapter with a hard per-run budget.
 - **Accounting normalization:** provider-computed ratios may not match the screener's own derived definitions (e.g. FCF sign conventions, minority-interest treatment in `total_liabilities`). Cross-check provider ratios against Yahoo-derived values before trusting a mismatch.
 - **Credential lifecycle:** a hardcoded or committed key would be an incident; keys must come from Vaultwarden/runtime env only.
+
+## 8. Implementation status
+
+> Task `t_00434aef`. Code/test/config-example change only — no live hydration, no cron changes, no deploy.
+
+The staged provider-fallback framework described in §4 and §6 is implemented in `investment-screener/screener.py`:
+
+- `ProviderAdapter` base class — fail-closed (returns no fields, no network) when its credential is absent.
+- `FmpAdapter` (recommended Stage 1) and `AlphaVantageAdapter` (spot-fill) — normalize income/balance/cash-flow statements into the same raw `FieldValue` shape Yahoo produces, with `source_family`, `trust_level: licensed`, `data_as_of`, and `retrieved_at` provenance.
+- `missing_field_value`, `merge_missing_fields`, `build_fallback_adapters`, `fill_company_missing_fields` — merge fallback values into missing raw fields only (never overwrite present values), prefer the highest-trust provider, and mark still-missing fields `missing_reason: unavailable`.
+- Rate-limit (429) and other fetch failures degrade to "no data" (partial run state), never to fabricated values.
+
+Credentials come only from runtime env vars `FMP_API_KEY` / `ALPHA_VANTAGE_API_KEY` (Vaultwarden `homelab` folder; see `personal-dashboard.env.map.example`). With no credentials configured, `build_fallback_adapters` returns an empty list and Yahoo remains the sole source — missing stays missing.
+
+To enable Stage 1, Ben fetches a free FMP API key and stores it in Vaultwarden; no code change is required beyond injecting the env var at runtime. The adapters remain disabled until then.

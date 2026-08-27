@@ -911,5 +911,212 @@ class TestFileFirstArtifactPayload(unittest.TestCase):
         self.assertFalse(args.write_postgres_history)
 
 
+# ---------------------------------------------------------------------------
+# 8. Provider fallback framework (staged fundamentals fallback)
+# ---------------------------------------------------------------------------
+
+
+class TestProviderAdapterFailClosed(unittest.TestCase):
+
+    def test_adapter_disabled_without_credential_is_noop(self):
+        adapter = scr.FmpAdapter(env={})
+        self.assertFalse(adapter.enabled())
+        self.assertEqual(adapter.fetch("BHP.AX"), {})
+
+    def test_adapter_status_reports_missing_credential_reason(self):
+        adapter = scr.AlphaVantageAdapter(env={})
+        status = adapter.status()
+        self.assertFalse(status["enabled"])
+        self.assertIn("ALPHA_VANTAGE_API_KEY", status["reason"])
+
+    def test_missing_credential_never_fabricates_and_no_network(self):
+        calls = []
+
+        def boom_fetcher(url, timeout=None, cache_dir=None):
+            calls.append(url)
+            raise AssertionError("network must not be called when disabled")
+
+        adapter = scr.FmpAdapter(env={}, fetcher=boom_fetcher)
+        result = adapter.fetch("BHP.AX")
+        self.assertEqual(result, {})
+        self.assertEqual(calls, [])
+
+
+class TestProviderAdaptersNormalize(unittest.TestCase):
+
+    def _fmp_fetcher(self):
+        def fetcher(url, timeout=None, cache_dir=None):
+            if "income-statement" in url:
+                return [{"date": "2025-06-30", "revenue": 56_642_000_000.0, "netIncome": 9_845_000_000.0}]
+            if "balance-sheet-statement" in url:
+                return [{
+                    "date": "2025-06-30",
+                    "totalAssets": 113_137_000_000.0,
+                    "totalLiabilities": 65_066_000_000.0,
+                    "totalCurrentAssets": 25_269_000_000.0,
+                    "totalCurrentLiabilities": 17_050_000_000.0,
+                }]
+            if "cash-flow-statement" in url:
+                return [{
+                    "date": "2025-06-30",
+                    "operatingCashFlow": 18_831_000_000.0,
+                    "capitalExpenditure": -10_170_000_000.0,
+                }]
+            raise AssertionError("unexpected url " + url)
+        return fetcher
+
+    def _av_fetcher(self):
+        def fetcher(url, timeout=None, cache_dir=None):
+            if "INCOME_STATEMENT" in url:
+                return {"annualReports": [{"fiscalDateEnding": "2025-06-30", "totalRevenue": "56642000000", "netIncome": "9845000000"}]}
+            if "BALANCE_SHEET" in url:
+                return {"annualReports": [{
+                    "fiscalDateEnding": "2025-06-30",
+                    "totalAssets": "113137000000",
+                    "totalLiabilities": "65066000000",
+                    "totalCurrentAssets": "25269000000",
+                    "totalCurrentLiabilities": "17050000000",
+                }]}
+            if "CASH_FLOW" in url:
+                return {"annualReports": [{
+                    "fiscalDateEnding": "2025-06-30",
+                    "operatingCashflow": "18831000000",
+                    "capitalExpenditures": "10170000000",
+                }]}
+            raise AssertionError("unexpected url " + url)
+        return fetcher
+
+    def test_fmp_adapter_normalizes_raw_fields_with_provenance(self):
+        adapter = scr.FmpAdapter(env={"FMP_API_KEY": "test-key"}, fetcher=self._fmp_fetcher())
+        self.assertTrue(adapter.enabled())
+        fields = adapter.fetch("BHP.AX")
+
+        self.assertAlmostEqual(fields["revenue"].value, 56_642_000_000.0)
+        self.assertAlmostEqual(fields["net_income"].value, 9_845_000_000.0)
+        self.assertAlmostEqual(fields["total_assets"].value, 113_137_000_000.0)
+        self.assertAlmostEqual(fields["total_liabilities"].value, 65_066_000_000.0)
+        self.assertAlmostEqual(fields["current_assets"].value, 25_269_000_000.0)
+        self.assertAlmostEqual(fields["current_liabilities"].value, 17_050_000_000.0)
+        self.assertAlmostEqual(fields["operating_cash_flow"].value, 18_831_000_000.0)
+        # capex forced negative regardless of provider sign convention
+        self.assertLess(fields["capital_expenditures"].value, 0)
+
+        prov = fields["revenue"].provenance
+        self.assertEqual(prov["source_family"], "fmp")
+        self.assertEqual(prov["provider"], "fmp")
+        self.assertEqual(prov["trust_level"], "licensed")
+        self.assertEqual(prov["data_as_of"], "2025-06-30")
+        self.assertEqual(prov["field_name"], "revenue")
+
+    def test_alpha_vantage_adapter_normalizes_string_fields(self):
+        adapter = scr.AlphaVantageAdapter(env={"ALPHA_VANTAGE_API_KEY": "k"}, fetcher=self._av_fetcher())
+        self.assertTrue(adapter.enabled())
+        fields = adapter.fetch("BHP.AX")
+
+        self.assertAlmostEqual(fields["revenue"].value, 56_642_000_000.0)
+        self.assertAlmostEqual(fields["net_income"].value, 9_845_000_000.0)
+        self.assertAlmostEqual(fields["total_assets"].value, 113_137_000_000.0)
+        self.assertLess(fields["capital_expenditures"].value, 0)
+        self.assertEqual(fields["revenue"].provenance["source_family"], "alpha_vantage")
+        self.assertEqual(fields["revenue"].provenance["trust_level"], "licensed")
+        self.assertEqual(fields["revenue"].provenance["data_as_of"], "2025-06-30")
+
+    def test_rate_limit_returns_empty_and_sets_last_error(self):
+        def fetcher(url, timeout=None, cache_dir=None):
+            raise urllib.error.HTTPError(url, 429, "Too Many Requests", None, None)
+
+        adapter = scr.FmpAdapter(env={"FMP_API_KEY": "k"}, fetcher=fetcher)
+        result = adapter.fetch("BHP.AX")
+
+        self.assertEqual(result, {})
+        self.assertIsNotNone(adapter.last_error)
+        self.assertIn("429", str(adapter.last_error))
+
+
+class TestMergeMissingFields(unittest.TestCase):
+
+    def _company_with_missing(self):
+        company = asx_company()
+        company["net_income"] = scr.missing_field_value("net_income", "provider_absent", "yahoo-finance")
+        company["total_assets"] = scr.missing_field_value("total_assets", "provider_absent", "yahoo-finance")
+        return company
+
+    def _fmp_net_income(self, value=9_800_000_000.0):
+        return FieldValue(
+            value,
+            {
+                "source_family": "fmp",
+                "provider": "fmp",
+                "trust_level": "licensed",
+                "data_as_of": "2025-06-30",
+                "retrieved_at": "2026-01-01T00:00:00Z",
+                "field_name": "net_income",
+            },
+        )
+
+    def test_merge_fills_missing_with_fallback_provenance(self):
+        company = self._company_with_missing()
+        fallback = {"net_income": self._fmp_net_income()}
+
+        merged, filled = scr.merge_missing_fields(company, [("fmp", fallback)])
+
+        self.assertAlmostEqual(merged["net_income"].value, 9_800_000_000.0)
+        self.assertEqual(merged["net_income"].provenance["source_family"], "fmp")
+        self.assertEqual(merged["net_income"].provenance["trust_level"], "licensed")
+        self.assertEqual(filled["net_income"], "fmp")
+
+    def test_merge_does_not_overwrite_existing_value(self):
+        company = asx_company()  # net_income already present (10B)
+        fallback = {"net_income": self._fmp_net_income(1.0)}
+
+        merged, filled = scr.merge_missing_fields(company, [("fmp", fallback)])
+
+        self.assertAlmostEqual(merged["net_income"].value, 10_000_000_000.0)
+        self.assertNotIn("net_income", filled)
+
+    def test_merge_prefers_higher_trust_order(self):
+        company = self._company_with_missing()
+        fmp = {"net_income": self._fmp_net_income(111.0)}
+        av = {"net_income": FieldValue(222.0, {"source_family": "alpha_vantage", "trust_level": "licensed", "field_name": "net_income"})}
+
+        merged, filled = scr.merge_missing_fields(company, [("fmp", fmp), ("alpha_vantage", av)])
+
+        self.assertAlmostEqual(merged["net_income"].value, 111.0)
+        self.assertEqual(filled["net_income"], "fmp")
+
+    def test_missing_remains_unavailable_with_reason(self):
+        company = self._company_with_missing()  # total_assets not supplied by any fallback
+        merged, filled = scr.merge_missing_fields(company, [("fmp", {"net_income": self._fmp_net_income()})])
+
+        self.assertIsNone(merged["total_assets"].value)
+        self.assertEqual(merged["total_assets"].provenance["missing_reason"], "unavailable")
+        self.assertNotIn("total_assets", filled)
+
+
+class TestFallbackRegistry(unittest.TestCase):
+
+    def test_build_fallback_adapters_returns_empty_when_no_credentials(self):
+        adapters = scr.build_fallback_adapters(env={})
+        self.assertEqual(adapters, [])
+
+    def test_build_fallback_adapters_orders_by_trust_rank(self):
+        env = {"FMP_API_KEY": "f", "ALPHA_VANTAGE_API_KEY": "a"}
+        adapters = scr.build_fallback_adapters(env=env)
+        self.assertEqual([adapter.name for adapter in adapters], ["fmp", "alpha_vantage"])
+
+    def test_fill_company_missing_fields_records_disabled_providers(self):
+        company = self._company_with_missing__helper()
+        # no credentials -> no adapters -> fields stay missing, no network
+        adapters = scr.build_fallback_adapters(env={})
+        merged, failures = scr.fill_company_missing_fields(company, adapters)
+        self.assertIsNone(merged["net_income"].value)
+        self.assertEqual(failures, [])
+
+    def _company_with_missing__helper(self):
+        company = asx_company()
+        company["net_income"] = scr.missing_field_value("net_income", "provider_absent", "yahoo-finance")
+        return company
+
+
 if __name__ == "__main__":
     unittest.main()
