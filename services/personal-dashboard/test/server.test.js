@@ -735,7 +735,7 @@ test('GET /api/investment-screener/coverage clamps inconsistent artifact counts 
     assert.equal(body.coverage.scored, 2);
     assert.equal(body.coverage.excluded, 2);
     assert.equal(body.coverage.failed, 2);
-    assert.equal(body.coverage.stale, 2);
+    assert.equal(body.coverage.stale, true);
     assert.equal(body.coverage.missing_required_fields, 2);
     assert.equal(body.coverage.percent, 100);
     assert.equal(body.coverage.coverage_inconsistent, true);
@@ -806,13 +806,28 @@ test('GET /api/investment-screener/report prefers canonical non-fixture export o
   const canonicalDir = join(dataRoot, 'investment-screener', 'exports', 'dashboard', 'market=ASX');
   await mkdir(canonicalDir, { recursive: true });
   await writeFile(join(canonicalDir, 'latest_report.txt'), 'Investment Screener ASX\nRun: investment-screener_ASX_asx-yahoo-timeseries_2026-08-23T100100Z_0123456789ab\nUsable: 2 / 3\n', 'utf8');
+  await writeFile(join(canonicalDir, 'latest_coverage.json'), JSON.stringify({
+    market: 'ASX',
+    source: 'published-artifact',
+    generated_at: '2026-08-23T10:01:00.000Z',
+    source_summary: {
+      mode: 'asx-yahoo-timeseries',
+      data_as_of: '2026-06-30',
+      latest_retrieved_at: '2026-08-23T10:00:30.000Z'
+    },
+    coverage: {
+      freshness: {
+        data_as_of: '2026-06-30',
+        stale: false
+      }
+    }
+  }), 'utf8');
   const manifestDir = join(dataRoot, 'investment-screener', 'manifests', 'market=ASX', 'source=yahoo-finance');
   await mkdir(manifestDir, { recursive: true });
   await writeFile(join(manifestDir, 'latest.json'), JSON.stringify({
     run_id: 'investment-screener_ASX_asx-yahoo-timeseries_2026-08-23T100100Z_0123456789ab',
     mode: 'asx-yahoo-timeseries',
     generated_at: '2026-08-23T10:01:00.000Z',
-    data_as_of: '2026-06-30',
     run_manifest: 'runs/market=ASX/source=yahoo-finance/mode=asx-yahoo-timeseries/run_date=2026-08-23/investment-screener_ASX_asx-yahoo-timeseries_2026-08-23T100100Z_0123456789ab/manifest.json'
   }), 'utf8');
 
@@ -942,7 +957,7 @@ test('GET /api/investment-screener/coverage prefers Postgres latest completed ma
     assert.equal(body.coverage.freshness.latest_retrieved_at, '2026-08-22T10:04:00.000Z');
     assert.equal(body.coverage.freshness.data_as_of, '2025-06-30');
     assert.equal(body.coverage.freshness.stale, true);
-    assert.equal(body.coverage.stale, 4);
+    assert.equal(body.coverage.stale, true);
     assert.ok(body.coverage.warnings.some((warning) => warning.includes('Latest provider retrieval is')));
     assert.ok(body.coverage.warnings.some((warning) => warning.includes('Source data_as_of is')));
     assert.equal(JSON.stringify(body).includes('/root/'), false);
@@ -1024,7 +1039,9 @@ test('GET /api/investment-screener/ranked can query NAS-backed DuckDB screener a
     const serialized = JSON.stringify(body);
     assert.equal(response.status, 200);
     assert.equal(body.source_summary.mode, 'fixture');
+    assert.equal(body.source_summary.provenance_fields, 1);
     assert.equal(body.coverage.usable, 2);
+    assert.equal(typeof body.coverage.stale, 'boolean');
     assert.deepEqual(body.candidates.map((candidate) => candidate.ticker), ['BHP.AX', 'CSL.AX']);
     assert.equal(serialized.includes(dataRoot), false);
     assert.equal(serialized.includes('postgres://'), false);

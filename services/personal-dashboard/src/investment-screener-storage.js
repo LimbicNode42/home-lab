@@ -911,6 +911,13 @@ export async function buildInvestmentScreenerDuckDbSummary({ dataRoot, market = 
       score: Number(row.score),
       sub_scores: row.sub_scores_json ? JSON.parse(row.sub_scores_json) : {}
     }));
+    const provenanceParquet = join(runDir, manifest.artifacts.provenance_parquet.path).replaceAll("'", "''");
+    await connection.run(`CREATE OR REPLACE TABLE provenance AS SELECT * FROM read_parquet('${provenanceParquet}')`);
+    const provenanceRows = await duckRows(connection, `
+      SELECT count(*) AS provenance_rows, count(DISTINCT field_name) AS provenance_fields
+      FROM provenance
+    `);
+    const provenanceSummary = provenanceRows[0] ?? {};
     const reconstructedFreshness = freshnessFromManifest(manifest);
     const coverage = {
       ...manifest.coverage,
@@ -942,7 +949,8 @@ export async function buildInvestmentScreenerDuckDbSummary({ dataRoot, market = 
         universe_source: manifest.universe.source,
         universe_version: manifest.universe.version,
         data_as_of: manifest.data_as_of,
-        provenance_rows: manifest.artifacts.provenance_parquet.rows
+        provenance_rows: Number(provenanceSummary.provenance_rows ?? manifest.artifacts.provenance_parquet.rows),
+        provenance_fields: Number(provenanceSummary.provenance_fields ?? 0)
       },
       coverage,
       ranked_candidates: ranked
