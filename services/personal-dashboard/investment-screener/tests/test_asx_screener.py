@@ -1136,9 +1136,12 @@ class TestProviderAdaptersNormalize(unittest.TestCase):
         self.assertLess(fields["capital_expenditures"].value, 0)
 
         prov = fields["revenue"].provenance
-        self.assertEqual(prov["source_family"], "fmp")
+        self.assertEqual(prov["source_family"], "provider_statement")
         self.assertEqual(prov["provider"], "fmp")
-        self.assertEqual(prov["trust_level"], "licensed")
+        self.assertEqual(prov["trust_level"], "licensed_provider_normalized_statement")
+        self.assertEqual(prov["unit"], "currency")
+        self.assertEqual(prov["currency"], "AUD")
+        self.assertEqual(prov["period_type"], "annual")
         self.assertEqual(prov["data_as_of"], "2025-06-30")
         self.assertEqual(prov["field_name"], "revenue")
 
@@ -1151,8 +1154,9 @@ class TestProviderAdaptersNormalize(unittest.TestCase):
         self.assertAlmostEqual(fields["net_income"].value, 9_845_000_000.0)
         self.assertAlmostEqual(fields["total_assets"].value, 113_137_000_000.0)
         self.assertLess(fields["capital_expenditures"].value, 0)
-        self.assertEqual(fields["revenue"].provenance["source_family"], "alpha_vantage")
-        self.assertEqual(fields["revenue"].provenance["trust_level"], "licensed")
+        self.assertEqual(fields["revenue"].provenance["source_family"], "provider_statement")
+        self.assertEqual(fields["revenue"].provenance["provider"], "alpha_vantage")
+        self.assertEqual(fields["revenue"].provenance["trust_level"], "licensed_provider_normalized_statement")
         self.assertEqual(fields["revenue"].provenance["data_as_of"], "2025-06-30")
 
     def test_rate_limit_returns_empty_and_sets_last_error(self):
@@ -1250,6 +1254,7 @@ class TestMergeMissingFields(unittest.TestCase):
                 "data_as_of": "2025-06-30",
                 "retrieved_at": "2026-01-01T00:00:00Z",
                 "field_name": "net_income",
+                "source_url": "https://financialmodelingprep.com/api/v3/income-statement/BHP?apikey=TEST_SECRET&symbol=BHP",
             },
         )
 
@@ -1263,6 +1268,8 @@ class TestMergeMissingFields(unittest.TestCase):
         self.assertEqual(merged["net_income"].provenance["source_family"], "fmp")
         self.assertEqual(merged["net_income"].provenance["trust_level"], "licensed")
         self.assertEqual(filled["net_income"], "fmp")
+        self.assertNotIn("apikey", merged["net_income"].provenance.get("source_url", ""))
+        self.assertNotIn("TEST_SECRET", merged["net_income"].provenance.get("source_url", ""))
 
     def test_merge_does_not_overwrite_existing_value(self):
         company = asx_company()  # net_income already present (10B)
@@ -1290,6 +1297,139 @@ class TestMergeMissingFields(unittest.TestCase):
         self.assertIsNone(merged["total_assets"].value)
         self.assertEqual(merged["total_assets"].provenance["missing_reason"], "unavailable")
         self.assertNotIn("total_assets", filled)
+
+
+class TestMultiSourceFundamentalsConsolidation(unittest.TestCase):
+
+    def _candidate(self, value, provider, *, field_name="operating_cash_flow", currency="AUD", unit="currency", scale="ones", period_type="annual", period_end="2025-06-30", source_family="provider_statement", trust_level="licensed_provider_normalized_statement", filed_at=None):
+        prov = {
+            "field_name": field_name,
+            "provider": provider,
+            "source_family": source_family,
+            "trust_level": trust_level,
+            "unit": unit,
+            "currency": currency,
+            "scale": scale,
+            "period_type": period_type,
+            "period_end": period_end,
+            "data_as_of": period_end,
+            "retrieved_at": "2026-01-01T00:00:00Z",
+            "source_url": f"https://example.test/{provider}?apikey=SECRET&symbol=BHP&signature=BAD",
+            "confidence": "medium",
+            "method": "reported",
+            "caveats": [],
+        }
+        if filed_at:
+            prov["filed_at"] = filed_at
+        return FieldValue(value, prov)
+
+    def test_field_value_schema_defaults_and_sanitized_url_are_serialized(self):
+        fv = self._candidate(123.0, "fmp")
+
+        serialized = scr.serialize_field_value("operating_cash_flow", fv)
+
+        self.assertEqual(serialized["field_name"], "operating_cash_flow")
+        self.assertEqual(serialized["value_status"], "present")
+        self.assertEqual(serialized["unit"], "currency")
+        self.assertEqual(serialized["currency"], "AUD")
+        self.assertEqual(serialized["period_type"], "annual")
+        self.assertEqual(serialized["provider"], "fmp")
+        self.assertTrue(serialized["source_url_sanitized"])
+        self.assertNotIn("apikey", serialized["source_url"])
+        self.assertNotIn("signature", serialized["source_url"])
+
+    def test_consolidation_prefers_provider_statement_over_yahoo_missing(self):
+        yahoo_missing = scr.missing_field_value("operating_cash_flow", "provider_absent", "yahoo-finance")
+        fmp = self._candidate(18831.0, "fmp")
+
+        result = scr.consolidate_field("operating_cash_flow", [("yahoo-finance", yahoo_missing), ("fmp", fmp)])
+
+        self.assertEqual(result["selected"]["provider"], "fmp")
+        self.assertEqual(result["selection_reason"], "filled_missing")
+        self.assertEqual(result["alternates"][0]["missing_reason"], "provider_absent")
+        self.assertEqual(result["conflicts"], [])
+
+    def test_currency_and_unit_mismatch_blocks_selection(self):
+        yahoo = self._candidate(100.0, "yahoo-finance", currency="AUD", source_family="unofficial_statement", trust_level="bootstrap_unofficial_yahoo_statement")
+        fmp = self._candidate(101.0, "fmp", currency="USD")
+
+        result = scr.consolidate_field("operating_cash_flow", [("yahoo-finance", yahoo), ("fmp", fmp)])
+
+        self.assertIsNone(result["selected"])
+        self.assertEqual(result["selection_reason"], "blocking_conflict")
+        self.assertEqual(result["conflicts"][0]["kind"], "currency_mismatch")
+        self.assertFalse(result["score_effect"]["usable_for_scoring"])
+
+    def test_period_mismatch_blocks_statement_merge(self):
+        annual = self._candidate(100.0, "yahoo-finance", source_family="unofficial_statement", trust_level="bootstrap_unofficial_yahoo_statement", period_type="annual")
+        ttm = self._candidate(101.0, "fmp", period_type="ttm")
+
+        result = scr.consolidate_field("operating_cash_flow", [("yahoo-finance", annual), ("fmp", ttm)])
+
+        self.assertIsNone(result["selected"])
+        self.assertEqual(result["conflicts"][0]["kind"], "period_type_mismatch")
+
+    def test_same_period_large_delta_records_conflict_and_near_equal_selects(self):
+        yahoo = self._candidate(100.0, "yahoo-finance", source_family="unofficial_statement", trust_level="bootstrap_unofficial_yahoo_statement")
+        fmp = self._candidate(103.0, "fmp")
+
+        result = scr.consolidate_field("operating_cash_flow", [("yahoo-finance", yahoo), ("fmp", fmp)])
+
+        self.assertEqual(result["selected"]["provider"], "fmp")
+        self.assertEqual(result["conflicts"][0]["kind"], "numeric_delta_exceeds_threshold")
+        self.assertEqual(result["conflicts"][0]["severity"], "warning")
+
+        near = scr.consolidate_field("operating_cash_flow", [("yahoo-finance", yahoo), ("fmp", self._candidate(100.4, "fmp"))])
+        self.assertEqual(near["selected"]["provider"], "fmp")
+        self.assertEqual(near["conflicts"], [])
+        self.assertEqual(near["selection_reason"], "near_equal_sources")
+
+    def test_newer_same_provider_filing_supersedes_older_alternate(self):
+        old = self._candidate(100.0, "fmp", filed_at="2025-08-01")
+        new = self._candidate(101.0, "fmp", filed_at="2025-09-01")
+
+        result = scr.consolidate_field("operating_cash_flow", [("fmp", old), ("fmp", new)])
+
+        self.assertEqual(result["selected"]["value"], 101.0)
+        self.assertEqual(result["selection_reason"], "newer_restatement")
+        self.assertEqual(result["alternates"][0]["reason_not_selected"], "superseded_by_newer_filing")
+
+    def test_fcf_derived_only_from_compatible_selected_inputs(self):
+        company = asx_company(
+            operating_cash_flow=self._candidate(100.0, "fmp", field_name="operating_cash_flow"),
+            capital_expenditures=self._candidate(-40.0, "fmp", field_name="capital_expenditures", period_type="ttm"),
+        )
+
+        result = scr.consolidate_company_fields(company)
+
+        self.assertIsNone(result["fields"]["fcf"]["selected"])
+        self.assertEqual(result["fields"]["fcf"]["conflicts"][0]["kind"], "period_type_mismatch")
+
+    def test_dashboard_export_includes_sanitized_field_quality_shape(self):
+        row = score_company(asx_company(), load_config(CONFIG_PATH))
+        row["field_quality"] = {"filled_fields": ["operating_cash_flow"], "conflicted_fields": ["market_cap"], "stale_fields": [], "missing_fields": ["total_debt"], "conflict_count": 1}
+        row["source_summary"] = "Yahoo bootstrap + 1 FMP-filled field; 1 warning conflict"
+
+        export = build_dashboard_ranked_export([row])
+        candidate = export["candidates"][0]
+
+        self.assertEqual(candidate["source_summary"], row["source_summary"])
+        self.assertEqual(candidate["field_quality"]["conflict_count"], 1)
+        self.assertNotIn("fields", candidate)
+        self.assertNotIn("source_url", json.dumps(candidate).lower())
+
+    def test_fill_company_missing_fields_records_fetch_failure_without_fake_values(self):
+        company = asx_company(operating_cash_flow=scr.missing_field_value("operating_cash_flow", "provider_absent", "yahoo-finance"))
+        def fetcher(url, timeout=None, cache_dir=None):
+            raise urllib.error.HTTPError(url, 429, "Too Many Requests", None, None)
+        adapter = scr.FmpAdapter(env={"FMP_API_KEY": "k"}, fetcher=fetcher)
+
+        merged, failures = scr.fill_company_missing_fields(company, [adapter])
+
+        self.assertIsNone(merged["operating_cash_flow"].value)
+        self.assertEqual(merged["operating_cash_flow"].provenance["missing_reason"], "unavailable")
+        self.assertEqual(failures[0]["provider"], "fmp")
+        self.assertIn("429", failures[0]["reason"])
 
 
 class TestFallbackRegistry(unittest.TestCase):
