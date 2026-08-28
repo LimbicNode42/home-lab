@@ -914,12 +914,11 @@ export async function buildInvestmentScreenerDuckDbSummary({ dataRoot, market = 
     const reconstructedFreshness = freshnessFromManifest(manifest);
     const coverage = {
       ...manifest.coverage,
-      usable: ranked.length,
-      percent: manifest.coverage.denominator > 0 ? Number(((ranked.length / manifest.coverage.denominator) * 100).toFixed(1)) : null,
-      // Pre-6227ed2 artifacts carry no coverage.freshness key, so reconstruct it
-      // from manifest timestamps instead of spreading a bare {} that yields null fields.
+      // Preserve manifest-level coverage counts. ranked_candidates is intentionally
+      // capped for the API payload, so deriving usable/percent from ranked.length
+      // turns a truthful 184/200 staged run into a fake 100/200 UI-cap result.
       freshness: reconstructedFreshness,
-      // The pre-6227ed2 manifest carries a bare `stale: 0` count; re-derive it from
+      // Pre-6227ed2 artifacts carry a bare `stale: 0` count; re-derive it from
       // the reconstructed freshness so a stale artifact reads stale in the count too.
       stale: reconstructedFreshness.stale,
       // Surface staleness warnings alongside the reconstructed freshness, mirroring

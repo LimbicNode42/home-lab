@@ -398,6 +398,56 @@ test('publishInvestmentScreenerRun lets validated non-fixture ASX Yahoo runs sup
   }
 });
 
+test('buildInvestmentScreenerDuckDbSummary preserves manifest coverage counts when ranked rows are API-capped', async () => {
+  const dataRoot = await mkdtemp(join(tmpdir(), 'screener-duckdb-capped-coverage-'));
+  try {
+    const companies = Array.from({ length: 120 }, (_, index) => ({
+      ticker: `T${String(index + 1).padStart(3, '0')}.AX`,
+      name: `Ticker ${index + 1}`,
+      market: 'ASX',
+      currency: 'AUD'
+    }));
+    const scores = companies.map((company, index) => ({
+      rank: index + 1,
+      ticker: company.ticker,
+      name: company.name,
+      market: company.market,
+      currency: company.currency,
+      composite_score: 200 - index,
+      sub_scores: { quality: 10 },
+      excluded: false
+    }));
+    const broadRun = {
+      ...nonFixtureRun,
+      universe: {
+        ...nonFixtureRun.universe,
+        source: 'ASX listed companies directory first 200 batch',
+        count: 1838,
+        selected_count: 200,
+        full_count: 1838,
+        complete_exchange_listing: true
+      },
+      companies,
+      scores,
+      observations: [{ ticker: 'T001.AX', field_name: 'revenue', value: 100, source_family: 'yahoo-finance', provider: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:30.000Z', data_as_of: '2026-06-30' }],
+      provenance: [{ ticker: 'T001.AX', field_name: 'revenue', source_family: 'yahoo-finance', provider: 'yahoo-finance', retrieved_at: '2026-08-23T10:00:30.000Z', data_as_of: '2026-06-30' }],
+      failures: [],
+      exclusions: []
+    };
+    await publishInvestmentScreenerRun({ dataRoot, run: broadRun, now: new Date('2026-08-23T10:02:00.000Z') });
+
+    const summary = await buildInvestmentScreenerDuckDbSummary({ dataRoot, market: 'ASX', source: 'yahoo-finance' });
+
+    assert.equal(summary.ranked_candidates.length, 100, 'ranked payload remains capped for UI/API size');
+    assert.equal(summary.coverage.denominator, 200);
+    assert.equal(summary.coverage.usable, 120);
+    assert.equal(summary.coverage.percent, 60);
+  } finally {
+    await rm(dataRoot, { recursive: true, force: true });
+  }
+});
+
+
 test('buildInvestmentScreenerDuckDbSummary reads non-fixture source coverage and provenance without canonical writes', async () => {
   const dataRoot = await mkdtemp(join(tmpdir(), 'screener-duckdb-nonfixture-'));
   try {
