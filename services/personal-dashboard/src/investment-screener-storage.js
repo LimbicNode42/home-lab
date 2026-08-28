@@ -328,7 +328,8 @@ function coverageForRun(run, now = new Date()) {
   const usable = run.scores.filter((score) => !score.excluded && score.composite_score !== null).length;
   const scored = run.scores.filter((score) => score.composite_score !== null).length;
   const excluded = run.scores.filter((score) => score.excluded).length;
-  const denominator = run.universe.count || run.companies.length;
+  const selectedCount = Number.isInteger(Number(run.universe.selected_count)) ? Number(run.universe.selected_count) : null;
+  const denominator = selectedCount || run.universe.count || run.companies.length;
   const status = sanitizeText(supplied.denominator_status, null, 80) ?? (run.fixture ? 'sample' : (run.universe.complete_exchange_listing ? 'complete_exchange_listing' : 'known_sample_universe'));
   const freshness = freshnessForRun(run, now);
   const warnings = [...(Array.isArray(supplied.warnings) ? sanitizeTextArray(supplied.warnings, 12, 240) : [])];
