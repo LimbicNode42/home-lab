@@ -37,6 +37,7 @@ Do not use it as the final reason to buy, sell, hold, size, or time a position. 
 | NAS/DuckDB storage | NAS-resident immutable Parquet/JSONL run artifacts with manifests/latest pointers; DuckDB is a rebuildable query/materialization layer for dashboard summaries. | Persist recurring runs durably without requiring Postgres writes or node-local primary storage. | [Operations and limitations](./operations-limitations.md) |
 | Historical storage | Legacy/optional Postgres-backed record of completed screener runs, observations, scores, and provenance. | Import or compare older runs later through sanitized projections. | [Historical pipeline architecture](./historical-pipeline-architecture.md) |
 | Historical pipeline architecture | ASX-first recurring hydration, Postgres history, provenance, and dashboard evolution contract. | Guide implementation of the storage/hydration lane. | [Historical pipeline architecture](./historical-pipeline-architecture.md) |
+| ASX universe source and identity rules | Canonical ASX listed-company denominator, seed schema, ticker/company ID rules, and staged expansion gates. | Expand beyond the bounded watchlist without turning the denominator into mystery soup. | [ASX universe source and identity rules](./asx-universe-source-and-identity-rules.md) |
 | Operational runbook | Safe monthly/quarterly hydration, publication, checks, and troubleshooting. | Refresh output without leaking credentials or poking live services unnecessarily. | [Operations and limitations](./operations-limitations.md) |
 
 ## How to use it
@@ -52,7 +53,7 @@ Do not use it as the final reason to buy, sell, hold, size, or time a position. 
 
 ## Inputs
 
-The product is now ASX-first. The bootstrap universe is a committed ASX watchlist rather than a live full-market discovery feed. That makes recurring runs auditable and deterministic, but it also means the screener only covers names intentionally present in the watchlist until a reviewed broader-universe importer exists.
+The product is now ASX-first. The bootstrap universe is a committed ASX watchlist rather than a live full-market discovery feed. That makes recurring runs auditable and deterministic, but it also means the screener only covers names intentionally present in the watchlist until the reviewed [ASX universe source and identity rules](./asx-universe-source-and-identity-rules.md) are implemented.
 
 Input quality matters more than UI polish. If the watchlist is stale, sparse, sector-skewed, or missing metadata, the output will inherit those limits with a nicer hat.
 
