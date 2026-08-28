@@ -28,7 +28,8 @@ Use the generator when the dashboard output is stale, missing, or needs a refres
 | Filters | Narrow the universe before scoring where supported by the input data. | Market, exchange, region, sector, and industry are only meaningful if present. |
 | Weighting | Tilts category importance for the run. | Keep weights explicit and non-negative. |
 | Suggestion count | Limits how many candidates are highlighted. | Current dashboard-safe maximum is 25. |
-| ASX watchlist | Bootstrap universe for recurring ASX hydration. | Start with a committed watchlist; broaden from external list sources only after normalization rules are documented. |
+| ASX watchlist | Bootstrap universe for recurring ASX hydration. | Small explicit sample; useful for narrow recurring runs and fixtures. |
+| ASX company-directory seed | Reviewed near-full ASX listed-company universe generated from `investment-screener/generate_asx_universe_seed.py`. | Seed entries use `company_id=asx:{asx_code}`, Yahoo ticker `{asx_code}.AX`, sanitized source URL, and dashboard-safe denominator metadata. |
 | Historical database | Stores run, observation, score, and provenance history. | Inject credentials at runtime only; see [Historical pipeline architecture](./historical-pipeline-architecture.md). |
 
 ## Outputs
@@ -51,7 +52,43 @@ Use the generator when the dashboard output is stale, missing, or needs a refres
 
 ## ASX and historical mode
 
-For the ASX-first lane, the generator should start from a committed `asx-watchlist.json`, hydrate values from explicitly labeled sources, write the sanitized latest files, and store the same run in Postgres when database storage is enabled. Yahoo-derived ASX values are bootstrap evidence, not authoritative filings data; high-interest candidates still need ASX report verification.
+For the ASX-first lane, the generator should start from either the small committed `asx-watchlist.json` or the reviewed `asx-listed-companies.seed.json`, hydrate values from explicitly labeled sources, write the sanitized latest files, and store the same run in Postgres when database storage is enabled. Yahoo-derived ASX values are bootstrap evidence, not authoritative filings data; high-interest candidates still need ASX report verification.
+
+The near-full ASX universe seed is generated from the ASX/MarkitDigital company-directory CSV without committing the raw CSV or credential-bearing URLs:
+
+```bash
+python3 investment-screener/generate_asx_universe_seed.py \
+  --input-csv /path/to/reviewed-asx-directory.csv \
+  --retrieved-at 2026-08-28T05:01:59Z \
+  --output investment-screener/universe/asx-listed-companies.seed.json
+```
+
+The generated seed schema is `investment-screener-asx-universe-seed/v2`. Each entry carries `company_id`, `asx_code`, Yahoo `ticker`, raw/normalized company name, market/exchange/region, `currency=AUD`, `security_type`, and explicit `active`/`suspended`/`delisted` booleans. Because the ASX directory does not publish security type, freshly generated ASX-only rows use `security_type=unknown_from_asx_directory` until an approved enrichment source supplies a better type.
+
+Use seed batches instead of all-universe hydration by default:
+
+```bash
+python3 investment-screener/screener.py \
+  --asx-universe-seed investment-screener/universe/asx-listed-companies.seed.json \
+  --batch-offset 0 \
+  --batch-size 50 \
+  --sleep-seconds 1.0 \
+  --file-first-run-json /tmp/asx-screener-run.json
+```
+
+If enrichment has populated security types, generator-side filters can keep the dashboard denominator honest:
+
+```bash
+python3 investment-screener/screener.py \
+  --asx-universe-seed investment-screener/universe/asx-listed-companies.seed.json \
+  --include-security-types ordinary_share,common_stock \
+  --exclude-security-types etf,warrant,preferred \
+  --denominator-label "ordinary ASX shares" \
+  --batch-size 50 \
+  --file-first-run-json /tmp/asx-ordinary-shares-run.json
+```
+
+Do not combine this with broad live hydration unless a separate reviewed task approves the batch size/provider plan. The denominator fields in the file-first payload distinguish complete seed, security-type-filtered seed, and ranked market-cap batch runs. Small labels: large consequences, fewer dashboard lies.
 
 Historical storage must be optional from the dashboard's point of view. A failed or unavailable database should not make the existing latest-file panel unusable if the last sanitized files are present.
 

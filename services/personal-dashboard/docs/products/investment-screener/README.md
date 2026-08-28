@@ -55,9 +55,9 @@ Do not use it as the final reason to buy, sell, hold, size, or time a position. 
 
 ## Inputs
 
-The product is now ASX-first. The bootstrap universe is a committed ASX watchlist rather than a live full-market discovery feed. That makes recurring runs auditable and deterministic, but it also means the screener only covers names intentionally present in the watchlist until the reviewed [ASX universe source and identity rules](./asx-universe-source-and-identity-rules.md) are implemented.
+The product is now ASX-first. The bootstrap universe can come from either the small committed ASX watchlist or the reviewed ASX company-directory seed. The seed uses stable `company_id=asx:{asx_code}` identities, Yahoo `{asx_code}.AX` symbols, sanitized source metadata, and explicit denominator labels so top-N batches are not mistaken for full ASX coverage.
 
-Input quality matters more than UI polish. If the watchlist is stale, sparse, sector-skewed, or missing metadata, the output will inherit those limits with a nicer hat.
+Input quality matters more than UI polish. If the watchlist or ASX seed is stale, sparse, sector-skewed, or missing metadata, the output will inherit those limits with a nicer hat.
 
 First-cut hydration uses explicitly labeled bootstrap data sources. Yahoo-derived chart and fundamentals-timeseries values are useful for recurring shape checks and shortlisting, but they are not ASX filings and must not be treated as source-of-record data. Interesting candidates still need verification against company reports, ASX announcements, or another authorized source.
 
@@ -89,7 +89,7 @@ The useful workflow is:
 ## Known limitations
 
 - The screener can only score fields present in the input data.
-- The ASX-first bootstrap universe is not full ASX coverage until a broader importer is implemented and reviewed.
+- The ASX-first bootstrap universe is only as complete as the reviewed watchlist or seed; partial batches must be read with their denominator labels.
 - Yahoo-derived values are bootstrap evidence, not authoritative filings data.
 - Cross-market and cross-sector comparisons may be distorted by accounting, currency, reporting cadence, and data-provider differences; banks and financials are especially easy to misread with industrial-company metrics.
 - Dashboard filters operate on the latest exported data; they do not recompute the model.
