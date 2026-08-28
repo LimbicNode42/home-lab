@@ -333,6 +333,46 @@ test('buildInvestmentScreenerDuckDbSummary reads ranked and coverage summaries f
 });
 
 
+test('publishInvestmentScreenerRun uses selected batch size as coverage denominator for partial exchange runs', async () => {
+  const dataRoot = await mkdtemp(join(tmpdir(), 'screener-storage-batch-denominator-'));
+  try {
+    const batchRun = {
+      ...nonFixtureRun,
+      universe: {
+        ...nonFixtureRun.universe,
+        source: 'ASX listed companies directory first 200 batch',
+        count: 1838,
+        complete_exchange_listing: true,
+        full_count: 1838,
+        selected_count: 200,
+        batch_offset: 0,
+        batch_end_exclusive: 200
+      },
+      coverage: {
+        denominator_label: 'first 200 active ASX companies from directory',
+        denominator_status: 'staged_batch'
+      }
+    };
+
+    const published = await publishInvestmentScreenerRun({ dataRoot, run: batchRun, now: new Date('2026-08-23T10:02:00.000Z') });
+    const latestRanked = JSON.parse(await readFile(join(dataRoot, 'investment-screener', 'exports', 'dashboard', 'market=ASX', 'latest_ranked.json'), 'utf8'));
+    const latestCoverage = JSON.parse(await readFile(join(dataRoot, 'investment-screener', 'exports', 'dashboard', 'market=ASX', 'latest_coverage.json'), 'utf8'));
+
+    assert.equal(published.manifest.universe.count, 1838);
+    assert.equal(published.manifest.universe.selected_count, 200);
+    assert.equal(published.manifest.coverage.denominator, 200);
+    assert.equal(published.manifest.coverage.usable, 2);
+    assert.equal(published.manifest.coverage.percent, 1);
+    assert.equal(published.latest.coverage.denominator, 200);
+    assert.equal(latestRanked.coverage.denominator, 200);
+    assert.equal(latestRanked.coverage.denominator_status, 'staged_batch');
+    assert.equal(latestCoverage.coverage.denominator, 200);
+  } finally {
+    await rm(dataRoot, { recursive: true, force: true });
+  }
+});
+
+
 test('publishInvestmentScreenerRun lets validated non-fixture ASX Yahoo runs supersede fixture latest with distinct labels', async () => {
   const dataRoot = await mkdtemp(join(tmpdir(), 'screener-storage-nonfixture-'));
   try {
