@@ -52,6 +52,18 @@ The scheduler shim lives at `/root/.hermes/scripts/run-asx-screener-hydration-ow
 
 ## Runbook
 
+### Full-universe rollout gate
+
+Keep the recurring owner job at the approved top-50 slice until a separate scheduler/deploy task changes it. The staged top-200 expansion completed with 184/200 usable coverage, about 5–6 minutes runtime, and about 2.6 MiB of new run artifacts, but that evidence is not enough to make all-ASX unattended.
+
+The current rollout recommendation is documented in [ASX full-universe hydration rollout plan](./asx-full-universe-hydration-rollout-plan-2026-08-28.md): run one supervised top-400 prefix expansion after Ben approval, verify the stop conditions, then consider a separately approved full-seed run with `ASX_BATCH_SIZE=1838`. Do not run offset slices against the live NAS publisher unless the goal is a temporary probe; each successful run updates `latest.json`, so prefix expansion keeps the dashboard denominator understandable.
+
+Broad hydration approval gates:
+
+- Ben approval is required before any manual batch larger than the current top-50 recurring job against `/mnt/pve/NAS/services/personal-dashboard`.
+- Ben approval is required before changing the scheduler batch size, cadence, delivery target, provider priority, cache pruning, latest-pointer rollback, or any recurring all-ASX/slice job.
+- Do not lower `ASX_SLEEP_SECONDS` below `0.75`; if Yahoo throttles or shape-changes, stop rather than tightening the loop like a tiny denial-of-service goblin.
+
 ### Normal operation
 
 1. The scheduler fires `run-asx-screener-hydration-owner.sh` on tori.
