@@ -11,7 +11,7 @@ import sys
 import urllib.request
 from pathlib import Path
 
-from screener import ASX_DIRECTORY_SOURCE_URL, normalise_asx_directory_rows
+from screener import ASX_DIRECTORY_SOURCE_URL, ASX_UNIVERSE_SEED_SCHEMA_VERSION, normalise_asx_directory_rows
 
 
 def parse_args(argv=None):
@@ -49,7 +49,7 @@ def main(argv=None) -> int:
         csv_sha256=csv_sha256,
     )
     output = {
-        "schema_version": "investment-screener-asx-universe-seed/v1",
+        "schema_version": ASX_UNIVERSE_SEED_SCHEMA_VERSION,
         "metadata": metadata,
         "entries": entries,
     }

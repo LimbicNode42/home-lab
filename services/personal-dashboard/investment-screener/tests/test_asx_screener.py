@@ -719,9 +719,131 @@ class TestAsxUniverseSeed(unittest.TestCase):
         self.assertEqual(entries[0]["universe_rank"], 1)
         self.assertTrue(entries[0]["active"])
         self.assertEqual(entries[0]["source"]["sha256"], "a" * 64)
+        self.assertEqual(entries[0]["company_id"], "asx:BHP")
+        self.assertEqual(entries[0]["name_raw"], "BHP GROUP LIMITED")
+        self.assertEqual(entries[0]["name_normalized"], "BHP GROUP LIMITED")
+        self.assertEqual(entries[0]["security_type"], "unknown_from_asx_directory")
+        self.assertEqual(entries[0]["currency"], "AUD")
+        self.assertFalse(entries[0]["suspended"])
+        self.assertFalse(entries[0]["delisted"])
+        self.assertEqual(metadata["schema_version"], "investment-screener-asx-universe-seed/v2")
+        self.assertEqual(metadata["source_row_count"], 4)
         self.assertEqual(metadata["row_count"], 4)
         self.assertEqual(metadata["normalized_active_count"], 3)
         self.assertEqual(metadata["excluded_count"], 1)
+        self.assertEqual(metadata["identity_rule"], "company_id=asx:{asx_code}; yahoo_ticker={asx_code}.AX")
+
+    def test_normalise_asx_directory_rows_rejects_duplicate_asx_codes(self):
+        rows = [
+            {"ASX code": "BHP", "Company name": "BHP GROUP LIMITED", "GICs industry group": "Materials", "Listing date": "13/08/1987", "Market Cap": "334,284,993,458"},
+            {"ASX code": "bhp", "Company name": "Broken duplicate", "GICs industry group": "Materials", "Listing date": "14/08/1987", "Market Cap": "1"},
+        ]
+
+        with self.assertRaisesRegex(ValueError, "Duplicate ASX code"):
+            normalise_asx_directory_rows(rows, "https://example.test/asx.csv", "2026-08-23T05:47:51Z", "a" * 64)
+
+    def test_security_type_filter_keeps_denominator_labels_honest(self):
+        entries = [
+            {"ticker": "BHP.AX", "company_id": "asx:BHP", "security_type": "ordinary_share", "active": True, "universe_rank": 1},
+            {"ticker": "REI.AX", "company_id": "asx:REI", "security_type": "reit", "active": True, "universe_rank": 2},
+            {"ticker": "ETF.AX", "company_id": "asx:ETF", "security_type": "etf", "active": True, "universe_rank": 3},
+            {"ticker": "OLD.AX", "company_id": "asx:OLD", "security_type": "ordinary_share", "active": False, "universe_rank": 4},
+        ]
+
+        selected = scr.select_asx_universe_batch(
+            entries,
+            include_security_types={"ordinary_share"},
+            denominator_label="ordinary ASX shares",
+        )
+
+        self.assertEqual(selected["tickers"], ["BHP.AX"])
+        self.assertEqual(selected["full_count"], 3)
+        self.assertEqual(selected["eligible_count"], 1)
+        self.assertEqual(selected["excluded_security_type_count"], 2)
+        self.assertEqual(selected["security_type_filter"], ["ordinary_share"])
+        self.assertEqual(selected["denominator_label"], "ordinary ASX shares")
+        self.assertEqual(selected["denominator_status"], "complete_security_type_filtered_listing")
+
+    def test_file_first_payload_exports_dashboard_safe_denominator_metadata(self):
+        payload = build_file_first_run_payload(
+            ranked=[],
+            source="yahoo-finance",
+            mode="asx-yahoo-timeseries",
+            universe=["BHP.AX"],
+            universe_source="ASX company directory CSV via reviewed static seed",
+            universe_metadata={"source_row_count": 4, "normalized_active_count": 3, "source_sha256": "a" * 64},
+            batch_metadata={
+                "full_count": 3,
+                "eligible_count": 1,
+                "selected_count": 1,
+                "excluded_security_type_count": 2,
+                "security_type_filter": ["ordinary_share"],
+                "denominator_status": "complete_security_type_filtered_listing",
+                "denominator_label": "ordinary ASX shares",
+                "complete_exchange_listing": False,
+            },
+        )
+
+        self.assertEqual(payload["universe"]["eligible_count"], 1)
+        self.assertEqual(payload["universe"]["excluded_security_type_count"], 2)
+        self.assertEqual(payload["universe"]["security_type_filter"], ["ordinary_share"])
+        self.assertEqual(payload["coverage"]["denominator"], 1)
+        self.assertEqual(payload["coverage"]["denominator_label"], "ordinary ASX shares")
+        self.assertEqual(payload["coverage"]["denominator_status"], "complete_security_type_filtered_listing")
+
+    def test_asx_seed_identity_can_be_overlaid_after_provider_hydration(self):
+        companies = [{"ticker": "BHP.AX", "name": "Provider Name", "market": "ASX", "currency": "AUD"}]
+        seed_entries = [{
+            "ticker": "BHP.AX",
+            "company_id": "asx:BHP",
+            "asx_code": "BHP",
+            "name_raw": "BHP GROUP LIMITED",
+            "name_normalized": "BHP GROUP LIMITED",
+            "exchange": "ASX",
+            "region": "AU",
+            "sector": "Materials",
+            "industry": "Materials",
+            "security_type": "unknown_from_asx_directory",
+            "active": True,
+            "suspended": False,
+            "delisted": False,
+        }]
+
+        enriched = scr.apply_asx_seed_identity(companies, seed_entries)
+
+        self.assertEqual(enriched[0]["company_id"], "asx:BHP")
+        self.assertEqual(enriched[0]["name"], "Provider Name")
+        self.assertEqual(enriched[0]["name_raw"], "BHP GROUP LIMITED")
+        self.assertEqual(enriched[0]["security_type"], "unknown_from_asx_directory")
+
+    def test_asx_seed_identity_survives_scoring_and_file_first_export(self):
+        cfg = load_config(CONFIG_PATH)
+        ranked = rank_companies([
+            asx_company(
+                company_id="asx:BHP",
+                asx_code="BHP",
+                name_raw="BHP GROUP LIMITED",
+                name_normalized="BHP GROUP LIMITED",
+                security_type="ordinary_share",
+                active=True,
+                suspended=False,
+                delisted=False,
+            )
+        ], cfg)
+
+        payload = build_file_first_run_payload(
+            ranked,
+            source="yahoo-finance",
+            mode="asx-yahoo-timeseries",
+            universe=["BHP.AX"],
+        )
+
+        self.assertEqual(ranked[0]["company_id"], "asx:BHP")
+        self.assertEqual(ranked[0]["asx_code"], "BHP")
+        self.assertEqual(ranked[0]["security_type"], "ordinary_share")
+        self.assertEqual(payload["companies"][0]["company_id"], "asx:BHP")
+        self.assertEqual(payload["companies"][0]["asx_code"], "BHP")
+        self.assertEqual(payload["companies"][0]["security_type"], "ordinary_share")
 
     def test_load_asx_universe_seed_accepts_metadata_wrapped_seed(self):
         seed_path = self._write_tmp_seed({
@@ -793,6 +915,18 @@ class TestBoundedAsxHydrationCli(unittest.TestCase):
         self.assertEqual(args.batch_offset, 100)
         self.assertEqual(args.batch_size, 50)
         self.assertEqual(args.max_tickers, 50)
+
+    def test_cli_exposes_universe_seed_security_type_filters_and_label(self):
+        args = parse_args([
+            "--asx-universe-seed", "investment-screener/universe/asx-listed-companies.seed.json",
+            "--include-security-types", "ordinary_share,common_stock",
+            "--exclude-security-types", "etf,warrant",
+            "--denominator-label", "ordinary ASX shares",
+        ])
+
+        self.assertEqual(args.include_security_types, "ordinary_share,common_stock")
+        self.assertEqual(args.exclude_security_types, "etf,warrant")
+        self.assertEqual(args.denominator_label, "ordinary ASX shares")
 
     def test_select_active_asx_tickers_honors_max_tickers(self):
         entries = [

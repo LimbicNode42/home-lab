@@ -150,11 +150,10 @@ def load_asx_watchlist(path: Path) -> list[dict]:
     return data
 
 
-ASX_DIRECTORY_SOURCE_URL = (
-    "https://asx.api.markitdigital.com/asx-research/1.0/companies/directory/file"
-    "?access_token=83ff96335c2d45a094df02a206a39ff4"
-)
+ASX_DIRECTORY_SOURCE_URL = "https://asx.api.markitdigital.com/asx-research/1.0/companies/directory/file"
 ASX_CODE_RE = re.compile(r"^[A-Z0-9]{2,6}$")
+ASX_UNIVERSE_SEED_SCHEMA_VERSION = "investment-screener-asx-universe-seed/v2"
+ASX_IDENTITY_RULE = "company_id=asx:{asx_code}; yahoo_ticker={asx_code}.AX"
 
 
 def _parse_market_cap(value: Any) -> Optional[int]:
@@ -179,19 +178,33 @@ def _parse_asx_listing_date(value: Any) -> Optional[str]:
     return text
 
 
+def _normalise_asx_company_name(value: Any) -> str:
+    """Return a stable display/match form for ASX directory company names."""
+    text = str(value or "").strip()
+    text = re.sub(r"\s+", " ", text)
+    return text.upper()
+
+
+def _asx_company_id(code: str) -> str:
+    return f"asx:{code}"
+
+
 def normalise_asx_directory_rows(
     rows: list[dict],
     source_url: str,
     retrieved_at: str,
     csv_sha256: str,
 ) -> tuple[list[dict], dict]:
-    """Normalize ASX company-directory CSV rows into reviewed seed entries."""
+    """Normalize ASX company-directory CSV rows into reviewed v2 seed entries."""
     entries: list[dict] = []
     excluded: list[dict] = []
+    seen_codes: set[str] = set()
+    seen_tickers: set[str] = set()
     row_count = len(rows)
+    public_source_url = redact_url_secrets(source_url)
     source = {
         "name": "ASX company directory CSV",
-        "url": source_url,
+        "url": public_source_url,
         "retrieved_at": retrieved_at,
         "sha256": csv_sha256,
         "row_count": row_count,
@@ -201,11 +214,24 @@ def normalise_asx_directory_rows(
         if not code or not ASX_CODE_RE.match(code):
             excluded.append({"asx_code": code, "reason": "missing or invalid ASX code"})
             continue
+        ticker = f"{code}.AX"
+        if code in seen_codes:
+            raise ValueError(f"Duplicate ASX code in universe source: {code}")
+        if ticker in seen_tickers:
+            raise ValueError(f"Duplicate Yahoo ticker in universe source: {ticker}")
+        seen_codes.add(code)
+        seen_tickers.add(ticker)
+
         industry_group = str(row.get("GICs industry group") or "").strip() or None
+        name_raw = str(row.get("Company name") or code).strip() or code
+        name_normalized = _normalise_asx_company_name(name_raw)
         entry = {
-            "ticker": f"{code}.AX",
+            "company_id": _asx_company_id(code),
+            "ticker": ticker,
             "asx_code": code,
-            "name": str(row.get("Company name") or code).strip() or code,
+            "name": name_raw,
+            "name_raw": name_raw,
+            "name_normalized": name_normalized,
             "market": "ASX",
             "exchange": "ASX",
             "region": "AU",
@@ -213,7 +239,11 @@ def normalise_asx_directory_rows(
             "industry": industry_group,
             "listing_date": _parse_asx_listing_date(row.get("Listing date")),
             "market_cap": _parse_market_cap(row.get("Market Cap")),
+            "currency": "AUD",
+            "security_type": "unknown_from_asx_directory",
             "active": True,
+            "suspended": False,
+            "delisted": False,
             "source": source,
         }
         entries.append(entry)
@@ -223,15 +253,20 @@ def normalise_asx_directory_rows(
         entry["universe_rank"] = index
 
     metadata = {
+        "schema_version": ASX_UNIVERSE_SEED_SCHEMA_VERSION,
         "source_name": source["name"],
-        "source_url": source_url,
+        "source_url": public_source_url,
         "retrieved_at": retrieved_at,
+        "source_sha256": csv_sha256,
         "sha256": csv_sha256,
+        "source_row_count": row_count,
         "row_count": row_count,
         "normalized_active_count": len(entries),
         "excluded_count": len(excluded),
         "excluded": excluded,
-        "sort_rule": "market_cap_desc_then_asx_code_asc",
+        "sort_rule": "market_cap_desc_nulls_last_then_asx_code_asc",
+        "identity_rule": ASX_IDENTITY_RULE,
+        "security_type_source": "ASX directory does not provide security type; defaults to unknown_from_asx_directory",
         "generated_by": "investment-screener/screener.py normalise_asx_directory_rows",
     }
     return entries, metadata
@@ -254,30 +289,59 @@ def select_asx_universe_batch(
     entries: list[dict],
     batch_offset: int = 0,
     max_tickers: Optional[int] = None,
+    include_security_types: Optional[set[str] | list[str] | tuple[str, ...]] = None,
+    exclude_security_types: Optional[set[str] | list[str] | tuple[str, ...]] = None,
+    denominator_label: Optional[str] = None,
 ) -> dict:
     """Select a deterministic active ASX universe slice and return accounting metadata."""
     if batch_offset < 0:
         raise ValueError("batch_offset must be non-negative")
+    if max_tickers is not None and max_tickers < 1:
+        raise ValueError("max_tickers must be at least 1")
+
     active = sorted(
         [entry for entry in entries if entry.get("active") and entry.get("ticker")],
         key=lambda entry: (int(entry.get("universe_rank") or 999999), str(entry.get("ticker"))),
     )
-    if max_tickers is not None and max_tickers < 1:
-        raise ValueError("max_tickers must be at least 1")
+    include = {str(t).lower() for t in include_security_types or []}
+    exclude = {str(t).lower() for t in exclude_security_types or []}
+
+    def security_type(entry: dict) -> str:
+        return str(entry.get("security_type") or "unknown_from_asx_directory").lower()
+
+    eligible = [
+        entry for entry in active
+        if (not include or security_type(entry) in include) and security_type(entry) not in exclude
+    ]
     full_count = len(active)
-    end = full_count if max_tickers is None else min(full_count, batch_offset + max_tickers)
-    selected = active[batch_offset:end]
-    complete = batch_offset == 0 and end >= full_count
-    status = "complete_exchange_listing" if complete else "ranked_market_cap_batch"
+    eligible_count = len(eligible)
+    end = eligible_count if max_tickers is None else min(eligible_count, batch_offset + max_tickers)
+    selected = eligible[batch_offset:end]
+    complete = batch_offset == 0 and end >= eligible_count
+    security_filtered = bool(include or exclude)
+    if security_filtered and complete:
+        status = "complete_security_type_filtered_listing"
+    elif complete:
+        status = "complete_exchange_listing"
+    else:
+        status = "ranked_market_cap_batch"
+    security_type_filter = sorted(include) if include else None
+    excluded_security_type_count = full_count - eligible_count if security_filtered else 0
     return {
         "entries": selected,
         "tickers": [str(entry["ticker"]) for entry in selected],
         "full_count": full_count,
+        "eligible_count": eligible_count,
         "selected_count": len(selected),
         "batch_offset": batch_offset,
         "batch_end_exclusive": end,
-        "complete_exchange_listing": complete,
+        "complete_exchange_listing": complete and not security_filtered,
+        "complete_security_type_filtered_listing": complete and security_filtered,
         "denominator_status": status,
+        "denominator_label": denominator_label,
+        "security_type_filter": security_type_filter,
+        "exclude_security_types": sorted(exclude) if exclude else None,
+        "excluded_security_type_count": excluded_security_type_count,
     }
 
 
@@ -286,6 +350,33 @@ def build_universe_version(seed_path: Path, metadata: dict) -> str:
     sha = metadata.get("sha256") or metadata.get("source_sha256") or "unknown"
     retrieved = metadata.get("retrieved_at") or "unknown"
     return f"{seed_path.as_posix()} sha256:{sha} retrieved_at:{retrieved}"
+
+
+def parse_security_type_list(value: Optional[str]) -> Optional[list[str]]:
+    """Parse comma-separated security type filters into lower-case labels."""
+    if value is None:
+        return None
+    parsed = [item.strip().lower() for item in value.split(",") if item.strip()]
+    return parsed or None
+
+
+def apply_asx_seed_identity(companies: list[dict], seed_entries: list[dict]) -> list[dict]:
+    """Overlay reviewed seed identity fields onto hydrated provider company rows."""
+    by_ticker = {normalise_asx_ticker(str(entry.get("ticker"))): entry for entry in seed_entries if entry.get("ticker")}
+    identity_fields = (
+        "company_id", "asx_code", "name_raw", "name_normalized", "exchange", "region",
+        "sector", "industry", "security_type", "active", "suspended", "delisted",
+    )
+    enriched: list[dict] = []
+    for company in companies:
+        merged = dict(company)
+        seed = by_ticker.get(normalise_asx_ticker(str(company.get("ticker") or "")))
+        if seed:
+            for field in identity_fields:
+                if seed.get(field) is not None:
+                    merged[field] = seed[field]
+        enriched.append(merged)
+    return enriched
 
 
 def select_active_asx_tickers(watchlist: list[dict], max_tickers: Optional[int] = None) -> list[str]:
@@ -738,7 +829,7 @@ def score_company(company: dict, cfg: dict) -> dict:
         "name": company.get("name"),
         "market": company.get("market"),
         "currency": company.get("currency"),
-        **{k: company.get(k) for k in ("exchange", "region", "sector", "industry") if company.get(k) is not None},
+        **{k: company.get(k) for k in ("company_id", "asx_code", "name_raw", "name_normalized", "exchange", "region", "sector", "industry", "security_type", "active", "suspended", "delisted") if company.get(k) is not None},
         "excluded": False,
         "exclusion_reasons": [],
         "sub_scores": sub_scores,
@@ -764,7 +855,7 @@ def rank_companies(companies: list[dict], cfg: dict) -> list[dict]:
                 "name": company.get("name"),
                 "market": company.get("market"),
                 "currency": company.get("currency"),
-                **{k: company.get(k) for k in ("exchange", "region", "sector", "industry") if company.get(k) is not None},
+                **{k: company.get(k) for k in ("company_id", "asx_code", "name_raw", "name_normalized", "exchange", "region", "sector", "industry", "security_type", "active", "suspended", "delisted") if company.get(k) is not None},
                 "excluded": True,
                 "exclusion_reasons": exclusions,
                 "sub_scores": {},
@@ -1679,9 +1770,21 @@ def build_file_first_run_payload(
         ticker = row.get("ticker")
         companies.append({
             "ticker": ticker,
+            "company_id": row.get("company_id"),
+            "asx_code": row.get("asx_code") or (str(ticker).replace(".AX", "") if ticker else None),
             "name": row.get("name") or ticker,
+            "name_raw": row.get("name_raw"),
+            "name_normalized": row.get("name_normalized"),
             "market": row.get("market") or "ASX",
+            "exchange": row.get("exchange") or "ASX",
+            "region": row.get("region") or "AU",
+            "sector": row.get("sector"),
+            "industry": row.get("industry"),
             "currency": row.get("currency") or "AUD",
+            "security_type": row.get("security_type"),
+            "active": row.get("active"),
+            "suspended": row.get("suspended"),
+            "delisted": row.get("delisted"),
         })
         excluded = bool(row.get("excluded"))
         exclusion_reason = "; ".join(str(reason) for reason in row.get("exclusion_reasons") or row.get("caveats") or [] if reason) or None
@@ -1704,9 +1807,9 @@ def build_file_first_run_payload(
             exclusions.append({"ticker": ticker, "reason": item["reason"]})
 
     usable = len([row for row in scores if not row["excluded"] and row["composite_score"] is not None])
-    denominator = len(universe) if universe else len(companies)
     batch_metadata = dict(batch_metadata or {})
     universe_metadata = dict(universe_metadata or {})
+    denominator = batch_metadata["eligible_count"] if "eligible_count" in batch_metadata else (len(universe) if universe else len(companies))
     denominator_status = batch_metadata.get("denominator_status")
     if not denominator_status:
         if mode == "fixture":
@@ -1717,9 +1820,14 @@ def build_file_first_run_payload(
             denominator_status = "ranked_market_cap_batch"
         else:
             denominator_status = "known_sample_universe"
-    if denominator_status == "ranked_market_cap_batch":
+    if batch_metadata.get("denominator_label"):
+        denominator_label = str(batch_metadata["denominator_label"])
+    elif denominator_status == "ranked_market_cap_batch":
         top_n = batch_metadata.get("selected_count") or denominator
         denominator_label = f"top {top_n} ASX listings by Market Cap from ASX company directory seed"
+    elif denominator_status == "complete_security_type_filtered_listing":
+        filter_label = ", ".join(batch_metadata.get("security_type_filter") or batch_metadata.get("exclude_security_types") or [])
+        denominator_label = f"ASX company directory seed filtered by security type: {filter_label or 'unspecified'}"
     elif denominator_status == "complete_exchange_listing":
         denominator_label = "complete ASX company directory seed"
     else:
@@ -1751,6 +1859,12 @@ def build_file_first_run_payload(
             "normalized_active_count": universe_metadata.get("normalized_active_count"),
             "source_sha256": universe_metadata.get("source_sha256") or universe_metadata.get("sha256"),
             "source_retrieved_at": universe_metadata.get("retrieved_at"),
+            "eligible_count": batch_metadata.get("eligible_count"),
+            "security_type_filter": batch_metadata.get("security_type_filter"),
+            "exclude_security_types": batch_metadata.get("exclude_security_types"),
+            "excluded_security_type_count": batch_metadata.get("excluded_security_type_count"),
+            "denominator_label": denominator_label,
+            "denominator_status": denominator_status,
         },
         "companies": companies,
         "observations": observations,
@@ -2283,6 +2397,18 @@ def parse_args(argv=None):
         help="Zero-based offset into the ranked ASX universe seed for resumable batches.",
     )
     ap.add_argument(
+        "--include-security-types", default=None,
+        help="Comma-separated security_type values to include from an ASX universe seed (e.g. ordinary_share,common_stock).",
+    )
+    ap.add_argument(
+        "--exclude-security-types", default=None,
+        help="Comma-separated security_type values to exclude from an ASX universe seed (e.g. etf,warrant).",
+    )
+    ap.add_argument(
+        "--denominator-label", default=None,
+        help="Human-readable denominator label exported in coverage metadata for dashboards.",
+    )
+    ap.add_argument(
         "--sleep-seconds", type=float, default=0.3,
         help="Delay between live provider requests to avoid aggressive scraping.",
     )
@@ -2399,7 +2525,14 @@ def main(argv=None):
         seed_path = Path(args.asx_universe_seed)
         watchlist_path_str = str(seed_path)
         seed = load_asx_universe_seed(seed_path)
-        selected = select_asx_universe_batch(seed["entries"], batch_offset=args.batch_offset, max_tickers=args.max_tickers)
+        selected = select_asx_universe_batch(
+            seed["entries"],
+            batch_offset=args.batch_offset,
+            max_tickers=args.max_tickers,
+            include_security_types=parse_security_type_list(args.include_security_types),
+            exclude_security_types=parse_security_type_list(args.exclude_security_types),
+            denominator_label=args.denominator_label,
+        )
         universe_tickers = list(selected["tickers"])
         cache_dir = Path(args.cache_dir) if args.cache_dir else None
         universe_source = "ASX company directory CSV via reviewed static seed"
@@ -2418,6 +2551,7 @@ def main(argv=None):
             cache_dir=cache_dir,
             failure_sink=hydration_failures.append,
         )
+        companies = apply_asx_seed_identity(companies, selected["entries"])
         for w in warnings:
             print(w, file=sys.stderr)
         mode = "asx-yahoo-timeseries"
