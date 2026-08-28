@@ -1402,6 +1402,26 @@ def _first_dated(items: list[dict], date_keys: tuple[str, ...]) -> Optional[dict
 _SECRET_QUERY_PARAMS = frozenset({"apikey", "api_key", "access_token", "key", "token", "signature", "sig", "session", "sessionid", "session_id", "sid"})
 
 
+def _redact_secrets_in_text(text: str) -> str:
+    """Redact secret-bearing URLs and query params embedded inside free text.
+
+    ``redact_url_secrets`` handles a bare URL; this helper scans a longer
+    string (e.g. a provider error reason) for any ``scheme://...`` URL and
+    sanitizes it, then strips any leftover ``secret=value`` query fragments
+    that may not be part of a full URL.
+    """
+    if not text or not isinstance(text, str):
+        return text
+    out = text
+    # Redact any http(s) URL token inline.
+    out = re.sub(r"https?://[^\s\"'<>]+", lambda m: redact_url_secrets(m.group(0)), out)
+    # Redact bare secret query fragments that survive (e.g. "apikey=XYZ").
+    for param in _SECRET_QUERY_PARAMS:
+        out = re.sub(r"(?i)([?&;]\s*)" + re.escape(param) + r"\s*=\s*[^&\s\"'<>]*", r"\1" + param + "=<REDACTED>", out)
+    return out
+
+
+
 def redact_url_secrets(url: str) -> str:
     """Return ``url`` with secret query params (apikey, token, ...) removed.
 
@@ -2398,7 +2418,9 @@ CREATE TABLE IF NOT EXISTS investment_screener_runs (
   source_mix JSONB NOT NULL DEFAULT '{}'::jsonb,
   code_version TEXT,
   config_hash TEXT,
-  metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  universe_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  provider_failures JSONB NOT NULL DEFAULT '[]'::jsonb
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_iss_runs_run_key
@@ -2433,6 +2455,11 @@ CREATE TABLE IF NOT EXISTS investment_screener_observations (
   raw_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
   derived_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
   missing_fields JSONB NOT NULL DEFAULT '[]'::jsonb,
+  selected_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
+  alternates JSONB NOT NULL DEFAULT '{}'::jsonb,
+  conflicts JSONB NOT NULL DEFAULT '[]'::jsonb,
+  field_quality JSONB NOT NULL DEFAULT '{}'::jsonb,
+  source_confidence JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(run_id, company_id)
 );
@@ -2496,7 +2523,9 @@ ALTER TABLE investment_screener_runs
   ADD COLUMN IF NOT EXISTS source_mix JSONB NOT NULL DEFAULT '{}'::jsonb,
   ADD COLUMN IF NOT EXISTS code_version TEXT,
   ADD COLUMN IF NOT EXISTS config_hash TEXT,
-  ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
+  ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS universe_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS provider_failures JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 ALTER TABLE investment_screener_companies
   ADD COLUMN IF NOT EXISTS asx_code TEXT,
@@ -2510,7 +2539,12 @@ ALTER TABLE investment_screener_observations
   ADD COLUMN IF NOT EXISTS currency TEXT,
   ADD COLUMN IF NOT EXISTS source_quality TEXT,
   ADD COLUMN IF NOT EXISTS derived_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
-  ADD COLUMN IF NOT EXISTS missing_fields JSONB NOT NULL DEFAULT '[]'::jsonb;
+  ADD COLUMN IF NOT EXISTS missing_fields JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS selected_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS alternates JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS conflicts JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS field_quality JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS source_confidence JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 ALTER TABLE investment_screener_scores
   ADD COLUMN IF NOT EXISTS company_id BIGINT REFERENCES investment_screener_companies(id),
@@ -2671,6 +2705,167 @@ def init_postgres_schema(conn) -> None:
     conn.commit()
 
 
+def sanitize_provider_failures(failures: Optional[list[dict]]) -> list[dict]:
+    """Project per-provider failures into a secret-free storage summary.
+
+    Drops raw provider bodies/headers and redacts secret-bearing query params
+    from the reason string so history never persists credentials or payloads.
+    """
+    cleaned: list[dict] = []
+    for failure in failures or []:
+        reason = str(failure.get("reason") or "provider failure")
+        # Redact a bare source URL embedded in the reason string, then any
+        # lingering secret-shaped query params, before truncation.
+        reason = _redact_secrets_in_text(reason)
+        cleaned.append({
+            "provider": failure.get("provider") or failure.get("source_family") or "unknown",
+            "source_family": failure.get("source_family") or failure.get("provider") or "unknown",
+            "ticker": failure.get("ticker"),
+            "reason": reason[:160],
+            "recoverable": failure.get("recoverable") is not False,
+            "failed_at": failure.get("failed_at"),
+        })
+    return cleaned
+
+
+def build_universe_storage_metadata(
+    universe: list[str],
+    universe_metadata: Optional[dict] = None,
+    batch_metadata: Optional[dict] = None,
+) -> dict:
+    """Flatten universe/denominator batch metadata into a storage-safe dict.
+
+    Captures the denominator, denominator status, security-type filters,
+    batch offset/size, and seed source hash so a run's coverage basis is
+    auditable without re-inspecting the seed artifact.
+    """
+    universe_metadata = dict(universe_metadata or {})
+    batch_metadata = dict(batch_metadata or {})
+    seed_sha256 = (
+        universe_metadata.get("source_sha256")
+        or universe_metadata.get("sha256")
+        or universe_metadata.get("seed_sha256")
+    )
+    return {
+        "universe_count": len(universe) if universe else None,
+        "denominator": batch_metadata.get("eligible_count") or batch_metadata.get("selected_count") or (len(universe) if universe else None),
+        "denominator_status": batch_metadata.get("denominator_status"),
+        "denominator_label": batch_metadata.get("denominator_label"),
+        "complete_exchange_listing": bool(batch_metadata.get("complete_exchange_listing", False)),
+        "security_type_filter": batch_metadata.get("security_type_filter") or batch_metadata.get("include_security_types"),
+        "exclude_security_types": batch_metadata.get("exclude_security_types"),
+        "excluded_security_type_count": batch_metadata.get("excluded_security_type_count"),
+        "batch_offset": batch_metadata.get("batch_offset"),
+        "batch_size": batch_metadata.get("selected_count") or batch_metadata.get("batch_size"),
+        "batch_end_exclusive": batch_metadata.get("batch_end_exclusive"),
+        "full_count": batch_metadata.get("full_count"),
+        "seed_sha256": seed_sha256,
+        "seed_source_row_count": universe_metadata.get("source_row_count") or universe_metadata.get("row_count"),
+        "seed_retrieved_at": universe_metadata.get("retrieved_at"),
+    }
+
+
+def _multi_source_selected_fields(multi: dict) -> dict:
+    selected: dict = {}
+    for field_name, result in (multi or {}).items():
+        entry = result.get("selected") if isinstance(result, dict) else None
+        if not isinstance(entry, dict):
+            continue
+        projected = dict(entry)
+        projected["selection_reason"] = result.get("selection_reason")
+        # Defense in depth: never persist a secret-bearing URL even if an
+        # upstream producer passed one through unsanitized.
+        if projected.get("source_url"):
+            projected["source_url"] = redact_url_secrets(str(projected["source_url"]))
+            projected["source_url_sanitized"] = True
+        selected[field_name] = projected
+    return selected
+
+
+def _multi_source_alternates(multi: dict) -> dict:
+    alternates: dict = {}
+    for field_name, result in (multi or {}).items():
+        if not isinstance(result, dict):
+            continue
+        values = result.get("alternates") or []
+        if values:
+            sanitized = []
+            for alt in values:
+                if isinstance(alt, dict) and alt.get("source_url"):
+                    alt = dict(alt)
+                    alt["source_url"] = redact_url_secrets(str(alt["source_url"]))
+                    alt["source_url_sanitized"] = True
+                sanitized.append(alt)
+            alternates[field_name] = sanitized
+    return alternates
+
+
+def _multi_source_conflicts(multi: dict) -> list[dict]:
+    conflicts: list[dict] = []
+    for result in (multi or {}).values():
+        if not isinstance(result, dict):
+            continue
+        for conflict in result.get("conflicts") or []:
+            if isinstance(conflict, dict):
+                conflicts.append(conflict)
+    return conflicts
+
+
+def _multi_source_confidence(multi: dict) -> dict:
+    confidence: dict = {}
+    for result in (multi or {}).values():
+        if not isinstance(result, dict):
+            continue
+        selected = result.get("selected")
+        if isinstance(selected, dict):
+            provider = selected.get("provider")
+            level = selected.get("confidence")
+            if provider and level:
+                confidence[str(provider)] = level
+    return confidence
+
+
+def project_consolidated_fields_sanitized(multi: dict) -> dict:
+    """Dashboard-safe projection of consolidated fields.
+
+    Keeps selected value + provider + selection reason + conflict count, and
+    drops raw ``source_url``, full alternates arrays, and any provider payload
+    fields so the read path never re-exposes evidence internals.
+    """
+    projected: dict = {}
+    for field_name, result in (multi or {}).items():
+        if not isinstance(result, dict):
+            continue
+        selected = result.get("selected")
+        if not isinstance(selected, dict):
+            projected[field_name] = {
+                "value": None,
+                "value_status": "missing",
+                "provider": None,
+                "selection_reason": result.get("selection_reason"),
+                "conflict_count": len(result.get("conflicts") or []),
+            }
+            continue
+        projected[field_name] = {
+            "value": selected.get("value"),
+            "value_status": selected.get("value_status"),
+            "provider": selected.get("provider"),
+            "source_family": selected.get("source_family"),
+            "confidence": selected.get("confidence"),
+            "trust_level": selected.get("trust_level"),
+            "currency": selected.get("currency"),
+            "unit": selected.get("unit"),
+            "period_type": selected.get("period_type"),
+            "period_end": selected.get("period_end"),
+            "data_as_of": selected.get("data_as_of"),
+            "stale": selected.get("stale"),
+            "selection_reason": result.get("selection_reason"),
+            "conflict_count": len(result.get("conflicts") or []),
+            "caveats": selected.get("caveats") or [],
+        }
+    return projected
+
+
 def insert_screener_run(
     conn,
     ranked: list[dict],
@@ -2683,6 +2878,8 @@ def insert_screener_run(
     universe_version: Optional[str] = None,
     code_version: Optional[str] = None,
     config_hash: Optional[str] = None,
+    universe_metadata: Optional[dict] = None,
+    provider_failures: Optional[list[dict]] = None,
 ) -> int:
     """Insert/upsert a completed screener run and its historical rows. Returns run id.
 
@@ -2690,14 +2887,16 @@ def insert_screener_run(
     the same run/company/observation/score rows instead of inserting mystery twins.
     """
     run_key = run_key or _stable_run_key(source, mode, universe, metadata)
+    universe_metadata_payload = _json_param(universe_metadata or {})
+    provider_failures_payload = _json_param(sanitize_provider_failures(provider_failures))
     cur = conn.cursor()
     cur.execute(
         """
         INSERT INTO investment_screener_runs(
           run_key, started_at, completed_at, status, market, mode, universe_version,
-          source_mix, code_version, config_hash, metadata
+          source_mix, code_version, config_hash, metadata, universe_metadata, provider_failures
         )
-        VALUES (%s, now(), now(), %s, %s, %s, %s, %s::jsonb, %s, %s, %s::jsonb)
+        VALUES (%s, now(), now(), %s, %s, %s, %s, %s::jsonb, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb)
         ON CONFLICT (run_key) DO UPDATE SET
           completed_at = EXCLUDED.completed_at,
           status = EXCLUDED.status,
@@ -2707,7 +2906,9 @@ def insert_screener_run(
           source_mix = EXCLUDED.source_mix,
           code_version = COALESCE(EXCLUDED.code_version, investment_screener_runs.code_version),
           config_hash = COALESCE(EXCLUDED.config_hash, investment_screener_runs.config_hash),
-          metadata = EXCLUDED.metadata
+          metadata = EXCLUDED.metadata,
+          universe_metadata = EXCLUDED.universe_metadata,
+          provider_failures = EXCLUDED.provider_failures
         RETURNING id
         """,
         (
@@ -2720,6 +2921,8 @@ def insert_screener_run(
             code_version,
             config_hash,
             _json_param(metadata or {}),
+            universe_metadata_payload,
+            provider_failures_payload,
         ),
     )
     run_id = cur.fetchone()[0]
@@ -2762,13 +2965,15 @@ def insert_screener_run(
             ),
         )
         company_id = cur.fetchone()[0]
+        multi = row.get("multi_source_fields") or {}
         cur.execute(
             """
             INSERT INTO investment_screener_observations(
               run_id, company_id, ticker, period_end, data_as_of, currency, source_quality,
-              raw_fields, derived_fields, missing_fields
+              raw_fields, derived_fields, missing_fields, selected_fields, alternates,
+              conflicts, field_quality, source_confidence
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb)
             ON CONFLICT (run_id, company_id) DO UPDATE SET
               ticker = EXCLUDED.ticker,
               period_end = EXCLUDED.period_end,
@@ -2777,7 +2982,12 @@ def insert_screener_run(
               source_quality = EXCLUDED.source_quality,
               raw_fields = EXCLUDED.raw_fields,
               derived_fields = EXCLUDED.derived_fields,
-              missing_fields = EXCLUDED.missing_fields
+              missing_fields = EXCLUDED.missing_fields,
+              selected_fields = EXCLUDED.selected_fields,
+              alternates = EXCLUDED.alternates,
+              conflicts = EXCLUDED.conflicts,
+              field_quality = EXCLUDED.field_quality,
+              source_confidence = EXCLUDED.source_confidence
             """,
             (
                 run_id,
@@ -2790,6 +3000,11 @@ def insert_screener_run(
                 _json_param(_row_raw_fields(row)),
                 _json_param(_row_derived_fields(row)),
                 _json_param(row.get("missing_fields") or []),
+                _json_param(_multi_source_selected_fields(multi)),
+                _json_param(_multi_source_alternates(multi)),
+                _json_param(_multi_source_conflicts(multi)),
+                _json_param(row.get("field_quality") or {}),
+                _json_param(_multi_source_confidence(multi)),
             ),
         )
         cur.execute(
@@ -3149,6 +3364,12 @@ def main(argv=None):
             },
             run_key=args.run_key,
             score_version=args.score_version,
+            universe_metadata=build_universe_storage_metadata(
+                universe_tickers,
+                universe_metadata=universe_metadata,
+                batch_metadata=batch_metadata,
+            ),
+            provider_failures=hydration_failures,
         )
         print(f"Wrote Postgres history run id: {run_id}", file=sys.stderr)
 
