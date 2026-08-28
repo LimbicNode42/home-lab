@@ -1479,18 +1479,19 @@ function buildCoverageLabel({ usable, denominator, denominatorLabel, mode, perce
 
 function normalizeCoverageCounts(rawCoverage, fallbackUsable) {
   const denominator = safeInteger(rawCoverage?.denominator);
+  const staleValue = rawCoverage?.stale ?? rawCoverage?.freshness?.stale;
   const counts = {
     usable: safeInteger(rawCoverage?.usable) ?? fallbackUsable,
     scraped: safeInteger(rawCoverage?.scraped),
     scored: safeInteger(rawCoverage?.scored),
     excluded: safeInteger(rawCoverage?.excluded) ?? 0,
     failed: safeInteger(rawCoverage?.failed),
-    stale: safeInteger(rawCoverage?.stale),
+    stale: typeof staleValue === 'boolean' ? staleValue : (safeInteger(staleValue) === null ? null : safeInteger(staleValue) > 0),
     missing_required_fields: safeInteger(rawCoverage?.missing_required_fields)
   };
   let inconsistent = false;
   if (denominator !== null && denominator > 0) {
-    for (const key of ['usable', 'scraped', 'scored', 'excluded', 'failed', 'stale', 'missing_required_fields']) {
+    for (const key of ['usable', 'scraped', 'scored', 'excluded', 'failed', 'missing_required_fields']) {
       if (counts[key] !== null && counts[key] > denominator) {
         counts[key] = denominator;
         inconsistent = true;
@@ -2069,6 +2070,17 @@ async function readLatestInvestmentScreenerManifestSafe(dataRoot) {
   }
 }
 
+async function readCanonicalInvestmentScreenerCoverageSafe(dataRoot) {
+  try {
+    const coveragePath = join(dataRoot, 'investment-screener', 'exports', 'dashboard', 'market=ASX', 'latest_coverage.json');
+    const info = await stat(coveragePath);
+    if (!info.isFile()) return null;
+    return JSON.parse(await readFile(coveragePath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
 async function readInvestmentScreenerReport(reportFile, dataRoot) {
   if (!reportFile && !dataRoot) {
     return { statusCode: 503, payload: { error: 'investment_screener_not_configured', message: 'Investment screener report file is not configured' } };
@@ -2084,12 +2096,13 @@ async function readInvestmentScreenerReport(reportFile, dataRoot) {
       if (canonicalInfo.isFile()) {
         const canonicalContent = sanitizeRuntimeDocContent(await readFile(canonicalPath, 'utf8')).slice(0, INVESTMENT_SCREENER_REPORT_MAX_CHARS);
         const manifest = await readLatestInvestmentScreenerManifestSafe(dataRoot);
+        const canonicalCoverage = await readCanonicalInvestmentScreenerCoverageSafe(dataRoot);
         return {
           statusCode: 200,
           payload: {
-            mode: safeMode(manifest?.mode),
-            generated_at: safeIsoDate(manifest?.generated_at ?? manifest?.completed_at) ?? canonicalInfo.mtime.toISOString(),
-            data_as_of: isoDateOnly(manifest?.data_as_of),
+            mode: safeMode(manifest?.mode ?? canonicalCoverage?.source_summary?.mode),
+            generated_at: safeIsoDate(manifest?.generated_at ?? manifest?.completed_at ?? canonicalCoverage?.generated_at) ?? canonicalInfo.mtime.toISOString(),
+            data_as_of: isoDateOnly(manifest?.data_as_of ?? canonicalCoverage?.source_summary?.data_as_of ?? canonicalCoverage?.coverage?.freshness?.data_as_of),
             disclaimer: INVESTMENT_SCREENER_DISCLAIMER,
             content: canonicalContent,
             doc_links: INVESTMENT_SCREENER_DOC_LINKS
