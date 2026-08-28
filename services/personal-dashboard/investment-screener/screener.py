@@ -841,6 +841,17 @@ def score_company(company: dict, cfg: dict) -> dict:
         "missing_fields": unique_missing,
         "provenance_summary": _provenance_summary(company),
         "fields": fields,
+        "multi_source_fields": company.get("multi_source_fields") or {},
+        "field_quality": company.get("field_quality") or {
+            "filled_fields": [],
+            "conflicted_fields": [],
+            "stale_fields": [],
+            "missing_fields": unique_missing,
+            "conflict_count": 0,
+        },
+        "source_summary": company.get("source_summary"),
+        "provider_priority_version": company.get("provider_priority_version"),
+        "threshold_version": company.get("threshold_version"),
     }
 
 
@@ -994,6 +1005,14 @@ def _dashboard_ranked_row(row: dict) -> dict:
         "caveats": list(dict.fromkeys(list(row.get("caveats") or []) + list(row.get("exclusion_reasons") or []))),
         "score_caps": _dashboard_score_caps(row.get("score_caps")),
         "sanitized_provenance_summary": _dashboard_provenance_summary(row),
+        "source_summary": row.get("source_summary"),
+        "field_quality": {
+            "filled_fields": list((row.get("field_quality") or {}).get("filled_fields") or []),
+            "conflicted_fields": list((row.get("field_quality") or {}).get("conflicted_fields") or []),
+            "stale_fields": list((row.get("field_quality") or {}).get("stale_fields") or []),
+            "missing_fields": list((row.get("field_quality") or {}).get("missing_fields") or row.get("missing_fields") or []),
+            "conflict_count": int((row.get("field_quality") or {}).get("conflict_count") or 0),
+        },
     }
 
 
@@ -1380,7 +1399,7 @@ def _first_dated(items: list[dict], date_keys: tuple[str, ...]) -> Optional[dict
     )
 
 
-_SECRET_QUERY_PARAMS = frozenset({"apikey", "api_key", "access_token", "key", "token"})
+_SECRET_QUERY_PARAMS = frozenset({"apikey", "api_key", "access_token", "key", "token", "signature", "sig", "session", "sessionid", "session_id", "sid"})
 
 
 def redact_url_secrets(url: str) -> str:
@@ -1454,6 +1473,7 @@ class ProviderAdapter:
 
     def fetch(self, ticker: str) -> dict[str, FieldValue]:
         """Return normalized {field_name: FieldValue}. Empty when disabled/failed."""
+        self.last_error = None
         if not self.enabled():
             return {}
         try:
@@ -1474,14 +1494,26 @@ class ProviderAdapter:
         return FieldValue(
             value=_coerce_float(value),
             provenance={
-                "source_family": self.name,
+                "source_family": "provider_statement",
                 "provider": self.name,
                 "source_url": redact_url_secrets(source_url),
+                "source_url_sanitized": True,
                 "retrieved_at": _now_iso(),
                 "retrieved_from_source_at": _now_iso(),
                 "data_as_of": data_as_of,
+                "period_end": data_as_of,
                 "field_name": name,
-                "trust_level": self.trust_level,
+                "unit": _default_unit_for_field(name),
+                "currency": "AUD" if _default_unit_for_field(name) == "currency" else None,
+                "scale": "ones" if _default_unit_for_field(name) in {"currency", "shares"} else "ratio",
+                "period_type": "annual",
+                "confidence": "medium",
+                "trust_level": "licensed_provider_normalized_statement",
+                "stale": False,
+                "method": "reported",
+                "caveats": [
+                    f"{self.name} provider-normalized statement; verify against ASX filings before investment action."
+                ],
                 "freshness": (
                     f"{self.name} licensed fundamentals; verify against ASX "
                     "announcements/company reports before acting"
@@ -1623,7 +1655,7 @@ def merge_missing_fields(
         for provider_name, fields in provider_fields:
             candidate = fields.get(field_name)
             if candidate is not None and candidate.value is not None:
-                company[field_name] = candidate
+                company[field_name] = sanitized_field_value(field_name, candidate)
                 filled[field_name] = provider_name
                 break
 
@@ -1637,6 +1669,19 @@ def merge_missing_fields(
             company[field_name] = missing_field_value(field_name, "unavailable", "no-provider")
         elif fv.value is None:
             fv.provenance["missing_reason"] = "unavailable"
+
+    provider_inputs = [(provider_name, fields) for provider_name, fields in provider_fields]
+    try:
+        consolidated = consolidate_company_fields(company, provider_inputs)
+        company["multi_source_fields"] = consolidated["fields"]
+        company["field_quality"] = consolidated["field_quality"]
+        company["source_summary"] = consolidated["source_summary"]
+        company["provider_priority_version"] = consolidated["provider_priority_version"]
+        company["threshold_version"] = consolidated["threshold_version"]
+    except Exception:
+        # Consolidation is diagnostic metadata; never let it make existing safe
+        # fill-only behavior less reliable. Tests cover the normal path.
+        pass
 
     return company, filled
 
@@ -1660,17 +1705,444 @@ def fill_company_missing_fields(
         except Exception as exc:
             failures.append({
                 "provider": adapter.name,
+                "source_family": adapter.name,
                 "ticker": company.get("ticker"),
                 "reason": str(exc),
                 "recoverable": True,
+                "failed_at": _now_iso(),
             })
             continue
+        if adapter.last_error is not None:
+            failures.append({
+                "provider": adapter.name,
+                "source_family": adapter.name,
+                "ticker": company.get("ticker"),
+                "reason": str(adapter.last_error),
+                "recoverable": True,
+                "failed_at": _now_iso(),
+            })
         if fields:
             provider_fields.append((adapter.name, fields))
 
     merged, _ = merge_missing_fields(company, provider_fields)
     return merged, failures
 
+
+
+# ---------------------------------------------------------------------------
+# Multi-source field consolidation
+# ---------------------------------------------------------------------------
+
+FIELD_CONSOLIDATION_VERSION = "field-consolidation/v1"
+FIELD_THRESHOLD_VERSION = "asx-fundamentals-thresholds/2026-08-28"
+
+_FIELD_UNITS = {
+    "price": "currency",
+    "market_cap": "currency",
+    "shares_outstanding": "shares",
+    "revenue": "currency",
+    "prior_revenue": "currency",
+    "net_income": "currency",
+    "operating_cash_flow": "currency",
+    "capital_expenditures": "currency",
+    "total_assets": "currency",
+    "total_liabilities": "currency",
+    "current_assets": "currency",
+    "current_liabilities": "currency",
+    "fcf": "currency",
+    "fcf_margin": "ratio",
+    "pe_ratio": "ratio",
+    "price_to_sales": "ratio",
+    "net_margin": "ratio",
+    "roe": "ratio",
+    "current_ratio": "ratio",
+    "debt_to_assets": "ratio",
+    "revenue_growth": "ratio",
+}
+
+_PROVIDER_SELECTION_RANK = {
+    "asx_report": 0,
+    "manual_review": 0,
+    "fmp": 10,
+    "alpha_vantage": 20,
+    "eodhd": 30,
+    "twelve_data": 40,
+    "yahoo-finance": 50,
+    "yahoo_finance": 50,
+    "derived": 5,
+}
+
+_SOURCE_FAMILY_RANK = {
+    "reported_filing": 0,
+    "manual_review": 0,
+    "provider_statement": 10,
+    "quote_market_data": 15,
+    "unofficial_statement": 30,
+    "yahoo-finance": 30,
+    "derived": 5,
+    "missing_marker": 99,
+}
+
+
+def _default_unit_for_field(field_name: str) -> str:
+    return _FIELD_UNITS.get(field_name, "unknown")
+
+
+def _default_scale_for_unit(unit: str) -> str:
+    if unit in {"currency", "shares", "count"}:
+        return "ones"
+    if unit in {"ratio", "percent"}:
+        return "ratio"
+    return "unknown"
+
+
+def _field_value_status(fv: Optional[FieldValue]) -> str:
+    if fv is None:
+        return "missing"
+    prov = fv.provenance or {}
+    if prov.get("value_status"):
+        return str(prov["value_status"])
+    if fv.value is None:
+        return "missing"
+    return "present"
+
+
+def serialize_field_value(field_name: str, fv: Optional[FieldValue], reason_not_selected: Optional[str] = None) -> dict:
+    """Serialize FieldValue into the multi-source provenance contract.
+
+    Keeps FieldValue.value as the scorer-facing primitive, while projecting the
+    richer shape required by storage/dashboard callers. No raw provider payloads
+    or secret-bearing URLs are emitted.
+    """
+    prov = dict((fv.provenance if fv else {}) or {})
+    value = fv.value if fv else None
+    unit = prov.get("unit") or _default_unit_for_field(field_name)
+    raw_url = prov.get("source_url")
+    safe_url = redact_url_secrets(raw_url) if raw_url else None
+    status = _field_value_status(fv)
+    if status == "present" and value is None:
+        status = "missing"
+    serialized = {
+        "field_name": field_name,
+        "value": value,
+        "value_status": status,
+        "unit": unit,
+        "currency": prov.get("currency") if unit == "currency" else prov.get("currency"),
+        "scale": prov.get("scale") or _default_scale_for_unit(unit),
+        "period_type": prov.get("period_type") or ("latest_market" if field_name in {"price", "market_cap"} else "annual"),
+        "period_start": prov.get("period_start"),
+        "period_end": prov.get("period_end") or prov.get("data_as_of"),
+        "fiscal_year": prov.get("fiscal_year"),
+        "data_as_of": prov.get("data_as_of") or prov.get("period_end"),
+        "filed_at": prov.get("filed_at"),
+        "retrieved_at": prov.get("retrieved_at") or prov.get("retrieved_from_source_at") or _now_iso(),
+        "source_reported_at": prov.get("source_reported_at"),
+        "source_family": prov.get("source_family") or ("missing_marker" if value is None else "unknown"),
+        "provider": prov.get("provider") or prov.get("source_family") or "unknown",
+        "source_url": safe_url,
+        "source_url_sanitized": bool(not raw_url or raw_url == safe_url or safe_url is not None),
+        "confidence": prov.get("confidence") or ("unknown" if value is None else "medium"),
+        "trust_level": prov.get("trust_level") or ("missing_or_unavailable" if value is None else "unknown"),
+        "stale": bool(prov.get("stale", False)),
+        "method": prov.get("method") or ("missing_marker" if value is None else "reported"),
+        "caveats": list(prov.get("caveats") or ([] if value is not None else ["Value unavailable from configured providers."])),
+        "missing_reason": prov.get("missing_reason") if value is None or status != "present" else None,
+    }
+    if reason_not_selected:
+        serialized["reason_not_selected"] = reason_not_selected
+    return serialized
+
+
+def sanitized_field_value(field_name: str, fv: FieldValue) -> FieldValue:
+    """Return a FieldValue with provenance normalized enough to persist safely."""
+    prov = dict((fv.provenance or {}))
+    if prov.get("source_url"):
+        prov["source_url"] = redact_url_secrets(str(prov["source_url"]))
+        prov["source_url_sanitized"] = True
+    prov.setdefault("field_name", field_name)
+    prov.setdefault("unit", _default_unit_for_field(field_name))
+    prov.setdefault("scale", _default_scale_for_unit(str(prov.get("unit") or "unknown")))
+    prov.setdefault("value_status", "present" if fv.value is not None else "missing")
+    prov.setdefault("retrieved_at", _now_iso())
+    prov.setdefault("caveats", [])
+    if fv.value is None:
+        prov.setdefault("missing_reason", "unavailable")
+    return FieldValue(fv.value, prov)
+
+
+def _candidate_priority(candidate: dict) -> tuple[int, int, str]:
+    provider = str(candidate.get("provider") or "unknown")
+    family = str(candidate.get("source_family") or "unknown")
+    return (
+        _SOURCE_FAMILY_RANK.get(family, 50),
+        _PROVIDER_SELECTION_RANK.get(provider, 50),
+        provider,
+    )
+
+
+def _dateish(candidate: dict) -> str:
+    return str(candidate.get("filed_at") or candidate.get("source_reported_at") or candidate.get("period_end") or candidate.get("data_as_of") or "")
+
+
+def _numeric_threshold(field_name: str) -> float:
+    if field_name in {"fcf_margin", "net_margin", "roe", "revenue_growth"}:
+        return 0.03
+    if field_name in {"pe_ratio", "price_to_sales", "current_ratio", "debt_to_assets"}:
+        return 0.05
+    if field_name == "market_cap":
+        return 0.05
+    if field_name == "price":
+        return 0.02
+    if field_name == "shares_outstanding":
+        return 0.01
+    return 0.02
+
+
+def _near_equal_threshold(field_name: str) -> float:
+    if field_name in {"fcf_margin", "net_margin", "roe", "revenue_growth"}:
+        return 0.01
+    if field_name in {"pe_ratio", "price_to_sales", "current_ratio", "debt_to_assets"}:
+        return 0.01
+    if field_name == "market_cap":
+        return 0.02
+    if field_name == "price":
+        return 0.005
+    if field_name == "shares_outstanding":
+        return 0.005
+    return 0.005
+
+
+def _relative_delta(a: Any, b: Any) -> Optional[float]:
+    av = _coerce_float(a)
+    bv = _coerce_float(b)
+    if av is None or bv is None:
+        return None
+    denom = max(abs(av), abs(bv), 1.0)
+    return abs(av - bv) / denom
+
+
+def _conflict(kind: str, field_name: str, providers: list[str], message: str, severity: str = "blocking", threshold: Optional[str] = None, observed_delta: Any = None, selected_provider: Optional[str] = None) -> dict:
+    return {
+        "kind": kind,
+        "severity": severity,
+        "field_name": field_name,
+        "providers": providers,
+        "message": message,
+        "threshold": threshold,
+        "observed_delta": observed_delta,
+        "selected_provider": selected_provider,
+        "requires_review": severity == "blocking",
+    }
+
+
+def _shape_conflicts(field_name: str, present: list[dict]) -> list[dict]:
+    conflicts: list[dict] = []
+    if len(present) < 2:
+        return conflicts
+    providers = [str(c.get("provider") or "unknown") for c in present]
+    currencies = {c.get("currency") for c in present if c.get("unit") == "currency" and c.get("currency")}
+    if len(currencies) > 1:
+        conflicts.append(_conflict("currency_mismatch", field_name, providers, "Candidate currencies differ and no FX normalization is approved.", threshold="currency_exact_match_required"))
+    unit_scales = {(c.get("unit"), c.get("scale")) for c in present}
+    if len(unit_scales) > 1:
+        conflicts.append(_conflict("unit_or_scale_mismatch", field_name, providers, "Candidate units/scales are incompatible after canonicalization.", threshold="unit_scale_exact_match_required"))
+    period_types = {c.get("period_type") for c in present if c.get("period_type")}
+    if len(period_types) > 1:
+        conflicts.append(_conflict("period_type_mismatch", field_name, providers, "Candidate period types are not comparable for this field.", threshold="period_type_exact_match_required"))
+    period_ends = {c.get("period_end") for c in present if c.get("period_end")}
+    if len(period_ends) > 1 and not conflicts:
+        conflicts.append(_conflict("period_end_mismatch", field_name, providers, "Candidate period end dates differ beyond the safe merge assumption.", threshold="same_period_required"))
+    return conflicts
+
+
+def consolidate_field(field_name: str, candidates: list[tuple[str, FieldValue]]) -> dict:
+    """Select one safe field value and retain alternates/conflicts.
+
+    This is deliberately conservative: hard shape conflicts block scoring,
+    material numeric disagreement is surfaced as a warning, and missing/error
+    markers remain visible rather than being silently imputed. No averaging.
+    """
+    serialized: list[dict] = []
+    for provider_name, fv in candidates:
+        item = serialize_field_value(field_name, fv)
+        item["provider"] = item.get("provider") or provider_name
+        serialized.append(item)
+
+    missing = [c for c in serialized if c.get("value") is None or c.get("value_status") != "present"]
+    present = [c for c in serialized if c.get("value") is not None and c.get("value_status") == "present"]
+    conflicts = _shape_conflicts(field_name, present)
+    blocking = [c for c in conflicts if c["severity"] == "blocking"]
+    if blocking:
+        return {
+            "field_name": field_name,
+            "selected": None,
+            "selection_reason": "blocking_conflict",
+            "alternates": present + missing,
+            "conflicts": conflicts,
+            "caveats": [f"{field_name} unavailable because candidate sources are incompatible."],
+            "score_effect": {"usable_for_scoring": False, "penalty_points": 1.5, "score_cap": "quality<=60"},
+        }
+
+    if not present:
+        return {
+            "field_name": field_name,
+            "selected": None,
+            "selection_reason": "no_value",
+            "alternates": missing,
+            "conflicts": [],
+            "caveats": [f"{field_name} unavailable from configured sources."],
+            "score_effect": {"usable_for_scoring": False, "penalty_points": 1.0, "score_cap": None},
+        }
+
+    # Same-provider/same-period restatement: newer filed/source date wins.
+    provider_periods = {(c.get("provider"), c.get("period_type"), c.get("period_end")) for c in present}
+    same_provider_period = len(provider_periods) == 1 and len(present) > 1
+    if same_provider_period:
+        selected = max(present, key=_dateish)
+        alternates = [dict(c, reason_not_selected="superseded_by_newer_filing") for c in present if c is not selected] + missing
+        return {
+            "field_name": field_name,
+            "selected": selected,
+            "selection_reason": "newer_restatement",
+            "alternates": alternates,
+            "conflicts": [],
+            "caveats": list(selected.get("caveats") or []),
+            "score_effect": {"usable_for_scoring": True, "penalty_points": 0, "score_cap": None},
+        }
+
+    selected = sorted(present, key=_candidate_priority)[0]
+    numeric_warning = False
+    near_equal = len(present) > 1
+    for other in present:
+        if other is selected:
+            continue
+        delta = _relative_delta(selected.get("value"), other.get("value"))
+        if delta is None:
+            continue
+        if delta > _numeric_threshold(field_name):
+            numeric_warning = True
+            near_equal = False
+            conflicts.append(_conflict(
+                "numeric_delta_exceeds_threshold",
+                field_name,
+                [str(selected.get("provider")), str(other.get("provider"))],
+                "Candidate numeric values differ materially; selected value follows source priority.",
+                severity="warning",
+                threshold=f">{_numeric_threshold(field_name):.1%}",
+                observed_delta=round(delta, 6),
+                selected_provider=str(selected.get("provider")),
+            ))
+        elif delta > _near_equal_threshold(field_name):
+            near_equal = False
+
+    alternates = [dict(c, reason_not_selected="lower_priority_source") for c in present if c is not selected] + missing
+    if missing and not [c for c in present if c is not selected]:
+        reason = "filled_missing"
+    elif near_equal and len(present) > 1:
+        reason = "near_equal_sources"
+    elif numeric_warning:
+        reason = "highest_priority_same_period"
+    else:
+        reason = "highest_priority_same_period"
+    return {
+        "field_name": field_name,
+        "selected": selected,
+        "selection_reason": reason,
+        "alternates": alternates,
+        "conflicts": conflicts,
+        "caveats": list(dict.fromkeys(list(selected.get("caveats") or []) + (["Provider alternates differ materially; verify before acting."] if numeric_warning else []))),
+        "score_effect": {"usable_for_scoring": True, "penalty_points": 0, "score_cap": None},
+    }
+
+
+def _compatible_selected(a: Optional[dict], b: Optional[dict]) -> tuple[bool, Optional[dict]]:
+    if not a or not b:
+        return False, None
+    providers = [str(a.get("provider") or "unknown"), str(b.get("provider") or "unknown")]
+    if a.get("currency") != b.get("currency"):
+        return False, _conflict("currency_mismatch", "fcf", providers, "OCF and capex currencies differ; FCF cannot be derived.")
+    if a.get("unit") != b.get("unit") or a.get("scale") != b.get("scale"):
+        return False, _conflict("unit_or_scale_mismatch", "fcf", providers, "OCF and capex units/scales differ; FCF cannot be derived.")
+    if a.get("period_type") != b.get("period_type"):
+        return False, _conflict("period_type_mismatch", "fcf", providers, "OCF and capex periods differ; FCF cannot be derived.")
+    if a.get("period_end") != b.get("period_end"):
+        return False, _conflict("period_end_mismatch", "fcf", providers, "OCF and capex period ends differ; FCF cannot be derived.")
+    return True, None
+
+
+def consolidate_company_fields(company: dict, provider_fields: Optional[list[tuple[str, dict[str, FieldValue]]]] = None) -> dict:
+    """Consolidate raw FieldValues plus derived FCF/FCF margin for one company."""
+    provider_fields = provider_fields or []
+    consolidated: dict[str, dict] = {}
+    for field_name in RAW_FIELDS:
+        candidates: list[tuple[str, FieldValue]] = []
+        current = company.get(field_name)
+        if current is not None:
+            candidates.append((str((current.provenance or {}).get("provider") or (current.provenance or {}).get("source_family") or "current"), current))
+        for provider_name, fields in provider_fields:
+            if field_name in fields:
+                candidates.append((provider_name, fields[field_name]))
+        if candidates:
+            consolidated[field_name] = consolidate_field(field_name, candidates)
+
+    ocf = (consolidated.get("operating_cash_flow") or {}).get("selected")
+    capex = (consolidated.get("capital_expenditures") or {}).get("selected")
+    compat, conflict = _compatible_selected(ocf, capex)
+    if compat:
+        fcf_value = (ocf.get("value") or 0) + (capex.get("value") or 0)
+        fcf = serialize_field_value("fcf", FieldValue(fcf_value, {
+            "field_name": "fcf",
+            "provider": "derived",
+            "source_family": "derived",
+            "unit": "currency",
+            "currency": ocf.get("currency"),
+            "scale": ocf.get("scale"),
+            "period_type": ocf.get("period_type"),
+            "period_end": ocf.get("period_end"),
+            "data_as_of": ocf.get("data_as_of"),
+            "retrieved_at": _now_iso(),
+            "confidence": "medium",
+            "trust_level": "derived_from_selected_inputs",
+            "method": "derived",
+            "caveats": ["Free cash flow derived from selected operating cash flow and capex inputs."],
+        }))
+        consolidated["fcf"] = {"field_name": "fcf", "selected": fcf, "selection_reason": "derived_from_selected_inputs", "alternates": [], "conflicts": [], "caveats": fcf["caveats"], "score_effect": {"usable_for_scoring": True, "penalty_points": 0, "score_cap": None}}
+    else:
+        consolidated["fcf"] = {"field_name": "fcf", "selected": None, "selection_reason": "blocking_conflict" if conflict else "no_value", "alternates": [c for c in (ocf, capex) if c], "conflicts": [conflict] if conflict else [], "caveats": ["Free cash flow unavailable because selected OCF/capex inputs are not compatible."], "score_effect": {"usable_for_scoring": False, "penalty_points": 1.5, "score_cap": "quality<=60"}}
+
+    fallback_provider_names = set(PROVIDER_ENV_VARS) | {"eodhd", "twelve_data"}
+    filled = [name for name, result in consolidated.items() if (result.get("selected") or {}).get("provider") in fallback_provider_names and name in RAW_FIELDS]
+    conflicted = [name for name, result in consolidated.items() if result.get("conflicts")]
+    missing = [name for name, result in consolidated.items() if result.get("selected") is None]
+    source_mix = sorted({
+        (result.get("selected") or {}).get("provider")
+        for result in consolidated.values()
+        if result.get("selected") and (result.get("selected") or {}).get("provider") not in {None, "unknown", "current"}
+    })
+    return {
+        "ticker": company.get("ticker"),
+        "fields": consolidated,
+        "field_quality": {
+            "filled_fields": sorted(filled),
+            "conflicted_fields": sorted(conflicted),
+            "stale_fields": [name for name, result in consolidated.items() if (result.get("selected") or {}).get("stale")],
+            "missing_fields": sorted(missing),
+            "conflict_count": sum(len(result.get("conflicts") or []) for result in consolidated.values()),
+        },
+        "source_summary": _source_summary(source_mix, filled, conflicted),
+        "provider_priority_version": FIELD_CONSOLIDATION_VERSION,
+        "threshold_version": FIELD_THRESHOLD_VERSION,
+    }
+
+
+def _source_summary(source_mix: list[str], filled_fields: list[str], conflicted_fields: list[str]) -> str:
+    sources = "+".join(s for s in source_mix if s) or "no selected sources"
+    pieces = [sources]
+    if filled_fields:
+        pieces.append(f"{len(filled_fields)} fallback-filled field(s)")
+    if conflicted_fields:
+        pieces.append(f"{len(conflicted_fields)} conflicted field(s)")
+    return "; ".join(pieces)
 
 def _provenance_scalar(value: Any) -> Any:
     if isinstance(value, (list, tuple, set)):
@@ -1886,6 +2358,26 @@ def build_file_first_run_payload(
             "percent": round((usable / denominator) * 100, 1) if denominator else None,
         },
         "source_caveats": source_caveats,
+        "provider_priority_version": FIELD_CONSOLIDATION_VERSION,
+        "threshold_version": FIELD_THRESHOLD_VERSION,
+        "source_mix": sorted({row.get("provider") or row.get("source_family") for row in provenance if row.get("provider") or row.get("source_family")}),
+        "provider_failures": [
+            {
+                "provider": failure.get("provider"),
+                "source_family": failure.get("source_family"),
+                "ticker": failure.get("ticker"),
+                "reason": str(failure.get("reason") or "provider failure")[:160],
+                "recoverable": failure.get("recoverable") is not False,
+            }
+            for failure in failures
+            if failure.get("provider") not in (None, "yahoo-finance")
+        ],
+        "field_quality": {
+            "filled_fields": sorted({field for row in ranked for field in ((row.get("field_quality") or {}).get("filled_fields") or [])}),
+            "conflicted_fields": sorted({field for row in ranked for field in ((row.get("field_quality") or {}).get("conflicted_fields") or [])}),
+            "missing_fields": sorted({field for row in ranked for field in ((row.get("field_quality") or {}).get("missing_fields") or [])}),
+            "conflict_count": sum(int((row.get("field_quality") or {}).get("conflict_count") or 0) for row in ranked),
+        },
     }
 
 
@@ -2502,6 +2994,24 @@ FIXTURE_UNIVERSE = [
 ]
 
 
+def apply_provider_fallbacks_to_companies(companies: list[dict], adapters: list[ProviderAdapter]) -> tuple[list[dict], list[dict]]:
+    """Apply enabled provider fallback adapters to hydrated companies.
+
+    With the default empty environment this performs no network calls. If Ben
+    later approves runtime credentials, adapters fill missing fields only and
+    emit recoverable failures instead of fabricating values or aborting the run.
+    """
+    if not adapters:
+        return companies, []
+    updated: list[dict] = []
+    failures: list[dict] = []
+    for company in companies:
+        merged, company_failures = fill_company_missing_fields(company, adapters)
+        updated.append(merged)
+        failures.extend(company_failures)
+    return updated, failures
+
+
 def main(argv=None):
     args = parse_args(argv)
     cfg = load_config(Path(args.config))
@@ -2587,6 +3097,15 @@ def main(argv=None):
     if not companies:
         print("No companies to score.", file=sys.stderr)
         sys.exit(1)
+
+    fallback_adapters = build_fallback_adapters()
+    companies, fallback_failures = apply_provider_fallbacks_to_companies(companies, fallback_adapters)
+    hydration_failures.extend(fallback_failures)
+    if fallback_adapters:
+        print(
+            "Applied provider fallback adapters: " + ", ".join(adapter.name for adapter in fallback_adapters),
+            file=sys.stderr,
+        )
 
     ranked = rank_companies(companies, cfg)
     if args.top_n:
