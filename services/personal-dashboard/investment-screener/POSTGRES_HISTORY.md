@@ -12,9 +12,9 @@ It is intentionally non-destructive: table creation uses `CREATE TABLE IF NOT EX
 
 Tables covered:
 
-- `investment_screener_runs` — idempotent run records keyed by `run_key`.
+- `investment_screener_runs` — idempotent run records keyed by `run_key`, now also carrying `universe_metadata` (denominator/status/filters/batch/seed hash) and sanitized `provider_failures`.
 - `investment_screener_companies` — stable ASX company/security identity.
-- `investment_screener_observations` — raw normalized fields, derived fields, missing fields, source quality, and dates per company/run.
+- `investment_screener_observations` — raw normalized fields, derived fields, missing fields, source quality, dates, and multi-source consolidation outcomes (`selected_fields` with selection reason, `alternates`, `conflicts`, `field_quality`, `source_confidence`) per company/run.
 - `investment_screener_scores` — ranks, score components, risk flags, caveats, score caps, and scorer version per company/run.
 - `investment_screener_provenance` — normalized field-level evidence rows.
 - `investment_screener_price_snapshots` — reserved schema for later performance snapshots.
