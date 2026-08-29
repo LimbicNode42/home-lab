@@ -57,15 +57,18 @@ Ben, if you approve the FMP fallback path:
 
 1. Create a Financial Modeling Prep API key.
 2. Store the secret value in Vaultwarden, folder `homelab`.
-3. Use this item/field convention unless you prefer another runtime secret path:
+3. The current actual item from the Kanban unblock path is:
+   - folder: `homelab`
+   - item: `FMP_API_KEY`
+   - field: `password`
+   - runtime environment variable: `FMP_API_KEY`
+4. Use this preferred normalized item/field convention for future cleanup unless you prefer another runtime secret path:
    - folder: `homelab`
    - item: `investment-screener/fmp`
    - field: `api_key`
    - runtime environment variable: `FMP_API_KEY`
-4. Confirm the runtime injection path for manual/scheduler execution. Acceptable examples:
-   - a local root-only env file rendered from Vaultwarden with mode `0600`; or
-   - an existing approved wrapper that exports `FMP_API_KEY` only for the hydration command.
-5. Do not commit the key. Git should contain only the item/field/env-var references above.
+5. Confirm the runtime injection path for manual/scheduler execution. Preferred path: a wrapper fetches the approved Vaultwarden item/field with `bw` and exports `FMP_API_KEY` only into the hydration child process. A local root-only env file rendered from Vaultwarden with mode `0600` is a deployment-specific exception, not the normal Kanban worker architecture.
+6. Do not commit the key. Git should contain only the item/field/env-var references above.
 
 Do not paste the key into a kanban comment, commit message, shell transcript, Discord message, or documentation file. The next hydration worker only needs to know where the key lives and how the runtime receives `FMP_API_KEY`; it does not need to see the value.
 
