@@ -3,9 +3,12 @@ set -euo pipefail
 
 # Render dotenv output from a simple Vaultwarden mapping file.
 #
-# Mapping file formats:
-#   ENV_NAME|item name|field name
+# Mapping file format:
 #   ENV_NAME|folder name|item name|field name
+#
+# The older ENV_NAME|item name|field name form is still accepted for local
+# compatibility, but new repo-backed maps should use the folder-qualified
+# canonical format above.
 #
 # Example using the selected homelab folder convention:
 #   PG_HOST|homelab|postgres/admin|host

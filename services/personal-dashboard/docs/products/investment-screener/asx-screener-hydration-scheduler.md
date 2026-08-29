@@ -95,6 +95,23 @@ INVESTMENT_SCREENER_DATA_ROOT=/tmp/asx-dry-run \
 
 The summary line prints a scratch `pointer` (proof the full chain ran non-fixture without touching the NAS).
 
+### FMP credentialed smoke/top-400 run pattern
+
+Keep `FMP_API_KEY` in Vaultwarden/BW and inject it only for the child command.
+From the repository root, after a Bitwarden CLI unlock has exported `BW_SESSION`:
+
+```bash
+scripts/secrets/run-with-vaultwarden-env.sh \
+  services/personal-dashboard/investment-screener/asx-fmp.env.map.example \
+  -- \
+  bash -c 'cd services/personal-dashboard && INVESTMENT_SCREENER_DATA_ROOT=/tmp/asx-fmp-smoke ASX_BATCH_SIZE=5 DRY_RUN=1 bash scripts/run-asx-screener-hydration-owner.sh'
+```
+
+Only after the smoke run verifies sanitized logs and fallback provenance should an
+operator run the approved top-400 prefix by replacing the scratch root/dry-run
+settings with the reviewed production data root and `ASX_BATCH_SIZE=400`. The
+wrapper and owner script must not print provider key material.
+
 ### Failure / stale-data triage
 
 - **Stale dashboard (`stale:true` / old generated_at):** check the latest pointer's `completed_at`; if > 26h old, the last scheduled run failed. Inspect the scheduler's stderr (the `[asx-screener-owner] FAILED:` block) for the underlying canonical error (e.g. Yahoo `429`, missing required artifact).
