@@ -57,6 +57,7 @@ def field(value, name, data_as_of="2025-06-30"):
     return FieldValue(
         value=value,
         provenance={
+            "source_family": "fixture",
             "source_url": "fixture",
             "retrieved_at": "2026-01-01T00:00:00Z",
             "retrieved_from_source_at": "2026-01-01T00:00:00Z",
@@ -71,6 +72,7 @@ def stale_field(value, name):
     return FieldValue(
         value=value,
         provenance={
+            "source_family": "fixture",
             "source_url": "fixture",
             "retrieved_at": "2020-01-01T00:00:00Z",
             "data_as_of": "2020-01-01",
@@ -471,6 +473,33 @@ class TestDashboardExportShape(unittest.TestCase):
         for candidate in export["candidates"]:
             self.assertEqual(candidate["market"], "ASX")
 
+
+    def test_derived_metric_provenance_is_labeled_as_derived(self):
+        company = asx_company()
+
+        provenance = scr._derived_provenance(company, "market_cap")
+
+        self.assertEqual(provenance["source_family"], "derived")
+        self.assertEqual(provenance["provider"], "derived")
+        self.assertEqual(provenance["method"], "derived")
+
+    def test_provenance_summary_lists_source_families_and_providers(self):
+        company = asx_company()
+        company["net_income"] = FieldValue(9_800_000_000.0, {
+            "source_family": "fmp",
+            "provider": "fmp",
+            "source_url": "https://financialmodelingprep.com/api/v3/income-statement/BHP",
+            "retrieved_at": "2026-01-01T00:00:00Z",
+            "data_as_of": "2025-06-30",
+            "field_name": "net_income",
+        })
+
+        summary = scr._provenance_summary(company)
+
+        self.assertIn("fmp", summary["source_families"])
+        self.assertIn("fmp", summary["providers"])
+        self.assertIn("fixture", summary["source_families"])
+
     def test_export_top_level_structure_has_required_keys(self):
         cfg = load_config(CONFIG_PATH)
         c = asx_company()
@@ -513,6 +542,27 @@ class TestDashboardExportShape(unittest.TestCase):
 
         excluded_tickers = [e["ticker"] for e in export["excluded"]]
         self.assertIn("MISS.AX", excluded_tickers)
+
+
+    def test_dashboard_provenance_summary_names_source_families_and_providers(self):
+        cfg = load_config(CONFIG_PATH)
+        c = asx_company()
+        c["net_income"] = FieldValue(9_800_000_000.0, {
+            "source_family": "fmp",
+            "provider": "fmp",
+            "source_url": "https://financialmodelingprep.com/api/v3/income-statement/BHP",
+            "retrieved_at": "2026-01-01T00:00:00Z",
+            "data_as_of": "2025-06-30",
+            "field_name": "net_income",
+            "freshness": "fixture",
+        })
+        ranked = rank_companies([c], cfg)
+
+        export = build_dashboard_ranked_export(ranked, mode="asx-yahoo-timeseries")
+
+        summary = export["candidates"][0]["sanitized_provenance_summary"]
+        self.assertIn("families=fixture+fmp", summary)
+        self.assertIn("providers=fmp", summary)
 
     def test_export_mode_field_reflects_asx_source(self):
         cfg = load_config(CONFIG_PATH)
@@ -1078,6 +1128,7 @@ class TestProviderAdapterFailClosed(unittest.TestCase):
 
 class TestProviderAdaptersNormalize(unittest.TestCase):
 
+
     def _fmp_fetcher(self):
         def fetcher(url, timeout=None, cache_dir=None):
             if "income-statement" in url:
@@ -1136,7 +1187,7 @@ class TestProviderAdaptersNormalize(unittest.TestCase):
         self.assertLess(fields["capital_expenditures"].value, 0)
 
         prov = fields["revenue"].provenance
-        self.assertEqual(prov["source_family"], "provider_statement")
+        self.assertEqual(prov["source_family"], "fmp")
         self.assertEqual(prov["provider"], "fmp")
         self.assertEqual(prov["trust_level"], "licensed_provider_normalized_statement")
         self.assertEqual(prov["unit"], "currency")
@@ -1154,7 +1205,7 @@ class TestProviderAdaptersNormalize(unittest.TestCase):
         self.assertAlmostEqual(fields["net_income"].value, 9_845_000_000.0)
         self.assertAlmostEqual(fields["total_assets"].value, 113_137_000_000.0)
         self.assertLess(fields["capital_expenditures"].value, 0)
-        self.assertEqual(fields["revenue"].provenance["source_family"], "provider_statement")
+        self.assertEqual(fields["revenue"].provenance["source_family"], "alpha_vantage")
         self.assertEqual(fields["revenue"].provenance["provider"], "alpha_vantage")
         self.assertEqual(fields["revenue"].provenance["trust_level"], "licensed_provider_normalized_statement")
         self.assertEqual(fields["revenue"].provenance["data_as_of"], "2025-06-30")
@@ -1266,6 +1317,23 @@ class TestProvenanceSourceUrlRedaction(unittest.TestCase):
             self.assertNotIn("apikey", src)
             self.assertNotIn(self.FAKE_KEY, src)
         self.assertIn("function=INCOME_STATEMENT", fields["revenue"].provenance["source_url"])
+
+
+    def test_fmp_adapter_fields_use_fmp_source_family_for_output_provenance(self):
+        adapter = scr.FmpAdapter(env={"FMP_API_KEY": self.FAKE_KEY}, fetcher=self._fmp_fetcher())
+
+        fields = adapter.fetch("BHP.AX")
+
+        self.assertEqual(fields["revenue"].provenance["source_family"], "fmp")
+        self.assertEqual(fields["revenue"].provenance["provider"], "fmp")
+
+    def test_alpha_vantage_adapter_fields_use_alpha_source_family_for_output_provenance(self):
+        adapter = scr.AlphaVantageAdapter(env={"ALPHA_VANTAGE_API_KEY": self.FAKE_KEY}, fetcher=self._av_fetcher())
+
+        fields = adapter.fetch("BHP.AX")
+
+        self.assertEqual(fields["revenue"].provenance["source_family"], "alpha_vantage")
+        self.assertEqual(fields["revenue"].provenance["provider"], "alpha_vantage")
 
     def _fmp_fetcher(self):
         def fetcher(url, timeout=None, cache_dir=None):
@@ -1504,6 +1572,58 @@ class TestFallbackRegistry(unittest.TestCase):
         merged, failures = scr.fill_company_missing_fields(company, adapters)
         self.assertIsNone(merged["net_income"].value)
         self.assertEqual(failures, [])
+
+
+    def test_apply_provider_fallbacks_no_adapters_does_not_add_fallback_provenance(self):
+        company = self._company_with_missing__helper()
+
+        updated, failures = scr.apply_provider_fallbacks_to_companies([company], [])
+
+        self.assertEqual(failures, [])
+        self.assertEqual(updated[0]["net_income"].provenance["source_family"], "yahoo-finance")
+        fallback_providers = {
+            (fv.provenance or {}).get("provider")
+            for fv in updated[0].values()
+            if isinstance(fv, FieldValue)
+        }
+        self.assertNotIn("fmp", fallback_providers)
+
+    def test_apply_provider_fallbacks_fills_only_missing_fields_from_fmp(self):
+        company = self._company_with_missing__helper()
+        original_revenue = company["revenue"].value
+
+        class FakeFmp:
+            name = "fmp"
+            last_error = None
+            def fetch(self, ticker):
+                return {
+                    "revenue": FieldValue(1.0, {"source_family": "fmp", "provider": "fmp", "field_name": "revenue"}),
+                    "net_income": FieldValue(9_800_000_000.0, {"source_family": "fmp", "provider": "fmp", "field_name": "net_income"}),
+                }
+
+        updated, failures = scr.apply_provider_fallbacks_to_companies([company], [FakeFmp()])
+
+        self.assertEqual(failures, [])
+        self.assertEqual(updated[0]["revenue"].value, original_revenue)
+        self.assertEqual(updated[0]["revenue"].provenance["source_url"], "fixture")
+        self.assertEqual(updated[0]["net_income"].provenance["source_family"], "fmp")
+        self.assertEqual(updated[0]["net_income"].provenance["provider"], "fmp")
+
+    def test_apply_provider_fallbacks_redacts_secret_bearing_failure_reason(self):
+        company = self._company_with_missing__helper()
+
+        class FailingAdapter:
+            name = "fmp"
+            last_error = None
+            def fetch(self, ticker):
+                raise RuntimeError("429 https://example.test/data?apikey=SECRET&symbol=BHP")
+
+        updated, failures = scr.apply_provider_fallbacks_to_companies([company], [FailingAdapter()])
+
+        self.assertIsNone(updated[0]["net_income"].value)
+        self.assertIn("429", failures[0]["reason"])
+        self.assertNotIn("apikey", failures[0]["reason"].lower())
+        self.assertNotIn("SECRET", failures[0]["reason"])
 
     def _company_with_missing__helper(self):
         company = asx_company()

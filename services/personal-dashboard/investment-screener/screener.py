@@ -423,6 +423,9 @@ def _derived_provenance(company: dict, metric_name: str) -> dict:
     data_as_of = sorted(str(v) for v in {p.get("data_as_of") for p in provenances.values()} if v)
     freshness = sorted(str(v) for v in {p.get("freshness") for p in provenances.values()} if v)
     return {
+        "source_family": "derived",
+        "provider": "derived",
+        "method": "derived",
         "note": "derived from raw fields; inspect source_field_provenance for traceability",
         "source_fields": source_fields,
         "source_urls": source_urls,
@@ -436,6 +439,8 @@ def _derived_provenance(company: dict, metric_name: str) -> dict:
 def _provenance_summary(company: dict) -> dict:
     provenances = [_field_provenance(company, f) for f in RAW_FIELDS]
     return {
+        "source_families": sorted(str(v) for v in {p.get("source_family") for p in provenances} if v),
+        "providers": sorted(str(v) for v in {p.get("provider") for p in provenances} if v),
         "source_urls": sorted(str(v) for v in {p.get("source_url") for p in provenances} if v),
         "data_as_of": sorted(str(v) for v in {p.get("data_as_of") for p in provenances} if v),
         "retrieved_at": sorted(str(v) for v in {p.get("retrieved_at") for p in provenances} if v),
@@ -979,9 +984,15 @@ def _dashboard_provenance_summary(row: dict) -> Optional[str]:
     if not isinstance(summary, dict):
         return None
     source_count = len(summary.get("source_urls") or [])
+    source_families = [str(item) for item in (summary.get("source_families") or []) if item]
+    providers = [str(item) for item in (summary.get("providers") or []) if item]
     data_as_of = _first_sorted_value(summary.get("data_as_of") or [])
     retrieved_at = _first_sorted_value(summary.get("retrieved_at") or [])
     pieces = []
+    if source_families:
+        pieces.append("families=" + "+".join(source_families))
+    if providers:
+        pieces.append("providers=" + "+".join(providers))
     if source_count:
         pieces.append(f"{source_count} source(s)")
     if data_as_of:
@@ -1518,7 +1529,7 @@ class ProviderAdapter:
         return FieldValue(
             value=_coerce_float(value),
             provenance={
-                "source_family": "provider_statement",
+                "source_family": self.name,
                 "provider": self.name,
                 "source_url": redact_url_secrets(source_url),
                 "source_url_sanitized": True,
@@ -1731,7 +1742,7 @@ def fill_company_missing_fields(
                 "provider": adapter.name,
                 "source_family": adapter.name,
                 "ticker": company.get("ticker"),
-                "reason": str(exc),
+                "reason": _redact_secrets_in_text(str(exc)),
                 "recoverable": True,
                 "failed_at": _now_iso(),
             })
@@ -1741,7 +1752,7 @@ def fill_company_missing_fields(
                 "provider": adapter.name,
                 "source_family": adapter.name,
                 "ticker": company.get("ticker"),
-                "reason": str(adapter.last_error),
+                "reason": _redact_secrets_in_text(str(adapter.last_error)),
                 "recoverable": True,
                 "failed_at": _now_iso(),
             })
@@ -1800,6 +1811,8 @@ _SOURCE_FAMILY_RANK = {
     "reported_filing": 0,
     "manual_review": 0,
     "provider_statement": 10,
+    "fmp": 10,
+    "alpha_vantage": 10,
     "quote_market_data": 15,
     "unofficial_statement": 30,
     "yahoo-finance": 30,
