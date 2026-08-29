@@ -34,6 +34,8 @@ The repo should not contain:
 - Terraform state
 - generated credentials
 
+For Kanban workers, the normal secret path is command-scoped runtime injection from Vaultwarden/BW, not long-lived rendered app secret files. See [Kanban runtime secret access via Vaultwarden/BW](./kanban-runtime-secret-access.md).
+
 ## Selected model
 
 Use Ben's personal Vaultwarden vault for live homelab secret values and Git for non-secret references.
@@ -221,6 +223,12 @@ scripts/secrets/render-env-from-vaultwarden.sh examples/service.env.map > .env
 chmod 0600 .env
 docker compose up -d
 ```
+
+### Kanban workers and one-shot commands
+
+Prefer a wrapper that fetches `ENV_NAME|folder|item|field` mappings with `bw`, exports the values only into the child command environment, and never prints the values. The wrapper requires one of: inherited `BW_SESSION`, a protected non-interactive unlock bootstrap, or an explicitly human-unlocked session before dispatch. If no unlock path exists, block for access instead of asking for the secret value.
+
+For the ASX screener FMP fallback, the current actual item is folder `homelab`, item `FMP_API_KEY`, field `password`, runtime env `FMP_API_KEY`. The preferred normalized future item is folder `homelab`, item `investment-screener/fmp`, field `api_key`.
 
 ### Terraform/OpenTofu
 

@@ -2,6 +2,8 @@
 
 Status: initial non-secret import map. Values live in Ben's personal Vaultwarden vault under folder `homelab`. Git stores only folder, item, and field references.
 
+Runtime secret access for Kanban workers is specified in [Kanban runtime secret access via Vaultwarden/BW](./kanban-runtime-secret-access.md). The canonical mapping-file format is `ENV_NAME|folder|item|field`; older `folder|item|field|env` notes should be treated as stale.
+
 ## Canonical service items
 
 | Purpose | Folder | Item | Fields | Notes |
@@ -21,6 +23,8 @@ Status: initial non-secret import map. Values live in Ben's personal Vaultwarden
 | Private registry htpasswd username | `homelab` | `repo/registry` | `htpasswd_username` | Used to render `/mnt/nas/services/repo/config/htpasswd` outside Git. |
 | Private registry htpasswd password | `homelab` | `repo/registry` | `htpasswd_password` | Used to render `/mnt/nas/services/repo/config/htpasswd` outside Git. |
 | Personal Dashboard database | `homelab` | `personal-dashboard/database` | `database`, `username`, `password`, `host`, `port` | Used by historical/unverified personal-dashboard candidate on `dev`; render values outside Git. |
+| FMP provider key, current actual item | `homelab` | `FMP_API_KEY` | `password` | Runtime-only ASX screener fallback env `FMP_API_KEY`; reported by the dashboard unblock path. |
+| FMP provider key, normalized target item | `homelab` | `investment-screener/fmp` | `api_key` | Preferred future item once Ben explicitly approves item normalization. |
 
 ## Render mapping
 
