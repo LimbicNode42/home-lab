@@ -32,9 +32,11 @@ services/personal-dashboard/scripts/run-asx-screener-hydration-owner.sh
 
 Both commands require Ben approval because they create provider egress beyond the current weekly owner job and update the NAS-backed latest pointer/dashboard export.
 
-## Evidence from staged run
+## Evidence from staged runs
 
-The staged expansion task published run `investment-screener_ASX_asx-yahoo-timeseries_2026-08-28T103609Z_2f011d019022` with these receipts:
+A later supervised top-400 expansion is recorded in [ASX top-400 hydration result — 2026-08-29](./asx-top-400-hydration-result-2026-08-29.md). It published run `investment-screener_ASX_asx-yahoo-timeseries_2026-08-29T015127Z_5871117f2bec` with 342 usable / 400 denominator = 85.5%, which missed the 88% top-400 coverage gate. Stop before any full-seed Yahoo-only run unless Ben explicitly accepts lower coverage or enables a fallback source.
+
+The earlier staged expansion task published run `investment-screener_ASX_asx-yahoo-timeseries_2026-08-28T103609Z_2f011d019022` with these receipts:
 
 - Command used: `ASX_BATCH_OFFSET=0 ASX_BATCH_SIZE=200 ASX_SLEEP_SECONDS=0.75 INVESTMENT_SCREENER_DATA_ROOT=/mnt/pve/NAS/services/personal-dashboard ASX_CACHE_DIR=/var/lib/personal-dashboard/asx-provider-cache services/personal-dashboard/scripts/run-asx-screener-hydration-owner.sh`
 - Coverage: 184 usable / 200 denominator = 92.0%; 16 failed and excluded.
