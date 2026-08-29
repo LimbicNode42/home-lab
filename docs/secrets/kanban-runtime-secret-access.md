@@ -53,7 +53,7 @@ Do not mutate the Vaultwarden item name or field as part of worker execution unl
 
 ## Runtime wrapper pattern
 
-Desired shape for a command-scoped helper:
+Command-scoped helper:
 
 ```sh
 scripts/secrets/run-with-vaultwarden-env.sh \
@@ -61,6 +61,23 @@ scripts/secrets/run-with-vaultwarden-env.sh \
   -- \
   services/personal-dashboard/scripts/run-asx-screener-hydration.sh
 ```
+
+For FMP-only ASX smoke or top-N runs, prefer the narrow committed map so the
+child command receives only the provider key it needs:
+
+```sh
+eval "$(scripts/secrets/bw-login-vaultwarden.sh)"
+
+scripts/secrets/run-with-vaultwarden-env.sh \
+  services/personal-dashboard/investment-screener/asx-fmp.env.map.example \
+  -- \
+  bash -c 'cd services/personal-dashboard && INVESTMENT_SCREENER_DATA_ROOT=/tmp/asx-fmp-smoke ASX_BATCH_SIZE=5 DRY_RUN=1 bash scripts/run-asx-screener-hydration-owner.sh'
+```
+
+For a supervised top-400 prefix after smoke verification and Ben approval, change
+`ASX_BATCH_SIZE=5 DRY_RUN=1` to the approved bounded settings (for example
+`ASX_BATCH_SIZE=400` and the reviewed data root). Do not run broader hydration
+from a headless worker without that separate approval gate.
 
 Required behavior:
 

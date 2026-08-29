@@ -57,6 +57,7 @@ docs/hosts/host-iac-cac-import-2026-05-23.md
 docs/incidents/nas-vm-backup-lock-2026-05-24.md
 docs/other-hosts-service-backup-import.md
 docs/remediation-plan.md
+docs/secrets/kanban-runtime-secret-access.md
 docs/secrets/postgres.env.map.example
 docs/secrets/vaultwarden-item-map.md
 docs/secrets/vaultwarden-secrets-backend.md
@@ -102,6 +103,8 @@ scripts/homelab_health_report.py
 scripts/secrets/bw-get-field.sh
 scripts/secrets/bw-login-vaultwarden.sh
 scripts/secrets/render-env-from-vaultwarden.sh
+scripts/secrets/run-with-vaultwarden-env.sh
+scripts/secrets/tests/run-with-vaultwarden-env.test.sh
 scripts/services/apply-vaultwarden-compose.sh
 services/README.md
 services/adguard/README.md
@@ -178,6 +181,7 @@ services/personal-dashboard/docs/products/diary-goals/merged-tab-spec.md
 services/personal-dashboard/docs/products/home-lab/service-catalog.md
 services/personal-dashboard/docs/products/investment-screener/README.md
 services/personal-dashboard/docs/products/investment-screener/asx-hydration-audit-plan.md
+services/personal-dashboard/docs/products/investment-screener/asx-screener-hydration-scheduler.md
 services/personal-dashboard/docs/products/investment-screener/cli-generator.md
 services/personal-dashboard/docs/products/investment-screener/dashboard-panel.md
 services/personal-dashboard/docs/products/investment-screener/data-source-coverage.md
@@ -188,6 +192,7 @@ services/personal-dashboard/docs/products/reports/finnick.md
 services/personal-dashboard/docs/products/reports/homelab-health.md
 services/personal-dashboard/docs/runbook.md
 services/personal-dashboard/investment-screener/POSTGRES_HISTORY.md
+services/personal-dashboard/investment-screener/asx-fmp.env.map.example
 services/personal-dashboard/investment-screener/config.yaml
 services/personal-dashboard/investment-screener/generate_asx_universe_seed.py
 services/personal-dashboard/investment-screener/migrations/001_investment_screener_history.sql
