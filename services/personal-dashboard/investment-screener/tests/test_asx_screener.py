@@ -1195,6 +1195,60 @@ class TestProvenanceSourceUrlRedaction(unittest.TestCase):
         url = "https://financialmodelingprep.com/api/v3/income-statement/BHP"
         self.assertEqual(scr.redact_url_secrets(url), url)
 
+    def test_redact_secrets_in_text_redacts_bare_secret_assignments(self):
+        secret_variants = [
+            "apikey=SECRET123",
+            "api_key=SECRET123",
+            "access_token=SECRET123",
+            "key=SECRET123",
+            "token = SECRET456",
+            "signature=SECRET123",
+            "sig=SECRET123",
+            "session=SECRET123",
+            "sessionid=SECRET123",
+            "session_id=SECRET123",
+            "sid=SECRET123",
+            "ApiKey=SECRET789",
+            "token=SECRET123;symbol=BHP",
+        ]
+        for fragment in secret_variants:
+            with self.subTest(fragment=fragment):
+                redacted = scr._redact_secrets_in_text(f"fmp status 401 provider returned {fragment}")
+                self.assertIn("fmp status 401 provider returned", redacted)
+                self.assertNotIn("SECRET123", redacted)
+                self.assertNotIn("SECRET456", redacted)
+                self.assertNotIn("SECRET789", redacted)
+                self.assertIn("<REDACTED>", redacted)
+        self.assertIn(
+            "symbol=BHP",
+            scr._redact_secrets_in_text("fmp status 401 token=SECRET123;symbol=BHP"),
+        )
+
+    def test_sanitize_provider_failures_redacts_reason_and_drops_raw_payloads(self):
+        failures = [
+            {
+                "provider": "fmp",
+                "source_family": "fmp",
+                "ticker": "BHP.AX",
+                "reason": "fmp status 401 apikey=SECRET123 and token = SECRET456",
+                "raw_payload": {"secret": "SECRET123"},
+                "raw_headers": {"authorization": "SECRET456"},
+                "recoverable": True,
+                "failed_at": "2026-01-01T00:00:00Z",
+            }
+        ]
+
+        sanitized = scr.sanitize_provider_failures(failures)
+
+        self.assertEqual(sanitized[0]["provider"], "fmp")
+        self.assertEqual(sanitized[0]["source_family"], "fmp")
+        self.assertEqual(sanitized[0]["ticker"], "BHP.AX")
+        self.assertIn("fmp status 401", sanitized[0]["reason"])
+        self.assertNotIn("SECRET123", json.dumps(sanitized))
+        self.assertNotIn("SECRET456", json.dumps(sanitized))
+        self.assertNotIn("raw_payload", sanitized[0])
+        self.assertNotIn("raw_headers", sanitized[0])
+
     def test_fmp_persisted_source_url_has_no_apikey(self):
         adapter = scr.FmpAdapter(env={"FMP_API_KEY": self.FAKE_KEY}, fetcher=self._fmp_fetcher())
         fields = adapter.fetch("BHP.AX")

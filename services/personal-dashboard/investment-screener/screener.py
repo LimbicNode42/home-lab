@@ -1400,6 +1400,12 @@ def _first_dated(items: list[dict], date_keys: tuple[str, ...]) -> Optional[dict
 
 
 _SECRET_QUERY_PARAMS = frozenset({"apikey", "api_key", "access_token", "key", "token", "signature", "sig", "session", "sessionid", "session_id", "sid"})
+_SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?i)(?<![A-Za-z0-9_])"
+    r"(" + "|".join(re.escape(param) for param in sorted(_SECRET_QUERY_PARAMS, key=len, reverse=True)) + r")"
+    r"(\s*=\s*)"
+    r"([^&;\s\"'<>]+)"
+)
 
 
 def _redact_secrets_in_text(text: str) -> str:
@@ -1415,10 +1421,8 @@ def _redact_secrets_in_text(text: str) -> str:
     out = text
     # Redact any http(s) URL token inline.
     out = re.sub(r"https?://[^\s\"'<>]+", lambda m: redact_url_secrets(m.group(0)), out)
-    # Redact bare secret query fragments that survive (e.g. "apikey=XYZ").
-    for param in _SECRET_QUERY_PARAMS:
-        out = re.sub(r"(?i)([?&;]\s*)" + re.escape(param) + r"\s*=\s*[^&\s\"'<>]*", r"\1" + param + "=<REDACTED>", out)
-    return out
+    # Redact bare/embedded secret assignments that survive (e.g. "apikey=XYZ" or "token = XYZ").
+    return _SECRET_ASSIGNMENT_RE.sub(lambda m: f"{m.group(1)}{m.group(2)}<REDACTED>", out)
 
 
 
