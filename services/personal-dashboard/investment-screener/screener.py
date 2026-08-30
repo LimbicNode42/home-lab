@@ -1565,23 +1565,33 @@ class FmpAdapter(ProviderAdapter):
 
     def _fetch_fields(self, ticker: str) -> dict[str, FieldValue]:
         key = self.credential()
-        base = "https://financialmodelingprep.com/api/v3"
+        base = "https://financialmodelingprep.com/stable"
         # FMP uses bare exchange codes for ASX (e.g. BHP.AX -> BHP).
         symbol = normalise_asx_ticker(ticker).replace(".AX", "")
-        params = f"?apikey={urllib.parse.quote(key or '')}"
+        params = f"?symbol={urllib.parse.quote(symbol)}&apikey={urllib.parse.quote(key or '')}"
 
         fields: dict[str, FieldValue] = {}
+        failures: list[str] = []
 
         fetcher = self._fetcher or self._get_json
-        income_url = f"{base}/income-statement/{urllib.parse.quote(symbol)}{params}"
-        income = fetcher(income_url)
+
+        def fetch_statement(path: str) -> tuple[Any, str]:
+            url = f"{base}/{path}{params}"
+            try:
+                return fetcher(url), url
+            except urllib.error.HTTPError as exc:
+                failures.append(
+                    f"{path} status {exc.code} {getattr(exc, 'reason', '')}: {redact_url_secrets(exc.url or url)}"
+                )
+                return None, url
+
+        income, income_url = fetch_statement("income-statement")
         inc = _first_dated(income or [], ("date",)) if isinstance(income, list) else {}
         if inc:
             fields["revenue"] = self._field("revenue", inc.get("revenue"), income_url, str(inc.get("date") or ""))
             fields["net_income"] = self._field("net_income", inc.get("netIncome"), income_url, str(inc.get("date") or ""))
 
-        bal_url = f"{base}/balance-sheet-statement/{urllib.parse.quote(symbol)}{params}"
-        balance = fetcher(bal_url)
+        balance, bal_url = fetch_statement("balance-sheet-statement")
         bal = _first_dated(balance or [], ("date",)) if isinstance(balance, list) else {}
         if bal:
             fields["total_assets"] = self._field("total_assets", bal.get("totalAssets"), bal_url, str(bal.get("date") or ""))
@@ -1589,12 +1599,14 @@ class FmpAdapter(ProviderAdapter):
             fields["current_assets"] = self._field("current_assets", bal.get("totalCurrentAssets"), bal_url, str(bal.get("date") or ""))
             fields["current_liabilities"] = self._field("current_liabilities", bal.get("totalCurrentLiabilities"), bal_url, str(bal.get("date") or ""))
 
-        cf_url = f"{base}/cash-flow-statement/{urllib.parse.quote(symbol)}{params}"
-        cashflow = fetcher(cf_url)
+        cashflow, cf_url = fetch_statement("cash-flow-statement")
         cf = _first_dated(cashflow or [], ("date",)) if isinstance(cashflow, list) else {}
         if cf:
             fields["operating_cash_flow"] = self._field("operating_cash_flow", cf.get("operatingCashFlow"), cf_url, str(cf.get("date") or ""))
             fields["capital_expenditures"] = self._field("capital_expenditures", cf.get("capitalExpenditure"), cf_url, str(cf.get("date") or ""))
+
+        if failures:
+            self.last_error = RuntimeError("recoverable FMP endpoint failures: " + "; ".join(failures))
 
         return fields
 
