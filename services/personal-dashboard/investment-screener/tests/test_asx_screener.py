@@ -1221,6 +1221,55 @@ class TestProviderAdaptersNormalize(unittest.TestCase):
         self.assertIsNotNone(adapter.last_error)
         self.assertIn("429", str(adapter.last_error))
 
+    def test_fmp_adapter_uses_stable_statement_endpoints_with_symbol_query(self):
+        calls = []
+
+        def fetcher(url, timeout=None, cache_dir=None):
+            calls.append(url)
+            parsed = scr.urllib.parse.urlsplit(url)
+            query = dict(scr.urllib.parse.parse_qsl(parsed.query))
+            self.assertEqual(parsed.netloc, "financialmodelingprep.com")
+            self.assertEqual(query.get("symbol"), "BHP")
+            self.assertEqual(query.get("apikey"), "test-key")
+            if parsed.path == "/stable/income-statement":
+                return [{"date": "2025-06-30", "revenue": 56_642_000_000.0, "netIncome": 9_845_000_000.0}]
+            if parsed.path == "/stable/balance-sheet-statement":
+                return [{"date": "2025-06-30", "totalAssets": 113_137_000_000.0}]
+            if parsed.path == "/stable/cash-flow-statement":
+                return [{"date": "2025-06-30", "operatingCashFlow": 18_831_000_000.0}]
+            raise AssertionError("unexpected url " + url)
+
+        adapter = scr.FmpAdapter(env={"FMP_API_KEY": "test-key"}, fetcher=fetcher)
+        fields = adapter.fetch("BHP.AX")
+
+        self.assertEqual([scr.urllib.parse.urlsplit(url).path for url in calls], [
+            "/stable/income-statement",
+            "/stable/balance-sheet-statement",
+            "/stable/cash-flow-statement",
+        ])
+        self.assertEqual(fields["revenue"].provenance["source_url"], "https://financialmodelingprep.com/stable/income-statement?symbol=BHP")
+        self.assertNotIn("test-key", json.dumps([fv.provenance for fv in fields.values()]))
+
+    def test_fmp_statement_402_or_403_is_recoverable_per_endpoint(self):
+        def fetcher(url, timeout=None, cache_dir=None):
+            parsed = scr.urllib.parse.urlsplit(url)
+            if parsed.path == "/stable/income-statement":
+                raise urllib.error.HTTPError(url, 402, "Payment Required", None, None)
+            if parsed.path == "/stable/balance-sheet-statement":
+                return [{"date": "2025-06-30", "totalAssets": 113_137_000_000.0}]
+            if parsed.path == "/stable/cash-flow-statement":
+                raise urllib.error.HTTPError(url, 403, "Forbidden", None, None)
+            raise AssertionError("unexpected url " + url)
+
+        adapter = scr.FmpAdapter(env={"FMP_API_KEY": "test-key"}, fetcher=fetcher)
+        fields = adapter.fetch("BHP.AX")
+
+        self.assertIn("total_assets", fields)
+        self.assertEqual(fields["total_assets"].value, 113_137_000_000.0)
+        self.assertIsNotNone(adapter.last_error)
+        self.assertIn("recoverable FMP endpoint failures", str(adapter.last_error))
+        self.assertNotIn("test-key", str(adapter.last_error))
+
 
 class TestProvenanceSourceUrlRedaction(unittest.TestCase):
     """Persisted provenance.source_url must never carry provider secrets."""
