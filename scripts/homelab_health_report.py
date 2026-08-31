@@ -17,6 +17,7 @@ import ssl
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -59,8 +60,17 @@ def pve_api(path):
     req = urllib.request.Request(base + "/api2/json" + path)
     req.add_header("Authorization", f"PVEAPIToken={token_id}={token_secret}")
     ctx = ssl._create_unverified_context()
-    with urllib.request.urlopen(req, context=ctx, timeout=20) as response:
-        return json.load(response)["data"]
+    last_error = None
+    for attempt in range(1, 4):
+        try:
+            with urllib.request.urlopen(req, context=ctx, timeout=20) as response:
+                return json.load(response)["data"]
+        except (urllib.error.URLError, TimeoutError, ssl.SSLError) as exc:
+            last_error = exc
+            if attempt == 3:
+                break
+            time.sleep(attempt * 2)
+    raise last_error
 
 
 def ssh(host, command, user=None, password=None, timeout=30):
