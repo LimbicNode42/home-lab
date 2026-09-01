@@ -110,6 +110,30 @@ h2, h3 { margin-top: 0; }
   overflow-x: auto;
 }
 
+
+/* MetaMCP overview */
+.metamcp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+.metamcp-summary-card, .metamcp-access-card, .metamcp-service-card {
+  padding: 1rem;
+  border: 1px solid #273244;
+  border-radius: 0.8rem;
+  background: #111827;
+}
+.metamcp-domain-list { margin: 0.75rem 0 0; padding-left: 1.1rem; color: #cdd9e5; }
+.metamcp-domain-list li { margin: 0.25rem 0; }
+.metamcp-access-card { display: flex; flex-direction: column; gap: 0.65rem; }
+.metamcp-access-card code {
+  display: block;
+  padding: 0.65rem;
+  border: 1px solid #273244;
+  border-radius: 0.55rem;
+  color: #cdd9e5;
+  background: #0d1117;
+  overflow-wrap: anywhere;
+}
+.metamcp-access-label { margin: 0; font-weight: 700; }
+.metamcp-services { margin-top: 1rem; }
+
 /* Epics panel */
 #epics-list { display: flex; flex-direction: column; gap: 1rem; }
 .epic-card {

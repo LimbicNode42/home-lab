@@ -20,7 +20,31 @@ const DEFAULT_CONFIG = {
       targetUrl: 'http://192.168.0.20:9119/kanban',
       displayUrl: 'http://192.168.0.20:9119/kanban'
     }
-  ]
+  ],
+  metaMcp: {
+    enabled: true,
+    title: 'MetaMCP aggregator',
+    version: '2.4.22',
+    services: [
+      { id: 'metamcp', label: 'MetaMCP app', state: 'last_known_healthy', detail: 'Loopback-only on tori; direct LAN exposure intentionally refused.' },
+      { id: 'metamcp-pg', label: 'MetaMCP Postgres', state: 'last_known_healthy', detail: 'Internal database for the MetaMCP control plane.' }
+    ],
+    tools: {
+      total: 36,
+      domains: [
+        { id: 'filesystem', label: 'filesystem', count: 11 },
+        { id: 'git', label: 'git', count: 11 },
+        { id: 'memory', label: 'memory', count: 9 },
+        { id: 'fetch', label: 'fetch', count: 5 }
+      ]
+    },
+    access: {
+      mode: 'ssh_tunnel',
+      localUrl: 'http://127.0.0.1:12008',
+      command: 'ssh -L 12008:127.0.0.1:12008 tori',
+      note: 'Aggregator UI is bound to tori loopback only. Start the tunnel, then open the local UI link; do not publish 12008 to LAN without review.'
+    }
+  }
 };
 
 function isHttpUrl(value) {
@@ -63,6 +87,73 @@ function validateSections(sections) {
   });
 }
 
+
+function validateMetaMcp(metaMcp) {
+  if (metaMcp === undefined || metaMcp === null) return null;
+  if (typeof metaMcp !== 'object' || Array.isArray(metaMcp)) {
+    throw new Error('Invalid dashboard config: metaMcp must be an object');
+  }
+
+  const enabled = metaMcp.enabled !== false;
+  const title = requireText(metaMcp.title ?? 'MetaMCP aggregator', 'metaMcp.title');
+  const version = requireText(metaMcp.version ?? 'unknown', 'metaMcp.version');
+  const services = metaMcp.services;
+  if (!Array.isArray(services)) {
+    throw new Error('Invalid dashboard config: metaMcp.services must be an array');
+  }
+  const normalizedServices = services.map((service, index) => {
+    const id = requireText(service?.id, `metaMcp.services[${index}].id`);
+    if (!/^[a-z0-9][a-z0-9-]{0,62}$/i.test(id)) {
+      throw new Error(`Invalid dashboard config: metaMcp.services[${index}].id must be DNS-label-like`);
+    }
+    return {
+      id,
+      label: requireText(service?.label, `metaMcp.services[${index}].label`),
+      state: requireText(service?.state, `metaMcp.services[${index}].state`),
+      detail: requireText(service?.detail, `metaMcp.services[${index}].detail`)
+    };
+  });
+
+  const tools = metaMcp.tools ?? {};
+  const total = Number(tools.total ?? 0);
+  if (!Number.isInteger(total) || total < 0) {
+    throw new Error('Invalid dashboard config: metaMcp.tools.total must be a non-negative integer');
+  }
+  if (!Array.isArray(tools.domains)) {
+    throw new Error('Invalid dashboard config: metaMcp.tools.domains must be an array');
+  }
+  const domains = tools.domains.map((domain, index) => {
+    const count = Number(domain?.count ?? 0);
+    if (!Number.isInteger(count) || count < 0) {
+      throw new Error(`Invalid dashboard config: metaMcp.tools.domains[${index}].count must be a non-negative integer`);
+    }
+    return {
+      id: requireText(domain?.id, `metaMcp.tools.domains[${index}].id`),
+      label: requireText(domain?.label, `metaMcp.tools.domains[${index}].label`),
+      count
+    };
+  });
+
+  const access = metaMcp.access ?? {};
+  const mode = requireText(access.mode, 'metaMcp.access.mode');
+  const localUrl = requireText(access.localUrl, 'metaMcp.access.localUrl');
+  if (!isHttpUrl(localUrl)) {
+    throw new Error('Invalid dashboard config: metaMcp.access.localUrl must be an http(s) URL');
+  }
+  const local = new URL(localUrl);
+  if (mode !== 'ssh_tunnel' || !['127.0.0.1', 'localhost'].includes(local.hostname)) {
+    throw new Error('Invalid MetaMCP access: direct UI links require a reviewed authenticated proxy decision');
+  }
+  const command = requireText(access.command, 'metaMcp.access.command');
+  const note = requireText(access.note, 'metaMcp.access.note');
+  const serialized = JSON.stringify({ title, version, normalizedServices, tools: { total, domains }, access: { mode, localUrl, command, note } });
+  if (/bearer|token|password|api[_-]?key|\/root\/|\/mnt\/nas|stderr/i.test(serialized)) {
+    throw new Error('Invalid dashboard config: metaMcp contains unsafe operator internals');
+  }
+
+  return { enabled, title, version, services: normalizedServices, tools: { total, domains }, access: { mode, localUrl, command, note } };
+}
+
 function validateStatusChecks(statusChecks) {
   if (!Array.isArray(statusChecks)) {
     throw new Error('Invalid dashboard config: statusChecks must be an array');
@@ -96,7 +187,8 @@ export function normalizeConfig(rawConfig = DEFAULT_CONFIG) {
   return {
     title,
     sections: validateSections(rawConfig.sections ?? []),
-    statusChecks: validateStatusChecks(rawConfig.statusChecks ?? [])
+    statusChecks: validateStatusChecks(rawConfig.statusChecks ?? []),
+    metaMcp: validateMetaMcp(rawConfig.metaMcp)
   };
 }
 
@@ -126,6 +218,7 @@ export function toPublicConfig(config) {
       id: check.id,
       label: check.label,
       ...(check.displayUrl ? { displayUrl: check.displayUrl } : {})
-    }))
+    })),
+    ...(config.metaMcp ? { metaMcp: config.metaMcp } : {})
   };
 }

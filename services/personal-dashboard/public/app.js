@@ -7,6 +7,7 @@ const { applyWritingFormat, createEmbedTemplate, renderRichMarkdownDocument } = 
 const title = document.querySelector('#dashboard-title');
 const sections = document.querySelector('#sections');
 const statusList = document.querySelector('#status-list');
+const metamcpOverview = document.querySelector('#metamcp-overview');
 const refreshButton = document.querySelector('#refresh-status');
 const finnickContent = document.querySelector('#finnick-content');
 const refreshFinnickButton = document.querySelector('#refresh-finnick');
@@ -187,6 +188,55 @@ function renderConfig(config) {
   }
 }
 
+
+function renderMetaMcpOverview(metaMcp) {
+  if (!metamcpOverview) return;
+  metamcpOverview.replaceChildren();
+  if (!metaMcp?.enabled) {
+    metamcpOverview.append(el('p', { className: 'muted', text: 'MetaMCP overview is not configured on this dashboard.' }));
+    return;
+  }
+
+  const services = Array.isArray(metaMcp.services) ? metaMcp.services : [];
+  const domains = Array.isArray(metaMcp.tools?.domains) ? metaMcp.tools.domains : [];
+  const serviceCards = services.length > 0
+    ? services.map((service) => el('article', { className: 'status-card metamcp-service-card' }, [
+      el('div', { className: 'status-title', text: service.label || service.id || 'MetaMCP service' }),
+      el('span', { className: `badge ${String(service.state || '').includes('healthy') ? 'up' : 'neutral'}`, text: service.state || 'unknown' }),
+      el('p', { className: 'muted', text: service.detail || 'No status detail available.' })
+    ]))
+    : [el('p', { className: 'muted', text: 'No MetaMCP service status has been published yet.' })];
+
+  const domainList = domains.length > 0
+    ? el('ul', { className: 'metamcp-domain-list' }, domains.map((domain) => el('li', { text: `${domain.label || domain.id}: ${domain.count} tools` })))
+    : el('p', { className: 'muted', text: 'No MetaMCP tool discovery data has been published yet.' });
+
+  const access = metaMcp.access || {};
+  const accessChildren = [
+    el('h3', { text: 'Aggregator UI access' }),
+    el('p', { className: 'muted', text: access.note || 'Use a reviewed access path before opening the MetaMCP UI.' })
+  ];
+  if (access.mode === 'ssh_tunnel') {
+    accessChildren.push(el('p', { className: 'metamcp-access-label', text: 'Use SSH tunnel:' }));
+    accessChildren.push(el('code', { text: access.command || 'ssh -L 12008:127.0.0.1:12008 tori' }));
+    if (access.localUrl) {
+      accessChildren.push(el('a', { href: access.localUrl, text: 'Open local MetaMCP UI after tunnel is running', rel: 'noreferrer noopener' }));
+    }
+  } else {
+    accessChildren.push(el('p', { className: 'error', text: 'No safe direct MetaMCP UI link is configured.' }));
+  }
+
+  metamcpOverview.append(el('div', { className: 'metamcp-grid' }, [
+    el('article', { className: 'metamcp-summary-card' }, [
+      el('h3', { text: metaMcp.title || 'MetaMCP aggregator' }),
+      el('p', { className: 'muted', text: `Version ${metaMcp.version || 'unknown'} · ${metaMcp.tools?.total ?? 0} last-known tools` }),
+      domainList
+    ]),
+    el('article', { className: 'metamcp-access-card' }, accessChildren)
+  ]));
+  metamcpOverview.append(el('div', { className: 'status-grid metamcp-services' }, serviceCards));
+}
+
 function renderStatus(payload) {
   statusList.replaceChildren();
   if (payload.checks.length === 0) {
@@ -233,9 +283,12 @@ function tabIdFromHash(hash = window.location.hash) {
 
 async function loadOverviewData() {
   try {
-    renderConfig(await getJson('/api/config/public'));
+    const config = await getJson('/api/config/public');
+    renderConfig(config);
+    renderMetaMcpOverview(config.metaMcp);
   } catch (error) {
     sections.replaceChildren(el('p', { className: 'error', text: `Config unavailable: ${error.message}` }));
+    renderMetaMcpOverview(null);
   }
   await refreshStatus();
 }
