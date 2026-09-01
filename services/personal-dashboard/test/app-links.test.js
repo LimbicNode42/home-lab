@@ -49,6 +49,24 @@ test('dashboard investment screener exposes filtering and suggestion-count contr
 });
 
 
+test('dashboard investment screener exposes selectable sector and industry filters', async () => {
+  const indexSource = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.match(indexSource, /<select id="investment-sector-filter"[^>]*>/);
+  assert.match(indexSource, /<select id="investment-industry-filter"[^>]*>/);
+  assert.doesNotMatch(indexSource, /id="investment-sector-filter"[^>]*disabled/);
+  assert.doesNotMatch(indexSource, /id="investment-industry-filter"[^>]*disabled/);
+  assert.match(appSource, /searchParams\.set\('sector'/);
+  assert.match(appSource, /searchParams\.set\('industry'/);
+  assert.match(appSource, /available_facets/);
+});
+
+
+test('dashboard investment screener notes that exchange and region remain unavailable while sector/industry are selectable', async () => {
+  const indexSource = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.match(indexSource, /Exchange and region are disabled/i);
+});
+
+
 test('dashboard investment screener market selector is ASX-first and honest about unavailable markets', async () => {
   const indexSource = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
   assert.match(indexSource, /<option value="ASX">Australia \/ ASX<\/option>/);

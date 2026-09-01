@@ -602,12 +602,12 @@ test('GET /api/investment-screener/ranked returns representative sanitized ranke
     const response = await fetch(`${server.baseUrl}/api/investment-screener/ranked`);
     const body = await response.json();
     assert.equal(response.status, 200);
-    assert.deepEqual(Object.keys(body), ['mode', 'generated_at', 'data_as_of', 'disclaimer', 'limitations', 'candidates', 'excluded', 'doc_links', 'source_summary', 'coverage']);
+    assert.deepEqual(Object.keys(body), ['mode', 'generated_at', 'data_as_of', 'disclaimer', 'limitations', 'candidates', 'excluded', 'doc_links', 'source_summary', 'coverage', 'available_facets']);
     assert.equal(body.mode, 'fixture');
     assert.equal(body.data_as_of, new Date('2026-08-08').toISOString());
     assert.ok(body.disclaimer.includes('not financial advice'));
     assert.equal(body.candidates.length, 2);
-    assert.deepEqual(Object.keys(body.candidates[0]), ['rank', 'ticker', 'name', 'market', 'currency', 'score', 'sub_scores', 'missing_penalty_points', 'risk_flags', 'caveats', 'score_caps', 'sanitized_provenance_summary']);
+    assert.deepEqual(Object.keys(body.candidates[0]), ['rank', 'ticker', 'name', 'market', 'currency', 'sector', 'industry', 'score', 'sub_scores', 'missing_penalty_points', 'risk_flags', 'caveats', 'score_caps', 'sanitized_provenance_summary']);
     assert.equal(body.candidates[0].ticker, 'BRK.B');
     assert.equal(body.candidates[0].score, 91.4);
     assert.deepEqual(body.doc_links, [
@@ -1092,7 +1092,7 @@ test('GET /api/investment-screener/company/:ticker returns sanitized file-first 
     assert.equal(body.valuation.market_cap.value, 225000000000);
     assert.equal(body.statements_summary.revenue.value, 56642000000);
     assert.equal(body.quality_growth_safety.quality.value, 22);
-    assert.equal(body.identity.unavailable.includes('sector'), true);
+    assert.equal(body.identity.unavailable.includes('exchange'), true);
     assert.equal(body.earnings.eps.state, 'unavailable');
     assert.equal(serialized.includes(dataRoot), false);
     assert.equal(serialized.includes('/root/'), false);
@@ -1345,7 +1345,7 @@ test('GET /api/investment-screener/ranked accepts real CLI sanitized export shap
     assert.ok(body.excluded.length >= 1);
     assert.equal(typeof body.candidates[0].ticker, 'string');
     assert.deepEqual(body.applied_filters, { metric: 'valuation', topN: 1 });
-    assert.deepEqual(Object.keys(body.candidates[0]), ['rank', 'ticker', 'name', 'market', 'currency', 'score', 'sub_scores', 'missing_penalty_points', 'risk_flags', 'caveats', 'score_caps', 'sanitized_provenance_summary']);
+    assert.deepEqual(Object.keys(body.candidates[0]), ['rank', 'ticker', 'name', 'market', 'currency', 'sector', 'industry', 'score', 'sub_scores', 'missing_penalty_points', 'risk_flags', 'caveats', 'score_caps', 'sanitized_provenance_summary']);
     assert.equal(typeof body.candidates[0].sub_scores.valuation, 'number');
     assert.equal(serialized.includes('"fields"'), false);
     assert.equal(serialized.includes('"provenance_summary"'), false);
@@ -1475,6 +1475,80 @@ test('GET /api/investment-screener/ranked validates filter query params with red
     await server.close();
   }
 });
+
+
+test('GET /api/investment-screener/ranked filters by sector and industry and surfaces facet options', async () => {
+  const rankedPath = new URL('./fixtures/investment-screener-ranked.json', import.meta.url);
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerRankedFile: rankedPath });
+  const server = await listen(app);
+
+  // Enrich the fixture on the wire path is not possible (fixture has no sector/industry),
+  // so write a dedicated ASX fixture with classification values.
+  const dir = await mkdtemp(join(tmpdir(), 'investment-sector-filter-'));
+  const customRanked = join(dir, 'latest_ranked.json');
+  const candidates = [
+    { rank: 1, ticker: 'BHP.AX', name: 'BHP Group', market: 'ASX', currency: 'AUD', sector: 'Materials', industry: 'Metals & Mining', score: 88, sub_scores: { valuation: 25 } },
+    { rank: 2, ticker: 'CSL.AX', name: 'CSL Limited', market: 'ASX', currency: 'AUD', sector: 'Health Care', industry: 'Biotechnology', score: 86, sub_scores: { valuation: 17 } },
+    { rank: 3, ticker: 'CBA.AX', name: 'Commonwealth Bank', market: 'ASX', currency: 'AUD', sector: 'Financials', industry: 'Banks', score: 84, sub_scores: { valuation: 20 } }
+  ];
+  await writeFile(customRanked, JSON.stringify({ mode: 'asx-yahoo-timeseries', generated_at: '2026-08-22T08:00:00Z', data_as_of: '2026-08-21', candidates }), 'utf8');
+
+  const customApp = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerRankedFile: customRanked });
+  const customServer = await listen(customApp);
+  await server.close();
+  try {
+    const bySector = await fetch(`${customServer.baseUrl}/api/investment-screener/ranked?sector=Materials`);
+    const bySectorBody = await bySector.json();
+    assert.equal(bySector.status, 200);
+    assert.deepEqual(bySectorBody.candidates.map((candidate) => candidate.ticker), ['BHP.AX']);
+    assert.deepEqual(bySectorBody.applied_filters, { sector: ['Materials'] });
+
+    const byIndustry = await fetch(`${customServer.baseUrl}/api/investment-screener/ranked?industry=Banks`);
+    const byIndustryBody = await byIndustry.json();
+    assert.deepEqual(byIndustryBody.candidates.map((candidate) => candidate.ticker), ['CBA.AX']);
+
+    const multi = await fetch(`${customServer.baseUrl}/api/investment-screener/ranked?sector=Materials,Financials`);
+    const multiBody = await multi.json();
+    assert.deepEqual(multiBody.candidates.map((candidate) => candidate.ticker), ['BHP.AX', 'CBA.AX']);
+    assert.deepEqual(multiBody.applied_filters, { sector: ['Materials', 'Financials'] });
+
+    const facetsResp = await fetch(`${customServer.baseUrl}/api/investment-screener/ranked`);
+    const facetsBody = await facetsResp.json();
+    assert.ok(Array.isArray(facetsBody.available_facets.sectors));
+    assert.ok(facetsBody.available_facets.sectors.includes('Materials'));
+    assert.ok(facetsBody.available_facets.industries.includes('Banks'));
+  } finally {
+    await customServer.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+
+test('GET /api/investment-screener/ranked treats missing classification truthfully and rejects unsafe labels', async () => {
+  const rankedPath = new URL('./fixtures/investment-screener-ranked.json', import.meta.url);
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerRankedFile: rankedPath });
+  const server = await listen(app);
+  try {
+    // Invalid sector value contains a path/secret shape -> 400, no echo.
+    const bad = await fetch(`${server.baseUrl}/api/investment-screener/ranked?sector=${encodeURIComponent('/root/secret')}`);
+    const badBody = await bad.json();
+    assert.equal(bad.status, 400);
+    assert.equal(badBody.error, 'invalid_investment_screener_filter');
+    assert.equal(JSON.stringify(badBody).includes('/root/secret'), false);
+
+    // Classification is not available on the fixture, so an unknown-but-valid label yields zero matches (truthful), not an error.
+    const unknown = await fetch(`${server.baseUrl}/api/investment-screener/ranked?sector=${encodeURIComponent('No Such Sector')}`);
+    const unknownBody = await unknown.json();
+    assert.equal(unknown.status, 200);
+    assert.deepEqual(unknownBody.candidates, []);
+    assert.equal(unknownBody.messages.some((message) => /No candidates match/i.test(message)), true);
+  } finally {
+    await server.close();
+  }
+});
+
 
 // ──────────────────────────────────────────────
 // /api/epics tests

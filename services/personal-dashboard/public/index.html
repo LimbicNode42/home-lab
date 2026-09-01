@@ -193,16 +193,16 @@
                 <option value="">Coming later: unavailable in current ASX export</option>
               </select>
             </label>
-            <label class="investment-unavailable-control">
+            <label>
               Sector
-              <select id="investment-sector-filter" name="sector" disabled>
-                <option value="">Coming later: unavailable in current ASX export</option>
+              <select id="investment-sector-filter" name="sector" multiple size="1">
+                <option value="">All sectors</option>
               </select>
             </label>
-            <label class="investment-unavailable-control">
+            <label>
               Industry
-              <select id="investment-industry-filter" name="industry" disabled>
-                <option value="">Coming later: unavailable in current ASX export</option>
+              <select id="investment-industry-filter" name="industry" multiple size="1">
+                <option value="">All industries</option>
               </select>
             </label>
             <label>
@@ -240,7 +240,7 @@
             </label>
             <button id="reset-investment-screener-filters" type="button">Reset filters</button>
           </form>
-          <p class="muted investment-control-note">Search, market, score focus, weight sort preset, and page size are applied to already-sanitized ranked data. US, Japan, and Switzerland are not populated in the current dashboard export, so Australia / ASX is the only active market option. Exchange, region, sector, and industry are disabled until the screener exports those fields safely.</p>
+          <p class="muted investment-control-note">Search, market, sector, industry, score focus, weight sort preset, and page size are applied to already-sanitized ranked data. US, Japan, and Switzerland are not populated in the current dashboard export, so Australia / ASX is the only active market option. Sector and industry values come from the ASX directory GICS industry group; hold Ctrl/Cmd to select more than one. Exchange and region are disabled until the screener exports those fields safely.</p>
           <div class="investment-pagination" aria-label="Investment screener pagination">
             <button id="investment-prev-page" type="button" disabled>Previous</button>
             <span id="investment-page-summary" class="muted">Showing latest page</span>
