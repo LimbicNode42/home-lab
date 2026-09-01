@@ -163,6 +163,86 @@ test('GET /api/status probes configured targets and hides target URLs', async ()
 });
 
 
+test('GET /api/status treats configured acceptable status codes as up for authenticated gateways', async () => {
+  const probe = await listen((_request, response) => {
+    response.writeHead(401).end();
+  });
+  const configPath = await writeConfig({
+    title: 'Home Dashboard',
+    sections: [],
+    statusChecks: [{ id: 'metamcp-gateway', label: 'MetaMCP gateway', targetUrl: `${probe.baseUrl}/mcp`, displayUrl: 'http://192.168.0.20:12008', acceptableStatuses: [200, 401] }]
+  });
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, statusCacheTtlMs: 1000 });
+  const server = await listen(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/status`);
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+
+    assert.equal(response.status, 200);
+    assert.equal(body.checks[0].status, 'up');
+    assert.equal(body.checks[0].httpStatus, 401);
+    assert.equal(body.checks[0].displayUrl, 'http://192.168.0.20:12008');
+    assert.equal(serialized.includes(probe.baseUrl), false);
+    assert.equal(serialized.includes('token'), false);
+  } finally {
+    await server.close();
+    await probe.close();
+  }
+});
+
+test('GET /api/status reports down for unacceptable MetaMCP gateway responses', async () => {
+  const probe = await listen((_request, response) => {
+    response.writeHead(500).end();
+  });
+  const configPath = await writeConfig({
+    title: 'Home Dashboard',
+    sections: [],
+    statusChecks: [{ id: 'metamcp-gateway', label: 'MetaMCP gateway', targetUrl: `${probe.baseUrl}/mcp`, displayUrl: 'http://192.168.0.20:12008', acceptableStatuses: [200, 401] }]
+  });
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, statusCacheTtlMs: 1000 });
+  const server = await listen(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/status`);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.checks[0].status, 'down');
+    assert.equal(body.checks[0].httpStatus, 500);
+  } finally {
+    await server.close();
+    await probe.close();
+  }
+});
+
+test('GET /api/status reports timeout for slow MetaMCP gateway probes', async () => {
+  const probe = await listen((_request, _response) => {
+    // Keep the request open until the dashboard probe aborts.
+  });
+  const configPath = await writeConfig({
+    title: 'Home Dashboard',
+    sections: [],
+    statusChecks: [{ id: 'metamcp-gateway', label: 'MetaMCP gateway', targetUrl: `${probe.baseUrl}/mcp`, displayUrl: 'http://192.168.0.20:12008', acceptableStatuses: [200, 401] }]
+  });
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, statusCacheTtlMs: 1000, statusProbeTimeoutMs: 20 });
+  const server = await listen(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/status`);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.checks[0].status, 'down');
+    assert.equal(body.checks[0].error, 'timeout');
+  } finally {
+    await server.close();
+    await probe.close();
+  }
+});
+
+
 test('authenticated embedded Kanban board API routes are removed from the dashboard surface', async () => {
   const configPath = await writeConfig(basicConfig);
   const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, kanbanDbPath: '/tmp/not-used-kanban.db' });

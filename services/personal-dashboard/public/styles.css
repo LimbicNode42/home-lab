@@ -571,3 +571,13 @@ h2, h3 { margin-top: 0; }
   .writing-embed-width-third,
   .writing-embed-width-wide { width: 100%; }
 }
+
+
+.metamcp-live-status,
+.metamcp-access-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0.8rem 0;
+}
