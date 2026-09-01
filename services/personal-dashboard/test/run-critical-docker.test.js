@@ -116,6 +116,8 @@ test('run-critical-docker.sh syncs NAS artifacts into a host-local runtime cache
     ['finnick', '/app/finnick'],
     ['investment-screener', '/app/investment-screener'],
     ['kanban', '/app/kanban'],
+    ['homelab-health', '/app/homelab-health'],
+    ['mobile-workflow', '/app/mobile-workflow'],
   ]) {
     assert.match(
       script,
@@ -124,7 +126,10 @@ test('run-critical-docker.sh syncs NAS artifacts into a host-local runtime cache
     );
   }
 
-  for (const nasVariable of ['FINNICK_REPORT_HOST_DIR', 'INVESTMENT_SCREENER_HOST_DIR', 'KANBAN_DB_HOST_DIR']) {
+  assert.match(script, /MOBILE_WORKFLOW_STATUS_HOST_DIR=\$\{MOBILE_WORKFLOW_STATUS_HOST_DIR:-\/mnt\/nas\/services\/personal-dashboard\/mobile-workflow\}/, 'fallback script must declare the optional mobile workflow source directory');
+  assert.match(script, /-e\s+MOBILE_WORKFLOW_STATUS_FILE=\/app\/mobile-workflow\/status\.json/, 'container must read mobile workflow status from the runtime cache mount');
+
+  for (const nasVariable of ['FINNICK_REPORT_HOST_DIR', 'INVESTMENT_SCREENER_HOST_DIR', 'KANBAN_DB_HOST_DIR', 'HOMELAB_HEALTH_HOST_DIR', 'MOBILE_WORKFLOW_STATUS_HOST_DIR']) {
     assert.doesNotMatch(
       script,
       new RegExp(`--mount[^\\n]*source=\\$${nasVariable}[^\\n]*target=`),
@@ -141,6 +146,8 @@ test('run-critical-docker.sh does not bind individual read-only artifact files',
     '/app/investment-screener/latest_report.txt',
     '/app/investment-screener/latest_ranked.json',
     '/app/kanban/kanban.db',
+    '/app/homelab-health/latest_report.txt',
+    '/app/mobile-workflow/status.json',
   ]) {
     assert.doesNotMatch(
       script,
@@ -158,6 +165,8 @@ test('docker-compose.yml mounts host-local runtime cache for read-only artifacts
     '${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}/finnick',
     '${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}/investment-screener',
     '${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}/kanban',
+    '${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}/homelab-health',
+    '${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}/mobile-workflow',
   ]) {
     assert.match(
       compose,
@@ -171,6 +180,8 @@ test('docker-compose.yml mounts host-local runtime cache for read-only artifacts
     '${FINNICK_REPORT_HOST_DIR:-/mnt/nas/services/personal-dashboard/finnick}',
     '${INVESTMENT_SCREENER_HOST_DIR:-/mnt/nas/services/personal-dashboard/investment-screener}',
     '${KANBAN_DB_HOST_DIR:-/mnt/nas/services/personal-dashboard/kanban}',
+    '${HOMELAB_HEALTH_HOST_DIR:-/mnt/nas/services/personal-dashboard/homelab-health}',
+    '${MOBILE_WORKFLOW_STATUS_HOST_DIR:-/mnt/nas/services/personal-dashboard/mobile-workflow}',
   ]) {
     assert.doesNotMatch(
       compose,
@@ -185,6 +196,8 @@ test('docker-compose.yml mounts host-local runtime cache for read-only artifacts
     '/app/investment-screener/latest_report.txt',
     '/app/investment-screener/latest_ranked.json',
     '/app/kanban/kanban.db',
+    '/app/homelab-health/latest_report.txt',
+    '/app/mobile-workflow/status.json',
     '/app/data/personal-dashboard.sqlite3',
   ]) {
     assert.doesNotMatch(
