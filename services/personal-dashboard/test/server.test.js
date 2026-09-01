@@ -1589,7 +1589,7 @@ test('GET /api/investment-screener/ranked filters by sector and industry and sur
     const byIndustryBody = await byIndustry.json();
     assert.deepEqual(byIndustryBody.candidates.map((candidate) => candidate.ticker), ['CBA.AX']);
 
-    const multi = await fetch(`${customServer.baseUrl}/api/investment-screener/ranked?sector=Materials,Financials`);
+    const multi = await fetch(`${customServer.baseUrl}/api/investment-screener/ranked?sector=Materials&sector=Financials`);
     const multiBody = await multi.json();
     assert.deepEqual(multiBody.candidates.map((candidate) => candidate.ticker), ['BHP.AX', 'CBA.AX']);
     assert.deepEqual(multiBody.applied_filters, { sector: ['Materials', 'Financials'] });
@@ -1601,6 +1601,44 @@ test('GET /api/investment-screener/ranked filters by sector and industry and sur
     assert.ok(facetsBody.available_facets.industries.includes('Banks'));
   } finally {
     await customServer.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+
+test('GET /api/investment-screener/ranked round-trips comma-containing classification labels (multi-select regression)', async () => {
+  const configPath = await writeConfig(basicConfig);
+  const dir = await mkdtemp(join(tmpdir(), 'investment-comma-label-'));
+  const customRanked = join(dir, 'latest_ranked.json');
+  const candidates = [
+    { rank: 1, ticker: 'CSL.AX', name: 'CSL Limited', market: 'ASX', currency: 'AUD', sector: 'Pharmaceuticals, Biotechnology & Life Sciences', industry: 'Pharmaceuticals, Biotechnology & Life Sciences', score: 88, sub_scores: { valuation: 25 } },
+    { rank: 2, ticker: 'BHP.AX', name: 'BHP Group', market: 'ASX', currency: 'AUD', sector: 'Materials', industry: 'Metals & Mining', score: 87, sub_scores: { valuation: 24 } },
+    { rank: 3, ticker: 'TWE.AX', name: 'Treasury Wine', market: 'ASX', currency: 'AUD', sector: 'Food, Beverage & Tobacco', industry: 'Food, Beverage & Tobacco', score: 86, sub_scores: { valuation: 23 } }
+  ];
+  await writeFile(customRanked, JSON.stringify({ mode: 'asx-yahoo-timeseries', generated_at: '2026-08-22T08:00:00Z', data_as_of: '2026-08-21', candidates }), 'utf8');
+
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerRankedFile: customRanked });
+  const server = await listen(app);
+  try {
+    // A single selection of a comma-containing sector must round-trip as exactly
+    // that label — not be split into fragments that produce a false zero-match.
+    const single = await fetch(`${server.baseUrl}/api/investment-screener/ranked?sector=${encodeURIComponent('Pharmaceuticals, Biotechnology & Life Sciences')}`);
+    const singleBody = await single.json();
+    assert.equal(single.status, 200);
+    assert.deepEqual(singleBody.candidates.map((candidate) => candidate.ticker), ['CSL.AX']);
+    assert.deepEqual(singleBody.applied_filters, { sector: ['Pharmaceuticals, Biotechnology & Life Sciences'] });
+
+    const byIndustry = await fetch(`${server.baseUrl}/api/investment-screener/ranked?industry=${encodeURIComponent('Food, Beverage & Tobacco')}`);
+    const industryBody = await byIndustry.json();
+    assert.deepEqual(industryBody.candidates.map((candidate) => candidate.ticker), ['TWE.AX']);
+
+    // Two comma-containing sectors selected together still match both.
+    const multi = await fetch(`${server.baseUrl}/api/investment-screener/ranked?sector=${encodeURIComponent('Pharmaceuticals, Biotechnology & Life Sciences')}&sector=${encodeURIComponent('Food, Beverage & Tobacco')}`);
+    const multiBody = await multi.json();
+    assert.deepEqual(multiBody.candidates.map((candidate) => candidate.ticker).sort(), ['CSL.AX', 'TWE.AX']);
+    assert.deepEqual(multiBody.applied_filters, { sector: ['Pharmaceuticals, Biotechnology & Life Sciences', 'Food, Beverage & Tobacco'] });
+  } finally {
+    await server.close();
     await rm(dir, { recursive: true, force: true });
   }
 });
