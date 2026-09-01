@@ -82,5 +82,54 @@
       "command": "ssh -L 12008:127.0.0.1:12008 tori",
       "note": "MetaMCP listens on tori loopback only. Start the tunnel, then open the local UI link; do not expose 12008 to LAN without a reviewed auth/proxy decision."
     }
+  },
+  "mobileWorkflow": {
+    "enabled": true,
+    "title": "Flutter mobile workflow",
+    "host": "tori",
+    "components": [
+      {
+        "id": "flutter",
+        "label": "Flutter SDK",
+        "state": "last_known_present",
+        "detail": "Flutter 3.47.2 was verified on tori."
+      },
+      {
+        "id": "dart",
+        "label": "Dart SDK",
+        "state": "last_known_present",
+        "detail": "Dart 3.13.2 was verified with the Flutter toolchain."
+      },
+      {
+        "id": "android-sdk",
+        "label": "Android SDK",
+        "state": "last_known_present",
+        "detail": "Android SDK command-line tools were verified for headless builds."
+      },
+      {
+        "id": "jdk",
+        "label": "JDK",
+        "state": "last_known_present",
+        "detail": "JDK 21 was verified for Android builds."
+      },
+      {
+        "id": "avd-flutter-headless",
+        "label": "AVD flutter_headless",
+        "state": "last_known_present",
+        "detail": "Headless Android virtual device exists; dashboard status is read-only and will not boot it."
+      }
+    ],
+    "runtime": {
+      "state": "not_running",
+      "adbDeviceId": null,
+      "detail": "No adb device was attached during the last live workflow check."
+    },
+    "lastSuccessfulCycleAt": null,
+    "viewer": {
+      "mode": "review_required",
+      "label": "Emulator viewer requires review",
+      "instruction": "Use the proven headless cycle on tori for now. A read-only adb screenshot, noVNC, or scrcpy web viewer must be placed behind authentication before the dashboard links to it.",
+      "href": null
+    }
   }
 }

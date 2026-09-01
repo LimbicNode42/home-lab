@@ -11,6 +11,7 @@ FINNICK_REPORT_HOST_DIR=${FINNICK_REPORT_HOST_DIR:-/mnt/nas/services/personal-da
 INVESTMENT_SCREENER_HOST_DIR=${INVESTMENT_SCREENER_HOST_DIR:-/mnt/nas/services/personal-dashboard/investment-screener}
 KANBAN_DB_HOST_DIR=${KANBAN_DB_HOST_DIR:-/mnt/nas/services/personal-dashboard/kanban}
 HOMELAB_HEALTH_HOST_DIR=${HOMELAB_HEALTH_HOST_DIR:-/mnt/nas/services/personal-dashboard/homelab-health}
+MOBILE_WORKFLOW_STATUS_HOST_DIR=${MOBILE_WORKFLOW_STATUS_HOST_DIR:-/mnt/nas/services/personal-dashboard/mobile-workflow}
 
 copy_snapshot() {
   source_path=$1
@@ -25,6 +26,26 @@ copy_snapshot() {
   fi
 
   mkdir -p "$dest_dir"
+  rm -f "$tmp_path"
+  cp -f "$source_path" "$tmp_path"
+  chmod 0644 "$tmp_path"
+  mv -f "$tmp_path" "$dest_path"
+}
+
+copy_optional_snapshot() {
+  source_path=$1
+  dest_path=$2
+  label=$3
+  dest_dir=$(dirname "$dest_path")
+  tmp_path="$dest_path.tmp.$$"
+
+  mkdir -p "$dest_dir"
+  if [ ! -f "$source_path" ]; then
+    rm -f "$dest_path" "$tmp_path"
+    printf '%s\n' "$label source is missing; skipping optional snapshot: $source_path" >&2
+    return 0
+  fi
+
   rm -f "$tmp_path"
   cp -f "$source_path" "$tmp_path"
   chmod 0644 "$tmp_path"
@@ -63,6 +84,7 @@ cleanup() {
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/config/home-lab-committed-files.txt.tmp.$$" \
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/finnick/latest_report.txt.tmp.$$" \
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/homelab-health/latest_report.txt.tmp.$$" \
+    "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/mobile-workflow/status.json.tmp.$$" \
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/kanban/kanban.db.tmp.$$"
   rm -rf \
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/investment-screener.tmp.$$" \
@@ -90,5 +112,8 @@ copy_snapshot "$KANBAN_DB_HOST_DIR/kanban.db" \
 copy_snapshot "$HOMELAB_HEALTH_HOST_DIR/latest_report.txt" \
   "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/homelab-health/latest_report.txt" \
   "Homelab health report"
+copy_optional_snapshot "$MOBILE_WORKFLOW_STATUS_HOST_DIR/status.json" \
+  "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/mobile-workflow/status.json" \
+  "Mobile workflow status"
 
 printf '%s\n' "Synced personal-dashboard runtime snapshots to $PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR"

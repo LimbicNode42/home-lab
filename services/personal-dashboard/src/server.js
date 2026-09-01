@@ -2475,6 +2475,129 @@ function getEpics(dbPath, docs = []) {
   return epics.map(({ _sort_completed_at, ...epic }) => epic);
 }
 
+
+const MOBILE_RUNTIME_STATES = new Set(['not_running', 'booting', 'running', 'unknown']);
+const MOBILE_CACHE_STATUSES = new Set(['fresh', 'not_configured', 'missing', 'malformed', 'read_error']);
+
+function sanitizeMobileText(value, fallback = null) {
+  if (typeof value !== 'string') return fallback;
+  const trimmed = value.trim();
+  if (!trimmed) return fallback;
+  if (/bearer|token|password|api[_-]?key|\/root\/|\/mnt\/nas|stderr|DATABASE_URL/i.test(trimmed)) {
+    return fallback;
+  }
+  return trimmed.slice(0, 240);
+}
+
+function sanitizeMobileRuntime(rawRuntime = {}, fallbackRuntime = {}) {
+  const rawState = sanitizeMobileText(rawRuntime.state, fallbackRuntime.state ?? 'unknown');
+  const state = MOBILE_RUNTIME_STATES.has(rawState) ? rawState : 'unknown';
+  const rawDevice = sanitizeMobileText(rawRuntime.adbDeviceId ?? rawRuntime.deviceId, fallbackRuntime.adbDeviceId ?? null);
+  const adbDeviceId = rawDevice && (/^emulator-[0-9]{4,5}$/.test(rawDevice) || /^[A-Za-z0-9._:-]{3,64}$/.test(rawDevice))
+    ? rawDevice
+    : null;
+  return {
+    state,
+    adbDeviceId,
+    bootCompleted: rawRuntime.bootCompleted === true,
+    detail: sanitizeMobileText(rawRuntime.detail, fallbackRuntime.detail ?? 'No emulator runtime detail has been published.')
+  };
+}
+
+function sanitizeIsoTimestamp(value) {
+  const textValue = sanitizeMobileText(value, null);
+  if (!textValue) return null;
+  const time = Date.parse(textValue);
+  return Number.isNaN(time) ? null : new Date(time).toISOString();
+}
+
+function mobileWorkflowPayload({ config, statusFilePayload = null, cacheStatus, message, fileMtimeMs = null }) {
+  if (!config?.enabled) {
+    return {
+      enabled: false,
+      title: config?.title ?? 'Flutter mobile workflow',
+      cacheStatus: 'not_configured',
+      message: 'Flutter mobile workflow overview is not configured on this dashboard.'
+    };
+  }
+
+  const runtime = sanitizeMobileRuntime(statusFilePayload?.runtime, config.runtime ?? {});
+  const generatedAt = sanitizeIsoTimestamp(statusFilePayload?.generatedAt) ?? (fileMtimeMs ? new Date(fileMtimeMs).toISOString() : null);
+  return {
+    enabled: true,
+    title: config.title,
+    host: config.host,
+    components: config.components,
+    runtime,
+    lastSuccessfulCycleAt: sanitizeIsoTimestamp(statusFilePayload?.lastSuccessfulCycleAt) ?? config.lastSuccessfulCycleAt ?? null,
+    viewer: config.viewer,
+    generatedAt,
+    cacheStatus: MOBILE_CACHE_STATUSES.has(cacheStatus) ? cacheStatus : 'read_error',
+    message: sanitizeMobileText(message, null)
+  };
+}
+
+async function readMobileWorkflowStatus({ config, statusFile }) {
+  if (!statusFile) {
+    return {
+      statusCode: 200,
+      payload: mobileWorkflowPayload({
+        config,
+        cacheStatus: 'not_configured',
+        message: 'No mobile workflow status cache is configured; showing the last reviewed desired state.'
+      })
+    };
+  }
+
+  try {
+    const info = await stat(statusFile);
+    if (!info.isFile()) {
+      return {
+        statusCode: 200,
+        payload: mobileWorkflowPayload({
+          config,
+          cacheStatus: 'missing',
+          message: 'Mobile workflow status cache is not a regular file; showing the last reviewed desired state.'
+        })
+      };
+    }
+    const parsed = JSON.parse(await readFile(statusFile, 'utf8'));
+    return {
+      statusCode: 200,
+      payload: mobileWorkflowPayload({ config, statusFilePayload: parsed, cacheStatus: 'fresh', fileMtimeMs: info.mtimeMs })
+    };
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      return {
+        statusCode: 200,
+        payload: mobileWorkflowPayload({
+          config,
+          cacheStatus: 'missing',
+          message: 'No mobile workflow status cache has been published yet; no emulator is assumed to be running.'
+        })
+      };
+    }
+    if (err instanceof SyntaxError) {
+      return {
+        statusCode: 502,
+        payload: mobileWorkflowPayload({
+          config,
+          cacheStatus: 'malformed',
+          message: 'Mobile workflow status cache is malformed; dashboard is using the last reviewed desired state.'
+        })
+      };
+    }
+    return {
+      statusCode: 502,
+      payload: mobileWorkflowPayload({
+        config,
+        cacheStatus: 'read_error',
+        message: 'Unable to read mobile workflow status cache; dashboard is using the last reviewed desired state.'
+      })
+    };
+  }
+}
+
 export async function createApp(options = {}) {
   const config = await loadConfig({ configPath: options.configPath });
   const authMode = options.authMode ?? process.env.DASHBOARD_AUTH_MODE ?? 'reverse-proxy';
@@ -2487,6 +2610,9 @@ export async function createApp(options = {}) {
   const homelabHealthReportFile = Object.prototype.hasOwnProperty.call(options, 'homelabHealthReportFile')
     ? options.homelabHealthReportFile
     : (process.env.HOMELAB_HEALTH_REPORT_FILE ?? null);
+  const mobileWorkflowStatusFile = Object.prototype.hasOwnProperty.call(options, 'mobileWorkflowStatusFile')
+    ? options.mobileWorkflowStatusFile
+    : (process.env.MOBILE_WORKFLOW_STATUS_FILE ?? null);
   const investmentScreenerReportFile = Object.prototype.hasOwnProperty.call(options, 'investmentScreenerReportFile')
     ? options.investmentScreenerReportFile
     : (process.env.INVESTMENT_SCREENER_REPORT_FILE ?? null);
@@ -2561,6 +2687,11 @@ export async function createApp(options = {}) {
 
       if (request.method === 'GET' && url.pathname === '/api/status') {
         return json(response, 200, await statusService.getStatus());
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/mobile-workflow/status') {
+        const result = await readMobileWorkflowStatus({ config: config.mobileWorkflow, statusFile: mobileWorkflowStatusFile });
+        return json(response, result.statusCode, result.payload);
       }
 
       if (request.method === 'GET' && url.pathname === '/api/finnick/report') {

@@ -44,6 +44,30 @@ const DEFAULT_CONFIG = {
       command: 'ssh -L 12008:127.0.0.1:12008 tori',
       note: 'Aggregator UI is bound to tori loopback only. Start the tunnel, then open the local UI link; do not publish 12008 to LAN without review.'
     }
+  },
+  mobileWorkflow: {
+    enabled: true,
+    title: 'Flutter mobile workflow',
+    host: 'tori',
+    components: [
+      { id: 'flutter', label: 'Flutter SDK', state: 'last_known_present', detail: 'Flutter 3.47.2 was verified on tori.' },
+      { id: 'dart', label: 'Dart SDK', state: 'last_known_present', detail: 'Dart 3.13.2 was verified with the Flutter toolchain.' },
+      { id: 'android-sdk', label: 'Android SDK', state: 'last_known_present', detail: 'Android SDK command-line tools were verified for headless builds.' },
+      { id: 'jdk', label: 'JDK', state: 'last_known_present', detail: 'JDK 21 was verified for Android builds.' },
+      { id: 'avd-flutter-headless', label: 'AVD flutter_headless', state: 'last_known_present', detail: 'Headless Android virtual device exists; dashboard status is read-only and will not boot it.' }
+    ],
+    runtime: {
+      state: 'not_running',
+      adbDeviceId: null,
+      detail: 'No adb device was attached during the last live workflow check.'
+    },
+    lastSuccessfulCycleAt: null,
+    viewer: {
+      mode: 'review_required',
+      label: 'Emulator viewer requires review',
+      instruction: 'Use the proven headless cycle on tori for now. A read-only adb screenshot, noVNC, or scrcpy web viewer must be placed behind authentication before the dashboard links to it.',
+      href: null
+    }
   }
 };
 
@@ -87,6 +111,30 @@ function validateSections(sections) {
   });
 }
 
+
+
+function requireOptionalText(value, field) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string') {
+    throw new Error(`Invalid dashboard config: ${field} must be a string`);
+  }
+  const trimmed = value.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
+function assertNoUnsafeOperatorInternals(serialized, field) {
+  if (/bearer|token|password|api[_-]?key|\/root\/|\/mnt\/nas|stderr|DATABASE_URL/i.test(serialized)) {
+    throw new Error(`Invalid dashboard config: ${field} contains unsafe operator internals`);
+  }
+}
+
+function validateStateValue(value, field) {
+  const state = requireText(value, field);
+  if (!/^[a-z][a-z0-9_-]{0,48}$/i.test(state)) {
+    throw new Error(`Invalid dashboard config: ${field} must be a safe state label`);
+  }
+  return state;
+}
 
 function validateMetaMcp(metaMcp) {
   if (metaMcp === undefined || metaMcp === null) return null;
@@ -147,11 +195,85 @@ function validateMetaMcp(metaMcp) {
   const command = requireText(access.command, 'metaMcp.access.command');
   const note = requireText(access.note, 'metaMcp.access.note');
   const serialized = JSON.stringify({ title, version, normalizedServices, tools: { total, domains }, access: { mode, localUrl, command, note } });
-  if (/bearer|token|password|api[_-]?key|\/root\/|\/mnt\/nas|stderr/i.test(serialized)) {
-    throw new Error('Invalid dashboard config: metaMcp contains unsafe operator internals');
-  }
+  assertNoUnsafeOperatorInternals(serialized, 'metaMcp');
 
   return { enabled, title, version, services: normalizedServices, tools: { total, domains }, access: { mode, localUrl, command, note } };
+}
+
+function validateMobileWorkflow(mobileWorkflow) {
+  if (mobileWorkflow === undefined || mobileWorkflow === null) return null;
+  if (typeof mobileWorkflow !== 'object' || Array.isArray(mobileWorkflow)) {
+    throw new Error('Invalid dashboard config: mobileWorkflow must be an object');
+  }
+
+  const enabled = mobileWorkflow.enabled !== false;
+  const title = requireText(mobileWorkflow.title ?? 'Flutter mobile workflow', 'mobileWorkflow.title');
+  const host = requireText(mobileWorkflow.host ?? 'tori', 'mobileWorkflow.host');
+  if (!/^[a-z0-9][a-z0-9.-]{0,62}$/i.test(host)) {
+    throw new Error('Invalid dashboard config: mobileWorkflow.host must be a safe hostname');
+  }
+
+  const components = mobileWorkflow.components;
+  if (!Array.isArray(components)) {
+    throw new Error('Invalid dashboard config: mobileWorkflow.components must be an array');
+  }
+  const normalizedComponents = components.map((component, index) => {
+    const id = requireText(component?.id, `mobileWorkflow.components[${index}].id`);
+    if (!/^[a-z0-9][a-z0-9-]{0,62}$/i.test(id)) {
+      throw new Error(`Invalid dashboard config: mobileWorkflow.components[${index}].id must be DNS-label-like`);
+    }
+    return {
+      id,
+      label: requireText(component?.label, `mobileWorkflow.components[${index}].label`),
+      state: validateStateValue(component?.state, `mobileWorkflow.components[${index}].state`),
+      detail: requireText(component?.detail, `mobileWorkflow.components[${index}].detail`)
+    };
+  });
+
+  const runtime = mobileWorkflow.runtime ?? {};
+  const runtimeState = validateStateValue(runtime.state ?? 'unknown', 'mobileWorkflow.runtime.state');
+  if (!['not_running', 'booting', 'running', 'unknown'].includes(runtimeState)) {
+    throw new Error('Invalid dashboard config: mobileWorkflow.runtime.state must be not_running, booting, running, or unknown');
+  }
+  const adbDeviceId = requireOptionalText(runtime.adbDeviceId, 'mobileWorkflow.runtime.adbDeviceId');
+  if (adbDeviceId && !/^emulator-[0-9]{4,5}$|^[A-Za-z0-9._:-]{3,64}$/.test(adbDeviceId)) {
+    throw new Error('Invalid dashboard config: mobileWorkflow.runtime.adbDeviceId must be a safe device id');
+  }
+  const detail = requireText(runtime.detail ?? 'No runtime detail has been published.', 'mobileWorkflow.runtime.detail');
+  const lastSuccessfulCycleAt = requireOptionalText(mobileWorkflow.lastSuccessfulCycleAt, 'mobileWorkflow.lastSuccessfulCycleAt');
+
+  const viewer = mobileWorkflow.viewer ?? {};
+  const mode = requireText(viewer.mode ?? 'review_required', 'mobileWorkflow.viewer.mode');
+  if (!['review_required', 'read_only_screenshot', 'ssh_tunnel'].includes(mode)) {
+    throw new Error('Invalid dashboard config: mobileWorkflow.viewer.mode must be review_required, read_only_screenshot, or ssh_tunnel');
+  }
+  const label = requireText(viewer.label ?? 'Emulator viewer requires review', 'mobileWorkflow.viewer.label');
+  const instruction = requireText(viewer.instruction ?? 'A viewer must be reviewed and authenticated before dashboard linking.', 'mobileWorkflow.viewer.instruction');
+  const href = requireOptionalText(viewer.href, 'mobileWorkflow.viewer.href');
+  if (href) {
+    if (!isHttpUrl(href)) {
+      throw new Error('Invalid dashboard config: mobileWorkflow.viewer.href must be an http(s) URL');
+    }
+    const parsed = new URL(href);
+    if (mode === 'ssh_tunnel' && !['127.0.0.1', 'localhost'].includes(parsed.hostname)) {
+      throw new Error('Invalid mobile workflow viewer: direct emulator links require reviewed authenticated proxy access');
+    }
+    if (mode === 'read_only_screenshot' && parsed.protocol !== 'https:') {
+      throw new Error('Invalid mobile workflow viewer: read-only screenshot links must use https');
+    }
+  }
+
+  const normalized = {
+    enabled,
+    title,
+    host,
+    components: normalizedComponents,
+    runtime: { state: runtimeState, adbDeviceId, detail },
+    lastSuccessfulCycleAt,
+    viewer: { mode, label, instruction, href }
+  };
+  assertNoUnsafeOperatorInternals(JSON.stringify(normalized), 'mobileWorkflow');
+  return normalized;
 }
 
 function validateStatusChecks(statusChecks) {
@@ -188,7 +310,8 @@ export function normalizeConfig(rawConfig = DEFAULT_CONFIG) {
     title,
     sections: validateSections(rawConfig.sections ?? []),
     statusChecks: validateStatusChecks(rawConfig.statusChecks ?? []),
-    metaMcp: validateMetaMcp(rawConfig.metaMcp)
+    metaMcp: validateMetaMcp(rawConfig.metaMcp),
+    mobileWorkflow: validateMobileWorkflow(rawConfig.mobileWorkflow)
   };
 }
 
@@ -219,6 +342,7 @@ export function toPublicConfig(config) {
       label: check.label,
       ...(check.displayUrl ? { displayUrl: check.displayUrl } : {})
     })),
-    ...(config.metaMcp ? { metaMcp: config.metaMcp } : {})
+    ...(config.metaMcp ? { metaMcp: config.metaMcp } : {}),
+    ...(config.mobileWorkflow ? { mobileWorkflow: config.mobileWorkflow } : {})
   };
 }

@@ -134,6 +134,21 @@ h2, h3 { margin-top: 0; }
 .metamcp-access-label { margin: 0; font-weight: 700; }
 .metamcp-services { margin-top: 1rem; }
 
+
+/* Flutter mobile workflow overview */
+.mobile-workflow-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+.mobile-runtime-card, .mobile-viewer-card, .mobile-component-card {
+  padding: 1rem;
+  border: 1px solid #273244;
+  border-radius: 0.8rem;
+  background: #111827;
+}
+.mobile-runtime-card, .mobile-viewer-card { display: flex; flex-direction: column; gap: 0.65rem; }
+.mobile-runtime-list { margin: 0.55rem 0 0; padding-left: 1.1rem; color: #cdd9e5; }
+.mobile-runtime-list li { margin: 0.25rem 0; }
+.mobile-components { margin-top: 1rem; }
+.mobile-cache-message { margin: 0.25rem 0 1rem; }
+
 /* Epics panel */
 #epics-list { display: flex; flex-direction: column; gap: 1rem; }
 .epic-card {
