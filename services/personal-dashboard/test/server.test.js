@@ -106,6 +106,7 @@ test('all API routes require reverse-proxy auth except healthz', async () => {
     { path: '/api/config/public' },
     { path: '/api/status' },
     { path: '/api/mobile-workflow/status' },
+    { path: '/api/unified-inbox/status' },
     { path: '/api/finnick/report' },
     { path: '/api/investment-screener/report' },
     { path: '/api/investment-screener/ranked' },

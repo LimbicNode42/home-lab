@@ -27,7 +27,8 @@ export class StatusService {
   async probe(check) {
     const started = Date.now();
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timeoutMs = Number.isFinite(Number(check.timeoutMs)) ? Number(check.timeoutMs) : this.timeoutMs;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     const acceptableStatuses = new Set(check.acceptableStatuses ?? [200, 204, 301, 302]);
 
     try {

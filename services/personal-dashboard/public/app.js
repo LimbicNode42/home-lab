@@ -9,6 +9,8 @@ const sections = document.querySelector('#sections');
 const statusList = document.querySelector('#status-list');
 const metamcpOverview = document.querySelector('#metamcp-overview');
 const mobileWorkflowOverview = document.querySelector('#mobile-workflow-overview');
+const unifiedInboxOverview = document.querySelector('#unified-inbox-overview');
+const refreshUnifiedInboxButton = document.querySelector('#refresh-unified-inbox');
 const refreshMobileWorkflowButton = document.querySelector('#refresh-mobile-workflow');
 let dashboardConfig = null;
 const refreshButton = document.querySelector('#refresh-status');
@@ -88,6 +90,7 @@ const goalFormMessage = document.querySelector('#goal-form-message');
 let currentGoalId = null;
 let dashboardBootComplete = false;
 let mobileWorkflowConfig = null;
+let unifiedInboxConfig = null;
 const FEATURED_DOC_IDS = ['home-lab-service-catalog'];
 
 function el(tag, attrs = {}, children = []) {
@@ -258,6 +261,103 @@ function renderMetaMcpOverview(metaMcp, statusPayload = null) {
 }
 
 
+
+function unifiedInboxBadgeClass(state) {
+  if (['ok', 'up', 'healthy', 'fresh', 'configured'].includes(state)) return 'up';
+  if (['error', 'down', 'stale', 'failed'].includes(state)) return 'down';
+  return 'neutral';
+}
+
+function renderUnifiedInboxOverview(status, config = unifiedInboxConfig) {
+  if (!unifiedInboxOverview) return;
+  unifiedInboxOverview.replaceChildren();
+  const payload = status || {};
+  const base = config || payload.config || {};
+  if (!base.enabled && !payload.service) {
+    unifiedInboxOverview.append(el('p', { className: 'muted', text: 'Unified Inbox status is not configured on this dashboard.' }));
+    return;
+  }
+
+  const service = payload.service || { name: base.title || 'unified-inbox', mode: 'read_only', status: payload.cacheStatus || 'not_configured' };
+  const connectors = Array.isArray(payload.connectors) && payload.connectors.length > 0
+    ? payload.connectors
+    : (Array.isArray(base.expectedConnectors) ? base.expectedConnectors : []);
+  const connectorCards = connectors.length > 0
+    ? connectors.map((connector) => {
+      const state = connector.state || 'pending_credentials';
+      const lines = [
+        connector.account_ref ? `Account: ${connector.account_ref}` : null,
+        connector.last_success_at ? `Last success: ${connector.last_success_at}` : null,
+        connector.checked_at ? `Checked: ${connector.checked_at}` : null,
+        connector.last_error_code ? `Last error: ${connector.last_error_code}` : null
+      ].filter(Boolean);
+      return el('article', { className: 'status-card unified-inbox-connector-card' }, [
+        el('div', { className: 'status-title', text: connector.label || connector.source || connector.id || 'Connector' }),
+        el('span', { className: `badge ${unifiedInboxBadgeClass(state)}`, text: state }),
+        el('p', { className: 'muted', text: connector.detail || 'No connector status detail has been published yet.' }),
+        ...(lines.length > 0 ? [el('ul', { className: 'unified-inbox-detail-list' }, lines.map((line) => el('li', { text: line })))] : [])
+      ]);
+    })
+    : [el('p', { className: 'muted', text: 'No authorized message connectors are configured yet.' })];
+
+  const snapshots = payload.snapshots || {};
+  const summaryLines = [
+    `Mode: ${service.mode || 'read_only'}`,
+    `Messages indexed: ${payload.message_count ?? 0}`,
+    `Latest batch: ${snapshots.latest_batch_id || snapshots.batch_id || 'none yet'}`,
+    `Freshness: ${snapshots.max_sent_at || 'no fetched messages yet'}`,
+    `Cache status: ${payload.cacheStatus || 'live backend status'}`
+  ];
+  if (payload.generatedAt) summaryLines.push(`Dashboard fetched: ${payload.generatedAt}`);
+
+  const exclusionList = Array.isArray(payload.exclusions) && payload.exclusions.length > 0
+    ? el('ul', { className: 'unified-inbox-detail-list' }, payload.exclusions.map((entry) => el('li', { text: `${entry.source || 'connector'}: ${entry.state || 'excluded'}${entry.reason ? ` — ${entry.reason}` : ''}` })))
+    : el('p', { className: 'muted', text: 'No explicit connector exclusions published.' });
+
+  const actions = [];
+  if (base.publicUrl) {
+    actions.push(el('a', { href: base.publicUrl, text: 'Open Unified Inbox', rel: 'noreferrer noopener' }));
+  }
+
+  unifiedInboxOverview.append(el('div', { className: 'unified-inbox-grid' }, [
+    el('article', { className: 'unified-inbox-summary-card' }, [
+      el('h3', { text: base.title || 'Unified Inbox' }),
+      el('span', { className: `badge ${unifiedInboxBadgeClass(service.status || payload.cacheStatus)}`, text: service.status || payload.cacheStatus || 'unknown' }),
+      el('p', { className: 'muted', text: base.note || 'Read-only unified inbox status.' }),
+      el('ul', { className: 'unified-inbox-detail-list' }, summaryLines.map((line) => el('li', { text: line }))),
+      ...(actions.length > 0 ? [el('div', { className: 'unified-inbox-actions' }, actions)] : [])
+    ]),
+    el('article', { className: 'unified-inbox-summary-card' }, [
+      el('h3', { text: 'Excluded personal DM sources' }),
+      exclusionList
+    ])
+  ]));
+  if (payload.message) {
+    unifiedInboxOverview.append(el('p', { className: 'muted unified-inbox-message', text: payload.message }));
+  }
+  unifiedInboxOverview.append(el('div', { className: 'status-grid unified-inbox-connectors' }, connectorCards));
+}
+
+async function refreshUnifiedInboxStatus() {
+  if (!unifiedInboxOverview) return;
+  if (refreshUnifiedInboxButton) refreshUnifiedInboxButton.disabled = true;
+  try {
+    renderUnifiedInboxOverview(await getJson('/api/unified-inbox/status'));
+  } catch (error) {
+    renderUnifiedInboxOverview({
+      service: { name: 'unified-inbox', mode: 'read_only', status: 'not_configured' },
+      connectors: unifiedInboxConfig?.expectedConnectors || [],
+      message_count: 0,
+      snapshots: { latest_batch_id: null },
+      exclusions: [],
+      cacheStatus: 'read_error',
+      message: `Unified Inbox status unavailable: ${error.message}`
+    });
+  } finally {
+    if (refreshUnifiedInboxButton) refreshUnifiedInboxButton.disabled = false;
+  }
+}
+
 function mobileWorkflowBadgeClass(state) {
   if (state === 'running') return 'up';
   if (state === 'booting') return 'neutral';
@@ -388,6 +488,9 @@ async function loadOverviewData() {
     dashboardConfig = config;
     renderConfig(config);
     renderMetaMcpOverview(config.metaMcp);
+    unifiedInboxConfig = config.unifiedInbox || null;
+    renderUnifiedInboxOverview(null);
+    await refreshUnifiedInboxStatus();
     mobileWorkflowConfig = config.mobileWorkflow || null;
     await refreshMobileWorkflowStatus();
   } catch (error) {
@@ -739,6 +842,9 @@ if (refreshFinnickButton) {
 }
 if (refreshMobileWorkflowButton) {
   refreshMobileWorkflowButton.addEventListener('click', refreshMobileWorkflowStatus);
+}
+if (refreshUnifiedInboxButton) {
+  refreshUnifiedInboxButton.addEventListener('click', refreshUnifiedInboxStatus);
 }
 
 async function refreshHomelabHealth() {
