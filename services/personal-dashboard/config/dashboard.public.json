@@ -32,5 +32,55 @@
       "targetUrl": "http://192.168.0.20:9119/kanban",
       "displayUrl": "http://192.168.0.20:9119/kanban"
     }
-  ]
+  ],
+  "metaMcp": {
+    "enabled": true,
+    "title": "MetaMCP aggregator",
+    "version": "2.4.22",
+    "services": [
+      {
+        "id": "metamcp",
+        "label": "MetaMCP app",
+        "state": "last_known_healthy",
+        "detail": "Container metamcp was previously verified healthy on tori; live dashboard probe is not configured because the service is loopback-only."
+      },
+      {
+        "id": "metamcp-pg",
+        "label": "MetaMCP Postgres",
+        "state": "last_known_healthy",
+        "detail": "Container metamcp-pg was previously verified healthy as the internal MetaMCP database."
+      }
+    ],
+    "tools": {
+      "total": 36,
+      "domains": [
+        {
+          "id": "filesystem",
+          "label": "filesystem",
+          "count": 11
+        },
+        {
+          "id": "git",
+          "label": "git",
+          "count": 11
+        },
+        {
+          "id": "memory",
+          "label": "memory",
+          "count": 9
+        },
+        {
+          "id": "fetch",
+          "label": "fetch",
+          "count": 5
+        }
+      ]
+    },
+    "access": {
+      "mode": "ssh_tunnel",
+      "localUrl": "http://127.0.0.1:12008",
+      "command": "ssh -L 12008:127.0.0.1:12008 tori",
+      "note": "MetaMCP listens on tori loopback only. Start the tunnel, then open the local UI link; do not expose 12008 to LAN without a reviewed auth/proxy decision."
+    }
+  }
 }
