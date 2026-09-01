@@ -1429,15 +1429,6 @@ function safeClassification(value) {
   return text;
 }
 
-function splitClassificationValues(value) {
-  const text = safeText(value, null, 240);
-  if (!text) return [];
-  return text
-    .split(',')
-    .map((part) => part.trim())
-    .filter(Boolean);
-}
-
 function safeInteger(value) {
   const number = Number(value);
   return Number.isFinite(number) ? Math.max(0, Math.trunc(number)) : null;
@@ -1960,15 +1951,17 @@ function readInvestmentFilterParams(searchParams) {
       applied[field] = value;
       continue;
     }
-    // sector / industry: comma-separated multi-select. Each token must be a
-    // plain classification label; an invalid token fails the whole request.
-    const tokens = splitClassificationValues(rawValue);
-    if (tokens.length === 0) {
+    // sector / industry: repeated-parameter multi-select. Each occurrence is one
+    // classification label (searchParams.getAll returns an array, so no delimiter
+    // parsing — labels may legitimately contain commas). An invalid label fails
+    // the whole request.
+    const rawValues = searchParams.getAll(field);
+    if (rawValues.length === 0) {
       return investmentFilterError('invalid_investment_screener_filter', `Investment screener ${field} filter values must use plain labels.`);
     }
     const cleaned = [];
-    for (const token of tokens) {
-      const validated = safeClassification(token);
+    for (const rawValue of rawValues) {
+      const validated = safeClassification(rawValue);
       if (!validated) {
         return investmentFilterError('invalid_investment_screener_filter', `Investment screener ${field} filter values must use plain labels.`);
       }

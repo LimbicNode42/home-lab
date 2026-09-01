@@ -55,8 +55,8 @@ test('dashboard investment screener exposes selectable sector and industry filte
   assert.match(indexSource, /<select id="investment-industry-filter"[^>]*>/);
   assert.doesNotMatch(indexSource, /id="investment-sector-filter"[^>]*disabled/);
   assert.doesNotMatch(indexSource, /id="investment-industry-filter"[^>]*disabled/);
-  assert.match(appSource, /searchParams\.set\('sector'/);
-  assert.match(appSource, /searchParams\.set\('industry'/);
+  assert.match(appSource, /searchParams\.append\('sector'/);
+  assert.match(appSource, /searchParams\.append\('industry'/);
   assert.match(appSource, /available_facets/);
 });
 

@@ -917,8 +917,8 @@ function investmentScreenerRequestPath() {
   const industries = investmentSelectedOptions(investmentIndustryFilter);
   if (queryText) searchParams.set('q', queryText);
   if (market) searchParams.set('market', market);
-  if (sectors.length) searchParams.set('sector', sectors.join(','));
-  if (industries.length) searchParams.set('industry', industries.join(','));
+  for (const sector of sectors) searchParams.append('sector', sector);
+  for (const industry of industries) searchParams.append('industry', industry);
   if (metric && metric !== 'composite') searchParams.set('metric', metric);
   if (weight && weight !== 'balanced') searchParams.set('weight', weight);
   if (topN) searchParams.set('limit', topN);
