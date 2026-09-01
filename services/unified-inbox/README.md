@@ -51,6 +51,25 @@ Connectors implement `ReadOnlyMessageStream` from `src/connectors/stream.js`:
 
 The registry rejects mutator-shaped connectors with methods such as `send`, `reply`, `delete`, `markRead`, `archive`, `react`, `move`, or `flag`.
 
+## Connectors (phase 1 implemented)
+
+Phase 1 ships three read-only connectors behind `ReadOnlyMessageStream`:
+
+| Connector | Source id | Ingestion mode | Read-only guarantees | Vaultwarden item | Secret/non-secret fields |
+| --- | --- | --- | --- | --- | --- |
+| Email IMAP | `email-imap` | Poll (bounded) | LOGIN/SELECT/SEARCH/FETCH only; no `\Seen` write, move, delete, expunge, send, reply | `unified-inbox/email-imap/<account>` | non-secret: `imap_host`, `imap_port`, `imap_username`, `imap_tls_mode`; secret: `imap_password_or_oauth_ref` |
+| RSS/Atom | `rss` | Poll (bounded, rate-limited) | Fetch/parse only; no upstream write | `unified-inbox/rss/<feed-or-source>` | non-secret: `feed_url`; optional: `min_interval_ms` |
+| Webhook | `webhook` | Push (receive) | Signature-verified inbound only; no upstream mutation | `unified-inbox/webhook/<source>` | non-secret: `source_label`; secret: `webhook_signing_secret` |
+
+Notes:
+
+- Email `read_state` is derived from the observed `\Seen` flag and reported, never written back upstream.
+- RSS item identity (idempotency key) is GUID/link/id with a deterministic fallback; cursor stops re-ingest of already-seen items.
+- Webhook ingestion is **opt-in and off by default**. `createApp` requires an explicit `webhookIngest` router; without it, `POST /api/unified-inbox/webhook/*` returns `404`. Signatures are HMAC (sha256 or sha1) with constant-time comparison.
+- All connectors bound their work via `max_messages` and a runtime clock, and report structured health (including `rate_limited`) instead of crash-looping.
+
+Credentials are materialized by the operator from Vaultwarden and passed to connectors at construction. Only field/reference names live in the repo; no values.
+
 ## Envelope fields
 
 The normalized envelope fields are fixed by the parent ADR:
