@@ -2563,6 +2563,132 @@ function getEpics(dbPath, docs = []) {
 }
 
 
+
+const UNIFIED_INBOX_CONNECTOR_STATES = new Set(['ok', 'healthy', 'up', 'configured', 'pending_credentials', 'not_configured', 'excluded', 'error', 'down', 'stale', 'unknown']);
+
+function sanitizeUnifiedInboxText(value, fallback = null, maxLength = 240) {
+  if (typeof value !== 'string') return fallback;
+  const trimmed = value.trim();
+  if (!trimmed) return fallback;
+  if (/bearer|token|password|api[_-]?key|body_text|message_body|content|\/root\/|\/mnt\/nas|\/tmp\/|stderr|DATABASE_URL/i.test(trimmed)) {
+    return fallback;
+  }
+  return trimmed.slice(0, maxLength);
+}
+
+function sanitizeUnifiedInboxState(value, fallback = 'unknown') {
+  const state = sanitizeUnifiedInboxText(value, fallback, 64);
+  return UNIFIED_INBOX_CONNECTOR_STATES.has(state) ? state : fallback;
+}
+
+function sanitizeUnifiedInboxTimestamp(value) {
+  const textValue = sanitizeUnifiedInboxText(value, null, 80);
+  if (!textValue) return null;
+  const time = Date.parse(textValue);
+  return Number.isNaN(time) ? null : new Date(time).toISOString();
+}
+
+function sanitizeUnifiedInboxConnector(connector = {}, fallback = {}) {
+  const source = sanitizeUnifiedInboxText(connector.source ?? fallback.id ?? fallback.source, null, 80);
+  const id = sanitizeUnifiedInboxText(connector.id ?? source, source, 80);
+  const accountRef = sanitizeUnifiedInboxText(connector.account_ref ?? connector.accountRef, null, 120);
+  return {
+    id,
+    source,
+    label: sanitizeUnifiedInboxText(connector.label ?? fallback.label ?? source ?? id, 'Connector', 120),
+    ...(accountRef ? { account_ref: accountRef } : {}),
+    state: sanitizeUnifiedInboxState(connector.state ?? fallback.state, 'pending_credentials'),
+    checked_at: sanitizeUnifiedInboxTimestamp(connector.checked_at),
+    last_success_at: sanitizeUnifiedInboxTimestamp(connector.last_success_at),
+    last_error_code: sanitizeUnifiedInboxText(connector.last_error_code, null, 80),
+    detail: sanitizeUnifiedInboxText(connector.detail ?? fallback.detail, 'Connector status has not been published yet.', 240)
+  };
+}
+
+function sanitizeUnifiedInboxStatus(raw = {}, config = {}) {
+  const rawService = raw.service && typeof raw.service === 'object' ? raw.service : {};
+  const rawSnapshots = raw.snapshots && typeof raw.snapshots === 'object' ? raw.snapshots : {};
+  const rawConnectors = Array.isArray(raw.connectors) ? raw.connectors : [];
+  const fallbackConnectors = Array.isArray(config.expectedConnectors) ? config.expectedConnectors : [];
+  const connectors = rawConnectors.length > 0
+    ? rawConnectors.map((connector) => sanitizeUnifiedInboxConnector(connector)).filter((connector) => connector.id || connector.source)
+    : fallbackConnectors.map((connector) => sanitizeUnifiedInboxConnector({}, connector));
+  const exclusions = Array.isArray(raw.exclusions)
+    ? raw.exclusions.map((entry) => ({
+      source: sanitizeUnifiedInboxText(entry?.source, 'connector', 80),
+      state: sanitizeUnifiedInboxState(entry?.state, 'excluded'),
+      reason: sanitizeUnifiedInboxText(entry?.reason, null, 160)
+    })).slice(0, 20)
+    : [];
+  const messageCount = Number(raw.message_count ?? 0);
+  return {
+    enabled: config.enabled !== false,
+    service: {
+      name: sanitizeUnifiedInboxText(rawService.name, 'unified-inbox', 80),
+      mode: sanitizeUnifiedInboxText(rawService.mode, 'read_only', 40),
+      status: sanitizeUnifiedInboxState(rawService.status, 'unknown')
+    },
+    connectors,
+    message_count: Number.isInteger(messageCount) && messageCount >= 0 ? messageCount : 0,
+    snapshots: {
+      latest_batch_id: sanitizeUnifiedInboxText(rawSnapshots.latest_batch_id, null, 120),
+      batch_id: sanitizeUnifiedInboxText(rawSnapshots.batch_id, null, 120),
+      record_count: Number.isInteger(Number(rawSnapshots.record_count)) && Number(rawSnapshots.record_count) >= 0 ? Number(rawSnapshots.record_count) : 0,
+      min_sent_at: sanitizeUnifiedInboxTimestamp(rawSnapshots.min_sent_at),
+      max_sent_at: sanitizeUnifiedInboxTimestamp(rawSnapshots.max_sent_at),
+      copy_status: sanitizeUnifiedInboxText(rawSnapshots.copy_status, null, 80),
+      placements: {
+        local_closed_snapshot: rawSnapshots.placements?.local_closed_snapshot === true,
+        nas_snapshot: rawSnapshots.placements?.nas_snapshot === true,
+        manifest: rawSnapshots.placements?.manifest === true
+      }
+    },
+    exclusions,
+    generatedAt: new Date().toISOString(),
+    cacheStatus: 'fresh'
+  };
+}
+
+async function readUnifiedInboxStatus({ config, statusUrl, fetchImpl = globalThis.fetch }) {
+  if (!config?.enabled || !statusUrl) {
+    return {
+      statusCode: 200,
+      payload: {
+        enabled: false,
+        service: { name: 'unified-inbox', mode: 'read_only', status: 'not_configured' },
+        connectors: Array.isArray(config?.expectedConnectors) ? config.expectedConnectors.map((connector) => sanitizeUnifiedInboxConnector({}, connector)) : [],
+        message_count: 0,
+        snapshots: { latest_batch_id: null, batch_id: null, record_count: 0, min_sent_at: null, max_sent_at: null, copy_status: null, placements: { local_closed_snapshot: false, nas_snapshot: false, manifest: false } },
+        exclusions: [],
+        generatedAt: new Date().toISOString(),
+        cacheStatus: 'not_configured',
+        message: 'Unified Inbox backend status URL is not configured; showing pending connector setup.'
+      }
+    };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.timeoutMs ?? 1000);
+  try {
+    const response = await fetchImpl(statusUrl, { method: 'GET', headers: { accept: 'application/json' }, redirect: 'manual', signal: controller.signal });
+    if (!response.ok) {
+      return {
+        statusCode: 200,
+        payload: { ...sanitizeUnifiedInboxStatus({}, config), cacheStatus: 'backend_unavailable', service: { name: 'unified-inbox', mode: 'read_only', status: 'down' }, message: `Unified Inbox backend status returned HTTP ${response.status}.` }
+      };
+    }
+    const raw = await response.json();
+    return { statusCode: 200, payload: sanitizeUnifiedInboxStatus(raw, config) };
+  } catch (err) {
+    return {
+      statusCode: 200,
+      payload: { ...sanitizeUnifiedInboxStatus({}, config), cacheStatus: err?.name === 'AbortError' ? 'timeout' : 'read_error', service: { name: 'unified-inbox', mode: 'read_only', status: 'down' }, message: err?.name === 'AbortError' ? 'Unified Inbox backend status probe timed out.' : 'Unified Inbox backend status is unavailable.' }
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 const MOBILE_RUNTIME_STATES = new Set(['not_running', 'booting', 'running', 'unknown']);
 const MOBILE_CACHE_STATUSES = new Set(['fresh', 'not_configured', 'missing', 'malformed', 'read_error']);
 
@@ -2700,6 +2826,10 @@ export async function createApp(options = {}) {
   const mobileWorkflowStatusFile = Object.prototype.hasOwnProperty.call(options, 'mobileWorkflowStatusFile')
     ? options.mobileWorkflowStatusFile
     : (process.env.MOBILE_WORKFLOW_STATUS_FILE ?? null);
+  const unifiedInboxStatusUrl = Object.prototype.hasOwnProperty.call(options, 'unifiedInboxStatusUrl')
+    ? options.unifiedInboxStatusUrl
+    : (process.env.UNIFIED_INBOX_STATUS_URL ?? config.unifiedInbox?.statusUrl ?? null);
+  const dashboardFetchImpl = options.fetchImpl ?? globalThis.fetch;
   const investmentScreenerReportFile = Object.prototype.hasOwnProperty.call(options, 'investmentScreenerReportFile')
     ? options.investmentScreenerReportFile
     : (process.env.INVESTMENT_SCREENER_REPORT_FILE ?? null);
@@ -2753,7 +2883,8 @@ export async function createApp(options = {}) {
   const statusService = new StatusService({
     checks: config.statusChecks,
     ttlMs: options.statusCacheTtlMs ?? Number(process.env.DASHBOARD_STATUS_CACHE_TTL_MS ?? 30_000),
-    timeoutMs: options.statusProbeTimeoutMs ?? Number(process.env.DASHBOARD_STATUS_PROBE_TIMEOUT_MS ?? 2500)
+    timeoutMs: options.statusProbeTimeoutMs ?? Number(process.env.DASHBOARD_STATUS_PROBE_TIMEOUT_MS ?? 2500),
+    fetchImpl: dashboardFetchImpl
   });
 
   return async function dashboardApp(request, response) {
@@ -2778,6 +2909,11 @@ export async function createApp(options = {}) {
 
       if (request.method === 'GET' && url.pathname === '/api/mobile-workflow/status') {
         const result = await readMobileWorkflowStatus({ config: config.mobileWorkflow, statusFile: mobileWorkflowStatusFile });
+        return json(response, result.statusCode, result.payload);
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/unified-inbox/status') {
+        const result = await readUnifiedInboxStatus({ config: config.unifiedInbox, statusUrl: unifiedInboxStatusUrl, fetchImpl: dashboardFetchImpl });
         return json(response, result.statusCode, result.payload);
       }
 

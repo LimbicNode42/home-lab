@@ -581,3 +581,17 @@ h2, h3 { margin-top: 0; }
   gap: 0.65rem;
   margin: 0.8rem 0;
 }
+
+
+/* Unified Inbox overview */
+.unified-inbox-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+.unified-inbox-summary-card, .unified-inbox-connector-card {
+  padding: 1rem;
+  border: 1px solid #273244;
+  border-radius: 0.9rem;
+  background: #111827;
+}
+.unified-inbox-detail-list { margin: 0.75rem 0 0; padding-left: 1.1rem; color: #cdd9e5; }
+.unified-inbox-detail-list li { margin: 0.25rem 0; }
+.unified-inbox-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.65rem; margin: 0.8rem 0; }
+.unified-inbox-connectors { margin-top: 1rem; }

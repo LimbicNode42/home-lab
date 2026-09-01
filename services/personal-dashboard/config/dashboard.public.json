@@ -19,6 +19,10 @@
         {
           "label": "MetaMCP gateway",
           "href": "http://192.168.0.20:12008"
+        },
+        {
+          "label": "Unified Inbox",
+          "href": "http://192.168.0.50:8766"
         }
       ]
     }
@@ -45,6 +49,16 @@
         200,
         401
       ]
+    },
+    {
+      "id": "unified-inbox",
+      "label": "Unified Inbox",
+      "targetUrl": "http://192.168.0.50:8766/healthz",
+      "displayUrl": "http://192.168.0.50:8766",
+      "acceptableStatuses": [
+        200
+      ],
+      "timeoutMs": 1000
     }
   ],
   "metaMcp": {
@@ -154,5 +168,27 @@
       "instruction": "Use the proven headless cycle on tori for now. A read-only adb screenshot, noVNC, or scrcpy web viewer must be placed behind authentication before the dashboard links to it.",
       "href": null
     }
+  },
+  "unifiedInbox": {
+    "enabled": true,
+    "title": "Unified Inbox",
+    "publicUrl": "http://192.168.0.50:8766",
+    "statusUrl": "http://192.168.0.50:8766/api/unified-inbox/status",
+    "note": "Read-only message aggregation status. Dashboard exposes connector health, counts, freshness, and exclusions only; message bodies stay in the inbox service.",
+    "expectedConnectors": [
+      {
+        "id": "discord",
+        "label": "Discord",
+        "state": "pending_credentials",
+        "detail": "Connector credentials have not been authorized in this phase."
+      },
+      {
+        "id": "telegram",
+        "label": "Telegram",
+        "state": "pending_credentials",
+        "detail": "Connector credentials have not been authorized in this phase."
+      }
+    ],
+    "timeoutMs": 1000
   }
 }
