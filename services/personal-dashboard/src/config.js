@@ -19,6 +19,13 @@ const DEFAULT_CONFIG = {
       label: 'Hermes Kanban',
       targetUrl: 'http://192.168.0.20:9119/kanban',
       displayUrl: 'http://192.168.0.20:9119/kanban'
+    },
+    {
+      id: 'metamcp-gateway',
+      label: 'MetaMCP gateway',
+      targetUrl: 'http://192.168.0.20:12008/mcp',
+      displayUrl: 'http://192.168.0.20:12008',
+      acceptableStatuses: [200, 401]
     }
   ],
   metaMcp: {
@@ -26,7 +33,7 @@ const DEFAULT_CONFIG = {
     title: 'MetaMCP aggregator',
     version: '2.4.22',
     services: [
-      { id: 'metamcp', label: 'MetaMCP app', state: 'last_known_healthy', detail: 'Loopback-only on tori; direct LAN exposure intentionally refused.' },
+      { id: 'metamcp', label: 'MetaMCP app', state: 'live_probe_configured', detail: 'LAN gateway status is checked live through the dashboard status probe.' },
       { id: 'metamcp-pg', label: 'MetaMCP Postgres', state: 'last_known_healthy', detail: 'Internal database for the MetaMCP control plane.' }
     ],
     tools: {
@@ -39,10 +46,13 @@ const DEFAULT_CONFIG = {
       ]
     },
     access: {
-      mode: 'ssh_tunnel',
-      localUrl: 'http://127.0.0.1:12008',
-      command: 'ssh -L 12008:127.0.0.1:12008 tori',
-      note: 'Aggregator UI is bound to tori loopback only. Start the tunnel, then open the local UI link; do not publish 12008 to LAN without review.'
+      mode: 'lan_gateway',
+      localUrl: 'http://192.168.0.20:12008',
+      note: 'LAN gateway is reachable at the URL below and still requires gateway authentication. The dashboard stores only the URL.',
+      links: [
+        { label: 'Open MetaMCP gateway', href: 'http://192.168.0.20:12008' },
+        { label: 'MCP endpoint', href: 'http://192.168.0.20:12008/mcp' }
+      ]
     }
   },
   mobileWorkflow: {
@@ -184,20 +194,42 @@ function validateMetaMcp(metaMcp) {
 
   const access = metaMcp.access ?? {};
   const mode = requireText(access.mode, 'metaMcp.access.mode');
+  if (!['ssh_tunnel', 'lan_gateway'].includes(mode)) {
+    throw new Error('Invalid dashboard config: metaMcp.access.mode must be ssh_tunnel or lan_gateway');
+  }
   const localUrl = requireText(access.localUrl, 'metaMcp.access.localUrl');
   if (!isHttpUrl(localUrl)) {
     throw new Error('Invalid dashboard config: metaMcp.access.localUrl must be an http(s) URL');
   }
   const local = new URL(localUrl);
-  if (mode !== 'ssh_tunnel' || !['127.0.0.1', 'localhost'].includes(local.hostname)) {
-    throw new Error('Invalid MetaMCP access: direct UI links require a reviewed authenticated proxy decision');
+  if (mode === 'ssh_tunnel' && !['127.0.0.1', 'localhost'].includes(local.hostname)) {
+    throw new Error('Invalid MetaMCP access: SSH tunnel links must stay on loopback');
   }
-  const command = requireText(access.command, 'metaMcp.access.command');
+  if (mode === 'lan_gateway' && ['127.0.0.1', 'localhost'].includes(local.hostname)) {
+    throw new Error('Invalid MetaMCP access: LAN gateway links must use the reviewed LAN endpoint');
+  }
+  const command = mode === 'ssh_tunnel' ? requireText(access.command, 'metaMcp.access.command') : null;
   const note = requireText(access.note, 'metaMcp.access.note');
-  const serialized = JSON.stringify({ title, version, normalizedServices, tools: { total, domains }, access: { mode, localUrl, command, note } });
+  const rawLinks = access.links ?? [{ label: mode === 'lan_gateway' ? 'Open MetaMCP gateway' : 'Open local MetaMCP UI after tunnel is running', href: localUrl }];
+  if (!Array.isArray(rawLinks) || rawLinks.length === 0) {
+    throw new Error('Invalid dashboard config: metaMcp.access.links must be a non-empty array');
+  }
+  const links = rawLinks.map((link, index) => {
+    const label = requireText(link?.label, `metaMcp.access.links[${index}].label`);
+    const href = requireText(link?.href, `metaMcp.access.links[${index}].href`);
+    if (!isHttpUrl(href)) {
+      throw new Error(`Invalid dashboard config: metaMcp.access.links[${index}].href must be an http(s) URL`);
+    }
+    if (/[?&](?:token|api[_-]?key|key|authorization)=/i.test(href)) {
+      throw new Error('Invalid MetaMCP access: links must not embed credentials');
+    }
+    return { label, href };
+  });
+  const normalizedAccess = { mode, localUrl, note, links, ...(command ? { command } : {}) };
+  const serialized = JSON.stringify({ title, version, normalizedServices, tools: { total, domains }, access: normalizedAccess });
   assertNoUnsafeOperatorInternals(serialized, 'metaMcp');
 
-  return { enabled, title, version, services: normalizedServices, tools: { total, domains }, access: { mode, localUrl, command, note } };
+  return { enabled, title, version, services: normalizedServices, tools: { total, domains }, access: normalizedAccess };
 }
 
 function validateMobileWorkflow(mobileWorkflow) {
@@ -292,7 +324,19 @@ function validateStatusChecks(statusChecks) {
       throw new Error(`Invalid status targetUrl for ${label}: only http(s) URLs are allowed`);
     }
 
-    const result = { id, label, targetUrl };
+    const acceptableStatuses = check.acceptableStatuses ?? [200, 204, 301, 302];
+    if (!Array.isArray(acceptableStatuses) || acceptableStatuses.length === 0) {
+      throw new Error(`Invalid status acceptableStatuses for ${label}: must be a non-empty array`);
+    }
+    const normalizedStatuses = acceptableStatuses.map((status, statusIndex) => {
+      const parsed = Number(status);
+      if (!Number.isInteger(parsed) || parsed < 100 || parsed > 599) {
+        throw new Error(`Invalid status acceptableStatuses[${statusIndex}] for ${label}: must be an HTTP status code`);
+      }
+      return parsed;
+    });
+
+    const result = { id, label, targetUrl, acceptableStatuses: normalizedStatuses };
     if (check.displayUrl !== undefined) {
       const displayUrl = requireText(check.displayUrl, `statusChecks[${index}].displayUrl`);
       if (!isHttpUrl(displayUrl)) {

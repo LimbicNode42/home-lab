@@ -51,10 +51,13 @@ const metamcpConfig = {
       ]
     },
     access: {
-      mode: 'ssh_tunnel',
-      localUrl: 'http://127.0.0.1:12008',
-      command: 'ssh -L 12008:127.0.0.1:12008 tori',
-      note: 'Aggregator remains loopback-only; use the tunnel before opening the local UI link.'
+      mode: 'lan_gateway',
+      localUrl: 'http://192.168.0.20:12008',
+      note: 'LAN gateway requires authentication; the dashboard stores only the URL.',
+      links: [
+        { label: 'Open MetaMCP gateway', href: 'http://192.168.0.20:12008' },
+        { label: 'MCP endpoint', href: 'http://192.168.0.20:12008/mcp' }
+      ]
     }
   }
 };
@@ -67,22 +70,33 @@ test('normalizes MetaMCP overview metadata for public display', () => {
   assert.deepEqual(publicConfig.metaMcp.services.map((service) => service.id), ['metamcp', 'metamcp-pg']);
   assert.equal(publicConfig.metaMcp.tools.total, 36);
   assert.deepEqual(publicConfig.metaMcp.tools.domains.map((domain) => domain.id), ['filesystem', 'git', 'memory', 'fetch']);
-  assert.equal(publicConfig.metaMcp.access.mode, 'ssh_tunnel');
-  assert.equal(publicConfig.metaMcp.access.localUrl, 'http://127.0.0.1:12008');
+  assert.equal(publicConfig.metaMcp.access.mode, 'lan_gateway');
+  assert.equal(publicConfig.metaMcp.access.localUrl, 'http://192.168.0.20:12008');
+  assert.deepEqual(publicConfig.metaMcp.access.links.map((link) => link.href), ['http://192.168.0.20:12008', 'http://192.168.0.20:12008/mcp']);
   assert.equal(JSON.stringify(publicConfig).includes('bearer'), false);
   assert.equal(JSON.stringify(publicConfig).includes('/root/'), false);
 });
 
-test('rejects MetaMCP direct LAN UI links so loopback stays behind a reviewed access decision', () => {
+test('accepts reviewed MetaMCP LAN gateway links without embedding credentials', () => {
+  const publicConfig = toPublicConfig(normalizeConfig(metamcpConfig));
+  const serialized = JSON.stringify(publicConfig.metaMcp.access);
+
+  assert.equal(publicConfig.metaMcp.access.mode, 'lan_gateway');
+  assert.equal(publicConfig.metaMcp.access.links[0].href, 'http://192.168.0.20:12008');
+  assert.equal(serialized.includes('api_key'), false);
+  assert.equal(serialized.includes('token='), false);
+});
+
+test('rejects MetaMCP LAN links with credential query parameters', () => {
   assert.throws(
     () => normalizeConfig({
       ...metamcpConfig,
       metaMcp: {
         ...metamcpConfig.metaMcp,
-        access: { ...metamcpConfig.metaMcp.access, mode: 'direct_link', localUrl: 'http://192.168.0.20:12008' }
+        access: { ...metamcpConfig.metaMcp.access, links: [{ label: 'Bad', href: 'http://192.168.0.20:12008?token=secret' }] }
       }
     }),
-    /MetaMCP.*direct.*reviewed/i
+    /must not embed credentials/i
   );
 });
 
@@ -99,7 +113,8 @@ test('GET /api/config/public returns the MetaMCP overview without target URLs or
     assert.equal(response.status, 200);
     assert.equal(body.metaMcp.tools.total, 36);
     assert.equal(body.metaMcp.services[1].label, 'MetaMCP Postgres');
-    assert.equal(body.metaMcp.access.command, 'ssh -L 12008:127.0.0.1:12008 tori');
+    assert.equal(body.metaMcp.access.links[0].href, 'http://192.168.0.20:12008');
+    assert.equal(body.metaMcp.access.command, undefined);
     assert.equal(serialized.includes('targetUrl'), false);
     assert.equal(serialized.includes('TOKEN'), false);
     assert.equal(serialized.includes('/mnt/nas'), false);
@@ -117,14 +132,15 @@ test('Overview HTML contains a MetaMCP panel with loading state', () => {
   assert.match(indexSource, /Loading MetaMCP overview/);
 });
 
-test('app.js renders MetaMCP services, domain tool counts, and SSH tunnel access instruction', () => {
-  assert.match(appSource, /function renderMetaMcpOverview\(metaMcp\)/);
+test('app.js renders MetaMCP services, live gateway status, domain tool counts, and LAN access links', () => {
+  assert.match(appSource, /function renderMetaMcpOverview\(metaMcp, statusPayload = null\)/);
   assert.match(appSource, /MetaMCP overview is not configured on this dashboard/);
-  assert.match(appSource, /ssh_tunnel/);
-  assert.match(appSource, /Use SSH tunnel/);
+  assert.match(appSource, /metamcp-gateway/);
+  assert.match(appSource, /Live gateway:/);
+  assert.match(appSource, /metamcp-access-links/);
   assert.match(appSource, /domain\.count/);
   assert.match(appSource, /service\.state/);
-  assert.match(appSource, /renderMetaMcpOverview\(config\.metaMcp\)/);
+  assert.match(appSource, /renderMetaMcpOverview\(dashboardConfig\.metaMcp, payload\)/);
 });
 
 test('styles.css defines MetaMCP overview grid/card styling', () => {

@@ -10,6 +10,7 @@ const statusList = document.querySelector('#status-list');
 const metamcpOverview = document.querySelector('#metamcp-overview');
 const mobileWorkflowOverview = document.querySelector('#mobile-workflow-overview');
 const refreshMobileWorkflowButton = document.querySelector('#refresh-mobile-workflow');
+let dashboardConfig = null;
 const refreshButton = document.querySelector('#refresh-status');
 const finnickContent = document.querySelector('#finnick-content');
 const refreshFinnickButton = document.querySelector('#refresh-finnick');
@@ -194,7 +195,7 @@ function renderConfig(config) {
 }
 
 
-function renderMetaMcpOverview(metaMcp) {
+function renderMetaMcpOverview(metaMcp, statusPayload = null) {
   if (!metamcpOverview) return;
   metamcpOverview.replaceChildren();
   if (!metaMcp?.enabled) {
@@ -204,6 +205,13 @@ function renderMetaMcpOverview(metaMcp) {
 
   const services = Array.isArray(metaMcp.services) ? metaMcp.services : [];
   const domains = Array.isArray(metaMcp.tools?.domains) ? metaMcp.tools.domains : [];
+  const liveGateway = Array.isArray(statusPayload?.checks)
+    ? statusPayload.checks.find((check) => check.id === 'metamcp-gateway')
+    : null;
+  const gatewayStatus = liveGateway?.status || 'unknown';
+  const gatewayStatusDetail = liveGateway
+    ? `${liveGateway.httpStatus ?? liveGateway.error ?? 'no response'} · ${liveGateway.latencyMs}ms`
+    : 'Waiting for live status probe.';
   const serviceCards = services.length > 0
     ? services.map((service) => el('article', { className: 'status-card metamcp-service-card' }, [
       el('div', { className: 'status-title', text: service.label || service.id || 'MetaMCP service' }),
@@ -224,17 +232,24 @@ function renderMetaMcpOverview(metaMcp) {
   if (access.mode === 'ssh_tunnel') {
     accessChildren.push(el('p', { className: 'metamcp-access-label', text: 'Use SSH tunnel:' }));
     accessChildren.push(el('code', { text: access.command || 'ssh -L 12008:127.0.0.1:12008 tori' }));
-    if (access.localUrl) {
-      accessChildren.push(el('a', { href: access.localUrl, text: 'Open local MetaMCP UI after tunnel is running', rel: 'noreferrer noopener' }));
-    }
+  }
+  const safeLinks = Array.isArray(access.links) ? access.links : [];
+  if (safeLinks.length > 0) {
+    accessChildren.push(el('div', { className: 'metamcp-access-links' }, safeLinks.map((link) => el('a', { href: link.href, text: link.label, rel: 'noreferrer noopener' }))));
+  } else if (access.localUrl) {
+    accessChildren.push(el('a', { href: access.localUrl, text: access.mode === 'lan_gateway' ? 'Open MetaMCP gateway' : 'Open local MetaMCP UI after tunnel is running', rel: 'noreferrer noopener' }));
   } else {
-    accessChildren.push(el('p', { className: 'error', text: 'No safe direct MetaMCP UI link is configured.' }));
+    accessChildren.push(el('p', { className: 'error', text: 'No safe MetaMCP gateway link is configured.' }));
   }
 
   metamcpOverview.append(el('div', { className: 'metamcp-grid' }, [
     el('article', { className: 'metamcp-summary-card' }, [
       el('h3', { text: metaMcp.title || 'MetaMCP aggregator' }),
       el('p', { className: 'muted', text: `Version ${metaMcp.version || 'unknown'} · ${metaMcp.tools?.total ?? 0} last-known tools` }),
+      el('div', { className: 'metamcp-live-status' }, [
+        el('span', { className: `badge ${gatewayStatus}`, text: `Live gateway: ${gatewayStatus}` }),
+        el('span', { className: 'muted', text: gatewayStatusDetail })
+      ]),
       domainList
     ]),
     el('article', { className: 'metamcp-access-card' }, accessChildren)
@@ -345,7 +360,9 @@ function renderStatus(payload) {
 async function refreshStatus() {
   refreshButton.disabled = true;
   try {
-    renderStatus(await getJson('/api/status'));
+    const payload = await getJson('/api/status');
+    renderStatus(payload);
+    if (dashboardConfig?.metaMcp) renderMetaMcpOverview(dashboardConfig.metaMcp, payload);
   } catch (error) {
     statusList.replaceChildren(el('p', { className: 'error', text: `Status unavailable: ${error.message}` }));
   } finally {
@@ -368,6 +385,7 @@ function tabIdFromHash(hash = window.location.hash) {
 async function loadOverviewData() {
   try {
     const config = await getJson('/api/config/public');
+    dashboardConfig = config;
     renderConfig(config);
     renderMetaMcpOverview(config.metaMcp);
     mobileWorkflowConfig = config.mobileWorkflow || null;

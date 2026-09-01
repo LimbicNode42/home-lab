@@ -15,6 +15,10 @@
         {
           "label": "Hermes Kanban",
           "href": "http://192.168.0.20:9119/kanban"
+        },
+        {
+          "label": "MetaMCP gateway",
+          "href": "http://192.168.0.20:12008"
         }
       ]
     }
@@ -31,6 +35,16 @@
       "label": "Hermes Kanban",
       "targetUrl": "http://192.168.0.20:9119/kanban",
       "displayUrl": "http://192.168.0.20:9119/kanban"
+    },
+    {
+      "id": "metamcp-gateway",
+      "label": "MetaMCP gateway",
+      "targetUrl": "http://192.168.0.20:12008/mcp",
+      "displayUrl": "http://192.168.0.20:12008",
+      "acceptableStatuses": [
+        200,
+        401
+      ]
     }
   ],
   "metaMcp": {
@@ -41,8 +55,8 @@
       {
         "id": "metamcp",
         "label": "MetaMCP app",
-        "state": "last_known_healthy",
-        "detail": "Container metamcp was previously verified healthy on tori; live dashboard probe is not configured because the service is loopback-only."
+        "state": "live_probe_configured",
+        "detail": "LAN gateway status is checked live through the dashboard status probe."
       },
       {
         "id": "metamcp-pg",
@@ -77,10 +91,19 @@
       ]
     },
     "access": {
-      "mode": "ssh_tunnel",
-      "localUrl": "http://127.0.0.1:12008",
-      "command": "ssh -L 12008:127.0.0.1:12008 tori",
-      "note": "MetaMCP listens on tori loopback only. Start the tunnel, then open the local UI link; do not expose 12008 to LAN without a reviewed auth/proxy decision."
+      "mode": "lan_gateway",
+      "localUrl": "http://192.168.0.20:12008",
+      "note": "LAN gateway is reachable at the URL below and still requires gateway authentication. The dashboard stores only the URL.",
+      "links": [
+        {
+          "label": "Open MetaMCP gateway",
+          "href": "http://192.168.0.20:12008"
+        },
+        {
+          "label": "MCP endpoint",
+          "href": "http://192.168.0.20:12008/mcp"
+        }
+      ]
     }
   },
   "mobileWorkflow": {
