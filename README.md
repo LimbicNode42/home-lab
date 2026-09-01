@@ -13,7 +13,7 @@ This repository is being reorganized around auditable infrastructure-as-code / c
 - `infrastructure/` - future IaC/CaC for hosts, Proxmox, NAS, networking, and shared platform components.
 - `archive/legacy-tools/` - preserved legacy scripts/configs that are not current desired state.
 
-See `docs/architecture/repository-structure.md` for the full layout and promotion workflow.
+See `docs/architecture/repository-structure.md` for the full layout and promotion workflow. Delivery policy, including dashboard completion visibility requirements for agent-built/user-facing work, lives in `docs/delivery-conventions.md`.
 
 ## Secrets
 
@@ -43,3 +43,11 @@ Details: `docs/secrets/vaultwarden-secrets-backend.md`.
 - Verify live state before remediation.
 - Prefer importing/documenting current state before changing it.
 - Require explicit approval before destructive actions, data movement/deletion, live IaC applies, firewall/router/DNS exposure changes, or secret rotation.
+
+## Delivery policy
+
+- User-facing or homelab-facing implementation epics must add/update a Home Dashboard, status, docs, or report surface that makes completion visible to Ben, or explicitly justify why no such surface is useful.
+- When live dashboard changes are in scope, include deploy and post-deploy verification tasks in the Kanban graph.
+- Purely internal refactors do not require dashboard UI changes unless they create an operational signal worth showing.
+
+Details: `docs/delivery-conventions.md`.
