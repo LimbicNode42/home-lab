@@ -59,6 +59,74 @@ export ASX_BATCH_SIZE="$BATCH_SIZE"
 export ASX_SLEEP_SECONDS="$SLEEP_SECONDS"
 export DRY_RUN=${DRY_RUN:-0}
 
+POINTER_PATH="$DATA_ROOT/investment-screener/manifests/market=ASX/source=yahoo-finance/latest.json"
+
+# Safety guard: do not let an approved bounded recurring run silently replace
+# a full-universe latest pointer. Any cadence/batch-size migration needs an
+# explicit scheduler approval and should leave the dashboard denominator stable.
+if [[ "$DRY_RUN" != "1" ]]; then
+  python3 - "$POINTER_PATH" "$SEED_PATH" "$BATCH_OFFSET" "$BATCH_SIZE" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+pointer_path = Path(sys.argv[1])
+seed_path = Path(sys.argv[2])
+batch_offset_raw = sys.argv[3]
+batch_size_raw = sys.argv[4]
+
+def to_int(raw, default=None):
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        return default
+
+batch_offset = to_int(batch_offset_raw, 0)
+batch_size = to_int(batch_size_raw)
+if batch_size is None or not pointer_path.exists():
+    raise SystemExit(0)
+
+try:
+    pointer = json.loads(pointer_path.read_text(encoding="utf8"))
+except Exception:
+    raise SystemExit(0)
+
+current_denominator = to_int((pointer.get("coverage") or {}).get("denominator"))
+manifest_rel = pointer.get("run_manifest")
+complete_pointer = False
+if manifest_rel:
+    manifest_path = pointer_path.parents[3] / manifest_rel
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf8"))
+        universe = manifest.get("universe") or {}
+        complete_pointer = bool(universe.get("complete_exchange_listing"))
+        current_denominator = to_int(universe.get("full_count"), current_denominator)
+    except Exception:
+        pass
+
+seed_count = None
+try:
+    seed = json.loads(seed_path.read_text(encoding="utf8"))
+    entries = seed.get("entries") if isinstance(seed, dict) else seed
+    if isinstance(entries, list):
+        seed_count = len(entries)
+except Exception:
+    pass
+
+full_count = current_denominator or seed_count
+would_publish_bounded = full_count and (batch_offset != 0 or batch_size < full_count)
+if complete_pointer and would_publish_bounded:
+    print(
+        "[asx-screener-owner] REFUSING bounded publish: "
+        f"current latest pointer is full-universe denominator={full_count}, "
+        f"requested offset={batch_offset} size={batch_size}. "
+        "Approval required for a scheduler/cadence migration before replacing latest.json.",
+        file=sys.stderr,
+    )
+    raise SystemExit(42)
+PY
+fi
+
 # Run the canonical workflow, capturing combined output for summary extraction.
 CANONICAL_OUTPUT=$(
   "$SCRIPT_DIR/run-asx-screener-hydration.sh" 2>&1
@@ -71,7 +139,6 @@ CANONICAL_OUTPUT=$(
 }
 
 # Resolve the latest pointer for this market/source.
-POINTER_PATH="$DATA_ROOT/investment-screener/manifests/market=ASX/source=yahoo-finance/latest.json"
 RUN_ID=""
 MODE=""
 USABLE=""

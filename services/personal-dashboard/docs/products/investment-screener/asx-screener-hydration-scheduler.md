@@ -12,8 +12,40 @@
 
 ## Cadence
 
-- **Enabled schedule:** `0 8 * * 6` — weekly, Saturday 08:00 AEST (tori local time). Weekly cadence matches the parent deploy note and keeps Yahoo egress well below throttle thresholds.
+### Current approved scheduler state
+
+- **Enabled schedule:** `0 8 * * 6` — weekly, Saturday 08:00 AEST (tori local time). This is still the previously approved bounded top-50 owner job, not a monthly or quarterly full-universe refresh.
 - **Mode:** non-fixture (`asx-yahoo-timeseries`) — real Yahoo Finance hydration, never `--fixture`.
+- **Regression guard:** after the 2026-08-31 supervised full-seed publish, the owner wrapper refuses an unattended bounded publish when the live latest pointer is already full-universe. That prevents the weekly top-50 job from replacing the dashboard's `1838` denominator while cadence approval is pending.
+
+### Recommended recurring policy awaiting Ben approval
+
+- **Monthly full-universe fundamentals refresh:** run once per month, preferably Saturday 08:00 AEST after market close/weekend quiet time, with `ASX_BATCH_OFFSET=0` and `ASX_BATCH_SIZE=1838` (or the current reviewed seed count). This keeps the dashboard's full-universe denominator explicit and avoids quarterly staleness.
+- **Optional weekly smoke/freshness check:** keep a small dry-run/no-publish smoke (`DRY_RUN=1`, e.g. `ASX_BATCH_SIZE=4`) if Yahoo/provider shape monitoring is useful. A smoke job must not publish `latest.json`; otherwise it would intentionally change the dashboard denominator.
+- **Quarterly-only refresh:** not recommended unless the dashboard freshness thresholds are deliberately relaxed, because the current artifact preflight still treats generated data as stale after 26 hours.
+
+Exact scheduler proposal for approval:
+
+```bash
+# Replace the existing top-50 owner with the approved monthly full-universe owner
+# after updating the scheduler shim/wrapper defaults or adding a full-universe shim.
+hermes --profile default cron edit 6bffd5f6fff6 \
+  --schedule '0 8 1 * *' \
+  --name asx-screener-monthly-full-hydration \
+  --script run-asx-screener-full-hydration-owner.sh \
+  --no-agent \
+  --deliver 'discord:#👟-hermes-👟'
+
+# Optional no-publish weekly provider smoke, if Ben wants early breakage notice.
+hermes --profile default cron create '0 8 * * 6' \
+  --name asx-screener-weekly-smoke \
+  --script run-asx-screener-smoke-owner.sh \
+  --no-agent \
+  --deliver 'discord:#👟-hermes-👟' \
+  'Run a no-publish ASX provider smoke and emit one sanitized summary line.'
+```
+
+Both proposed shim scripts must live under `/root/.hermes/scripts/`, emit exactly one sanitized stdout line, and delegate substantive logic to committed repo wrappers.
 
 ## Universe (bounded denominator)
 
@@ -54,7 +86,7 @@ The scheduler shim lives at `/root/.hermes/scripts/run-asx-screener-hydration-ow
 
 ### Full-universe rollout gate
 
-Keep the recurring owner job at the approved top-50 slice until a separate scheduler/deploy task changes it. The staged top-200 expansion completed with 184/200 usable coverage, about 5–6 minutes runtime, and about 2.6 MiB of new run artifacts, but that evidence is not enough to make all-ASX unattended.
+Keep the recurring owner job at the approved top-50 slice until a separate scheduler/deploy task changes it. Because the live latest pointer now references the supervised 2026-08-31 full-seed run (`1015/1838` usable), the owner wrapper fails closed instead of letting that top-50 job publish over the full-universe dashboard denominator. The staged top-200 expansion completed with 184/200 usable coverage, about 5–6 minutes runtime, and about 2.6 MiB of new run artifacts, but that evidence is not enough to make all-ASX unattended without approval.
 
 The current rollout recommendation is documented in [ASX full-universe hydration rollout plan](./asx-full-universe-hydration-rollout-plan-2026-08-28.md): run one supervised top-400 prefix expansion after Ben approval, verify the stop conditions, then consider a separately approved full-seed run with `ASX_BATCH_SIZE=1838`. Do not run offset slices against the live NAS publisher unless the goal is a temporary probe; each successful run updates `latest.json`, so prefix expansion keeps the dashboard denominator understandable.
 
