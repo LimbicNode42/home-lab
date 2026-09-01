@@ -16,6 +16,8 @@ Get explicit approval before any of these actions:
 6. Invite/configure Discord, Telegram, Matrix, Slack, or Android connectors.
 7. Edit Traefik, Cloudflare Tunnel, or DNS routing.
 8. Expose message bodies/senders in the dashboard before sanitizer/auth review.
+9. Enable webhook ingestion — the `POST /api/unified-inbox/webhook/*` route is opt-in and off by default (no `webhookIngest` router means `404`); public exposure additionally requires the public webhook exposure review.
+10. Wire any IMAP/RSS connector with real credentials — app passwords/OAuth refs must be rendered from Vaultwarden only.
 
 ## Local verification
 

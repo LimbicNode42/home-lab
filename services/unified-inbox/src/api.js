@@ -43,10 +43,30 @@ function snapshotStatus(snapshot) {
   };
 }
 
-export function createApp({ store, connectors = [] }) {
+export function createApp({ store, connectors = [], webhookIngest = null }) {
   return {
     async handle(request) {
       const url = new URL(request.url);
+
+      // Inbound webhook ingestion is opt-in and never reachable unless a
+      // webhookIngest router is explicitly supplied. Signature verification is
+      // enforced inside the stream when require_signature is true.
+      if (webhookIngest?.enabled && request.method === 'POST' && url.pathname.startsWith('/api/unified-inbox/webhook/')) {
+        const sourceKey = url.pathname.slice('/api/unified-inbox/webhook/'.length);
+        const stream = webhookIngest.streams.get(sourceKey);
+        if (!stream) return json({ error: 'not_found' }, { status: 404 });
+        const rawBody = await request.text();
+        const headers = Object.fromEntries(request.headers.entries());
+        try {
+          const envelope = await stream.receive({ rawBody, headers });
+          const manifest = await store.appendBatch({ batchId: envelope.ingest_batch_id, envelopes: [envelope] });
+          return json({ ok: true, record_count: manifest.record_count, latest_batch_id: manifest.latest_batch_id }, { status: 202 });
+        } catch (error) {
+          const status = Number(error.status) || 500;
+          return json({ error: status === 401 ? 'unauthorized' : status === 400 ? 'bad_request' : 'internal_error' }, { status });
+        }
+      }
+
       if (request.method !== 'GET') return json({ error: 'not_found' }, { status: 404 });
       if (url.pathname === '/healthz') return json({ ok: true, service: 'unified-inbox' });
       if (url.pathname === '/') {
