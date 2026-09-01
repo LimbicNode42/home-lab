@@ -8,6 +8,8 @@ const title = document.querySelector('#dashboard-title');
 const sections = document.querySelector('#sections');
 const statusList = document.querySelector('#status-list');
 const metamcpOverview = document.querySelector('#metamcp-overview');
+const mobileWorkflowOverview = document.querySelector('#mobile-workflow-overview');
+const refreshMobileWorkflowButton = document.querySelector('#refresh-mobile-workflow');
 const refreshButton = document.querySelector('#refresh-status');
 const finnickContent = document.querySelector('#finnick-content');
 const refreshFinnickButton = document.querySelector('#refresh-finnick');
@@ -82,6 +84,7 @@ const newGoalButton = document.querySelector('#new-goal');
 const goalFormMessage = document.querySelector('#goal-form-message');
 let currentGoalId = null;
 let dashboardBootComplete = false;
+let mobileWorkflowConfig = null;
 const FEATURED_DOC_IDS = ['home-lab-service-catalog'];
 
 function el(tag, attrs = {}, children = []) {
@@ -237,6 +240,85 @@ function renderMetaMcpOverview(metaMcp) {
   metamcpOverview.append(el('div', { className: 'status-grid metamcp-services' }, serviceCards));
 }
 
+
+function mobileWorkflowBadgeClass(state) {
+  if (state === 'running') return 'up';
+  if (state === 'booting') return 'neutral';
+  if (state === 'not_running') return 'down';
+  return 'neutral';
+}
+
+function renderMobileWorkflowOverview(status, config = mobileWorkflowConfig) {
+  if (!mobileWorkflowOverview) return;
+  mobileWorkflowOverview.replaceChildren();
+  const payload = status || config;
+  if (!payload?.enabled) {
+    mobileWorkflowOverview.append(el('p', { className: 'muted', text: 'Flutter mobile workflow overview is not configured on this dashboard.' }));
+    return;
+  }
+
+  const runtime = payload.runtime || {};
+  const components = Array.isArray(payload.components) ? payload.components : [];
+  const componentCards = components.length > 0
+    ? components.map((component) => el('article', { className: 'status-card mobile-component-card' }, [
+      el('div', { className: 'status-title', text: component.label || component.id || 'Mobile workflow component' }),
+      el('span', { className: `badge ${String(component.state || '').includes('present') ? 'up' : 'neutral'}`, text: component.state || 'unknown' }),
+      el('p', { className: 'muted', text: component.detail || 'No component detail available.' })
+    ]))
+    : [el('p', { className: 'muted', text: 'No mobile toolchain component status has been published yet.' })];
+
+  const runtimeLines = [
+    `Host: ${payload.host || 'unknown'}`,
+    `Runtime: ${runtime.state || 'unknown'}`,
+    `ADB device: ${runtime.adbDeviceId || 'none attached'}`,
+    `Boot completed: ${runtime.bootCompleted ? 'yes' : 'no'}`,
+    `Last successful headless cycle: ${payload.lastSuccessfulCycleAt || 'not published yet'}`,
+    `Status cache: ${payload.cacheStatus || 'static config'}`
+  ];
+  if (payload.generatedAt) runtimeLines.push(`Cache generated: ${payload.generatedAt}`);
+
+  const viewer = payload.viewer || {};
+  const viewerChildren = [
+    el('h3', { text: viewer.label || 'Emulator viewer' }),
+    el('p', { className: 'muted', text: viewer.instruction || 'No reviewed emulator viewing surface is configured yet.' })
+  ];
+  if (viewer.href) {
+    viewerChildren.push(el('a', { href: viewer.href, text: 'Open reviewed emulator viewer', rel: 'noreferrer noopener' }));
+  } else {
+    viewerChildren.push(el('p', { className: 'error', text: 'No safe direct emulator viewer link is configured yet.' }));
+  }
+
+  mobileWorkflowOverview.append(el('div', { className: 'mobile-workflow-grid' }, [
+    el('article', { className: 'mobile-runtime-card' }, [
+      el('h3', { text: payload.title || 'Flutter mobile workflow' }),
+      el('span', { className: `badge ${mobileWorkflowBadgeClass(runtime.state)}`, text: runtime.state || 'unknown' }),
+      el('p', { className: 'muted', text: runtime.detail || 'No emulator runtime detail has been published.' }),
+      el('ul', { className: 'mobile-runtime-list' }, runtimeLines.map((line) => el('li', { text: line })))
+    ]),
+    el('article', { className: 'mobile-viewer-card' }, viewerChildren)
+  ]));
+  if (payload.message) {
+    mobileWorkflowOverview.append(el('p', { className: 'muted mobile-cache-message', text: payload.message }));
+  }
+  mobileWorkflowOverview.append(el('div', { className: 'status-grid mobile-components' }, componentCards));
+}
+
+async function refreshMobileWorkflowStatus() {
+  if (!mobileWorkflowOverview) return;
+  if (refreshMobileWorkflowButton) refreshMobileWorkflowButton.disabled = true;
+  try {
+    renderMobileWorkflowOverview(await getJson('/api/mobile-workflow/status'));
+  } catch (error) {
+    renderMobileWorkflowOverview({
+      ...(mobileWorkflowConfig || {}),
+      cacheStatus: 'read_error',
+      message: `Mobile workflow status unavailable: ${error.message}`
+    });
+  } finally {
+    if (refreshMobileWorkflowButton) refreshMobileWorkflowButton.disabled = false;
+  }
+}
+
 function renderStatus(payload) {
   statusList.replaceChildren();
   if (payload.checks.length === 0) {
@@ -286,9 +368,12 @@ async function loadOverviewData() {
     const config = await getJson('/api/config/public');
     renderConfig(config);
     renderMetaMcpOverview(config.metaMcp);
+    mobileWorkflowConfig = config.mobileWorkflow || null;
+    await refreshMobileWorkflowStatus();
   } catch (error) {
     sections.replaceChildren(el('p', { className: 'error', text: `Config unavailable: ${error.message}` }));
     renderMetaMcpOverview(null);
+    renderMobileWorkflowOverview(null);
   }
   await refreshStatus();
 }
@@ -631,6 +716,9 @@ async function refreshFinnick() {
 
 if (refreshFinnickButton) {
   refreshFinnickButton.addEventListener('click', refreshFinnick);
+}
+if (refreshMobileWorkflowButton) {
+  refreshMobileWorkflowButton.addEventListener('click', refreshMobileWorkflowStatus);
 }
 
 async function refreshHomelabHealth() {

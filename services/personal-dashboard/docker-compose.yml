@@ -28,6 +28,7 @@ services:
       INVESTMENT_SCREENER_RANKED_FILE: /app/investment-screener/latest_ranked.json
       INVESTMENT_SCREENER_DATA_ROOT: /app
       HOMELAB_HEALTH_REPORT_FILE: /app/homelab-health/latest_report.txt
+      MOBILE_WORKFLOW_STATUS_FILE: /app/mobile-workflow/status.json
       PERSONAL_DASHBOARD_DATABASE_URL: ${PERSONAL_DASHBOARD_DATABASE_URL:-}
       PGSSLMODE: ${PGSSLMODE:-require}
       REPO_DOCS_ROOT: /app/repo-docs
@@ -62,6 +63,12 @@ services:
       - type: bind
         source: ${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}/homelab-health
         target: /app/homelab-health
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}/mobile-workflow
+        target: /app/mobile-workflow
         read_only: true
         bind:
           create_host_path: false
