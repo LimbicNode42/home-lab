@@ -24,6 +24,25 @@ async function connectorStatuses(connectors) {
   return statuses;
 }
 
+function snapshotStatus(snapshot) {
+  if (!snapshot) return { latest_batch_id: null };
+  return {
+    schema_version: snapshot.schema_version,
+    latest_batch_id: snapshot.latest_batch_id ?? null,
+    batch_id: snapshot.batch_id ?? null,
+    record_count: snapshot.record_count ?? 0,
+    min_sent_at: snapshot.min_sent_at ?? null,
+    max_sent_at: snapshot.max_sent_at ?? null,
+    sha256: snapshot.sha256 ?? null,
+    copy_status: snapshot.copy_status ?? null,
+    placements: {
+      local_closed_snapshot: Boolean(snapshot.localSnapshotPath),
+      nas_snapshot: Boolean(snapshot.nasSnapshotPath),
+      manifest: Boolean(snapshot.manifestPath)
+    }
+  };
+}
+
 export function createApp({ store, connectors = [] }) {
   return {
     async handle(request) {
@@ -35,7 +54,7 @@ export function createApp({ store, connectors = [] }) {
       }
       if (url.pathname === '/api/unified-inbox/status') {
         const status = await store.status();
-        return json({ service: { name: 'unified-inbox', mode: 'read_only', status: 'ok' }, connectors: await connectorStatuses(connectors), message_count: status.message_count, snapshots: status.snapshots, exclusions: EXCLUSIONS });
+        return json({ service: { name: 'unified-inbox', mode: 'read_only', status: 'ok' }, connectors: await connectorStatuses(connectors), message_count: status.message_count, snapshots: snapshotStatus(status.snapshots), exclusions: EXCLUSIONS });
       }
       if (url.pathname === '/api/unified-inbox/messages') {
         const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit') ?? 50)));

@@ -27,8 +27,9 @@ test('validateEnvelope accepts the locked normalized envelope shape', () => {
   assert.equal(envelope.source, 'email-imap');
 });
 
-test('validateEnvelope rejects missing canonical fields and unsafe permalinks', () => {
+test('validateEnvelope rejects missing canonical fields, invalid read states, and unsafe permalinks', () => {
   assert.throws(() => validateEnvelope({ ...baseEnvelope, ingest_batch_id: undefined }), /ingest_batch_id/i);
+  assert.throws(() => validateEnvelope({ ...baseEnvelope, read_state: 'archived' }), /read_state/i);
   assert.throws(() => validateEnvelope({ ...baseEnvelope, permalink: 'https://example.test/message?token=abc' }), /permalink/i);
   assert.throws(() => validateEnvelope({ ...baseEnvelope, sent_at: '2026-09-01 00:00:00' }), /sent_at/i);
 });

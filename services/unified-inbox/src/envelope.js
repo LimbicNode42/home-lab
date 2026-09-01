@@ -57,7 +57,8 @@ export function validateEnvelope(input) {
   if (!Array.isArray(input.attachment_refs)) throw new Error('Envelope field attachment_refs must be an array');
   output.attachment_refs = input.attachment_refs.map((ref) => ({ ...ref }));
   if (typeof input.read_state !== 'string' || input.read_state.trim() === '') throw new Error('Envelope field read_state must be a string');
-  output.read_state = READ_STATES.has(input.read_state) ? input.read_state : input.read_state;
+  if (!READ_STATES.has(input.read_state)) throw new Error('Envelope field read_state must be one of unknown, unread, read');
+  output.read_state = input.read_state;
   output.permalink = validatePermalink(input.permalink);
   if (input.raw_ref == null || (typeof input.raw_ref !== 'object' && typeof input.raw_ref !== 'string')) throw new Error('Envelope field raw_ref must be an object or string reference');
   output.raw_ref = typeof input.raw_ref === 'object' ? { ...input.raw_ref } : input.raw_ref;
