@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { sanitizeForLog, assertNoSecretLeak } from '../src/redaction.js';
+import { sanitizeForLog, assertNoCredentialLeak, assertNoSecretLeak } from '../src/redaction.js';
 
 test('sanitizeForLog redacts tokens, authorization headers, database URLs, and local paths', () => {
   const bearerHeader = ['Bearer', 'credential-value-forbidden'].join(' ');
@@ -24,4 +24,10 @@ test('sanitizeForLog redacts tokens, authorization headers, database URLs, and l
 test('assertNoSecretLeak rejects unsanitized secret-shaped output', () => {
   const unsafeLine = ['Authorization:', 'Bearer', 'credential-value-forbidden'].join(' ');
   assert.throws(() => assertNoSecretLeak({ log: unsafeLine }), /secret-shaped/i);
+});
+
+test('assertNoCredentialLeak permits internal paths but rejects credentials', () => {
+  assert.doesNotThrow(() => assertNoCredentialLeak({ manifestPath: '/mnt/nas/services/unified-inbox/manifests/batch.manifest.json' }));
+  const unsafeLine = ['Authorization:', 'Bearer', 'credential-value-forbidden'].join(' ');
+  assert.throws(() => assertNoCredentialLeak({ log: unsafeLine }), /secret-shaped/i);
 });

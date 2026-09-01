@@ -2,7 +2,7 @@ import { mkdir, writeFile, rename, copyFile, readFile, stat } from 'node:fs/prom
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { validateEnvelope, dedupeKey } from './envelope.js';
-import { assertNoSecretLeak } from './redaction.js';
+import { assertNoCredentialLeak, assertNoSecretLeak } from './redaction.js';
 
 function conversationKey(envelope) { return `${envelope.source}/${envelope.account_ref}/${envelope.conversation_id}`; }
 
@@ -89,7 +89,7 @@ export class FileSnapshotStore extends MemorySnapshotStore {
     await rename(tmpPath, localSnapshotPath);
     await copyFile(localSnapshotPath, nasSnapshotPath);
     const manifest = this.#manifest(batchId, written, { localSnapshotPath, nasSnapshotPath, manifestPath: join(this.nasManifestDir, `${batchId}.manifest.json`) });
-    assertNoSecretLeak(manifest);
+    assertNoCredentialLeak(manifest);
     await writeFile(manifest.manifestPath, JSON.stringify(manifest, null, 2), { mode: 0o600 });
     this.batches.push(manifest);
     return manifest;
