@@ -1351,8 +1351,8 @@ const INVESTMENT_SCREENER_DOC_LINKS = [
   { label: 'Investment screener operations', url: '/api/docs/investment-screener-operations-limitations', doc_id: 'investment-screener-operations-limitations' }
 ];
 const INVESTMENT_SCREENER_MODE_VALUES = new Set(['fixture', 'live', 'asx-yahoo-timeseries', 'unknown']);
-const INVESTMENT_SCREENER_FILTERABLE_FIELDS = new Set(['market']);
-const INVESTMENT_SCREENER_UNAVAILABLE_FIELDS = new Set(['exchange', 'region', 'sector', 'industry']);
+const INVESTMENT_SCREENER_FILTERABLE_FIELDS = new Set(['market', 'sector', 'industry']);
+const INVESTMENT_SCREENER_UNAVAILABLE_FIELDS = new Set(['exchange', 'region']);
 const INVESTMENT_SCREENER_METRIC_VALUES = new Set(['composite', 'quality', 'valuation', 'growth', 'graham_safety', 'durability', 'risk_adjustments']);
 const INVESTMENT_SCREENER_WEIGHT_VALUES = new Set(['balanced', 'quality', 'valuation', 'growth', 'graham_safety', 'durability', 'risk_adjustments']);
 const INVESTMENT_SCREENER_QUERY_KEYS = new Set(['market', 'exchange', 'region', 'sector', 'industry', 'metric', 'weight', 'topN', 'q', 'limit', 'offset']);
@@ -1416,6 +1416,26 @@ function safeMarket(value, fallback = 'ASX') {
   const text = safeText(value, fallback, 20);
   if (!text || !/^[A-Z0-9._-]{1,20}$/i.test(text)) return fallback;
   return text.toUpperCase();
+}
+
+// GICS-style sector/industry labels are free-text ("Health Care Equipment & Services",
+// "Pharmaceuticals, Biotechnology & Life Sciences"). They may contain letters, digits,
+// spaces, ampersands, commas, periods, parentheses, apostrophes, and hyphens.
+const CLASSIFICATION_VALUE_RE = /^[\p{L}\p{N}][\p{L}\p{N} &(),.'_-]{0,79}$/u;
+
+function safeClassification(value) {
+  const text = safeText(value, null, 80);
+  if (!text || !CLASSIFICATION_VALUE_RE.test(text)) return null;
+  return text;
+}
+
+function splitClassificationValues(value) {
+  const text = safeText(value, null, 240);
+  if (!text) return [];
+  return text
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
 }
 
 function safeInteger(value) {
@@ -1850,6 +1870,8 @@ function sanitizeInvestmentCandidate(candidate, index = 0) {
     name: name ?? ticker ?? 'Unknown candidate',
     market: safeText(candidate.market, null, 80),
     currency: safeText(candidate.currency, null, 16),
+    sector: safeClassification(candidate.sector),
+    industry: safeClassification(candidate.industry),
     score,
     sub_scores: safeSubScores(candidate.sub_scores),
     missing_penalty_points: safeNumber(candidate.missing_penalty_points),
@@ -1923,15 +1945,36 @@ function readInvestmentFilterParams(searchParams) {
   }
 
   for (const field of INVESTMENT_SCREENER_FILTERABLE_FIELDS) {
-    const value = safeText(searchParams.get(field), null, 80);
-    if (value) {
-      if (!/^[a-z0-9][a-z0-9 ._-]{0,79}$/i.test(value)) {
+    const rawValue = searchParams.get(field);
+    if (!rawValue || !rawValue.trim()) {
+      if (searchParams.has(field) && String(rawValue ?? '').trim()) {
+        return investmentFilterError('invalid_investment_screener_filter', 'Investment screener filter values must use plain labels.');
+      }
+      continue;
+    }
+    if (field === 'market') {
+      const value = safeText(rawValue, null, 80);
+      if (!value || !/^[a-z0-9][a-z0-9 ._-]{0,79}$/i.test(value)) {
         return investmentFilterError('invalid_investment_screener_filter', 'Investment screener filter values must use plain market labels.');
       }
       applied[field] = value;
-    } else if (searchParams.has(field) && String(searchParams.get(field) ?? '').trim()) {
-      return investmentFilterError('invalid_investment_screener_filter', 'Investment screener filter values must use plain market labels.');
+      continue;
     }
+    // sector / industry: comma-separated multi-select. Each token must be a
+    // plain classification label; an invalid token fails the whole request.
+    const tokens = splitClassificationValues(rawValue);
+    if (tokens.length === 0) {
+      return investmentFilterError('invalid_investment_screener_filter', `Investment screener ${field} filter values must use plain labels.`);
+    }
+    const cleaned = [];
+    for (const token of tokens) {
+      const validated = safeClassification(token);
+      if (!validated) {
+        return investmentFilterError('invalid_investment_screener_filter', `Investment screener ${field} filter values must use plain labels.`);
+      }
+      cleaned.push(validated);
+    }
+    applied[field] = cleaned;
   }
 
   const metric = safeText(searchParams.get('metric'), null, 40);
@@ -1993,8 +2036,24 @@ function readInvestmentFilterParams(searchParams) {
 function searchInvestmentCandidates(candidates, query) {
   if (!query) return candidates;
   const needle = query.toLowerCase();
-  return candidates.filter((candidate) => [candidate.ticker, candidate.name, candidate.market, candidate.currency]
+  return candidates.filter((candidate) => [candidate.ticker, candidate.name, candidate.market, candidate.currency, candidate.sector, candidate.industry]
     .some((value) => String(value ?? '').toLowerCase().includes(needle)));
+}
+
+function matchClassification(candidate, field, wanted) {
+  if (!Array.isArray(wanted) || wanted.length === 0) return true;
+  const actual = String(candidate?.[field] ?? '').trim().toLowerCase();
+  if (!actual) return false;
+  return wanted.some((entry) => String(entry).trim().toLowerCase() === actual);
+}
+
+function distinctClassifications(candidates, field) {
+  const values = new Set();
+  for (const candidate of candidates) {
+    const value = candidate?.[field];
+    if (typeof value === 'string' && value.trim()) values.add(value.trim());
+  }
+  return [...values].sort((left, right) => left.localeCompare(right));
 }
 
 function investmentPagination(total, limit, offset) {
@@ -2015,7 +2074,19 @@ function investmentPagination(total, limit, offset) {
 function applyInvestmentScreenerFilters(payload, searchParams) {
   const parsed = readInvestmentFilterParams(searchParams);
   if (parsed.statusCode) return parsed;
-  if (!parsed.active) return { statusCode: 200, payload };
+  const allCandidates = Array.isArray(payload.candidates) ? payload.candidates : [];
+  if (!parsed.active) {
+    return {
+      statusCode: 200,
+      payload: {
+        ...payload,
+        available_facets: {
+          sectors: distinctClassifications(allCandidates, 'sector'),
+          industries: distinctClassifications(allCandidates, 'industry')
+        }
+      }
+    };
+  }
 
   const { applied } = parsed;
   let candidates = [...payload.candidates];
@@ -2024,6 +2095,13 @@ function applyInvestmentScreenerFilters(payload, searchParams) {
   if (applied.market) {
     const wanted = applied.market.toLowerCase();
     candidates = candidates.filter((candidate) => String(candidate.market ?? '').toLowerCase() === wanted);
+  }
+
+  if (applied.sector) {
+    candidates = candidates.filter((candidate) => matchClassification(candidate, 'sector', applied.sector));
+  }
+  if (applied.industry) {
+    candidates = candidates.filter((candidate) => matchClassification(candidate, 'industry', applied.industry));
   }
 
   candidates = searchInvestmentCandidates(candidates, applied.q);
@@ -2040,6 +2118,14 @@ function applyInvestmentScreenerFilters(payload, searchParams) {
   const total = candidates.length;
   const limit = applied.limit ?? applied.topN ?? INVESTMENT_SCREENER_DEFAULT_PAGE_SIZE;
   const offset = applied.offset ?? 0;
+
+  // Facets are computed against the full (pre-pagination) filtered candidate set so
+  // the sector/industry dropdowns reflect what remains selectable after other filters.
+  const available_facets = {
+    sectors: distinctClassifications(candidates, 'sector'),
+    industries: distinctClassifications(candidates, 'industry')
+  };
+
   const pagination = investmentPagination(total, limit, offset);
   candidates = candidates.slice(pagination.offset, pagination.offset + pagination.limit);
   if (candidates.length === 0) {
@@ -2054,6 +2140,7 @@ function applyInvestmentScreenerFilters(payload, searchParams) {
       ...payload,
       candidates,
       applied_filters: applied,
+      available_facets,
       total_candidates: total,
       displayed_count: candidates.length,
       pagination,
