@@ -41,7 +41,7 @@ const DEFAULT_CONFIG = {
     enabled: true,
     title: 'Unified Inbox',
     publicUrl: 'http://192.168.0.50:8766',
-    statusUrl: 'http://192.168.0.50:8766/api/unified-inbox/status',
+    statusUrl: 'http://172.17.0.1:8766/api/unified-inbox/status',
     note: 'Read-only message aggregation status. Dashboard exposes health, counts, and freshness only; message bodies stay in the inbox service.',
     expectedConnectors: [
       { id: 'discord', label: 'Discord', state: 'pending_credentials', detail: 'Connector credentials have not been authorized in this phase.' },
