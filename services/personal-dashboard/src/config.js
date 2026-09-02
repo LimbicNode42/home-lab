@@ -9,7 +9,8 @@ const DEFAULT_CONFIG = {
       links: [
         { label: 'Vaultwarden', href: 'https://vault.wheeler-network.com' },
         { label: 'Traefik', href: 'https://traefik.wheeler-network.com' },
-        { label: 'Hermes Kanban', href: 'http://192.168.0.20:9119/kanban' }
+        { label: 'Hermes Kanban', href: 'http://192.168.0.20:9119/kanban' },
+        { label: 'Unified Inbox', href: 'http://192.168.0.50:8766' }
       ]
     }
   ],
@@ -19,8 +20,27 @@ const DEFAULT_CONFIG = {
       label: 'Hermes Kanban',
       targetUrl: 'http://192.168.0.20:9119/kanban',
       displayUrl: 'http://192.168.0.20:9119/kanban'
+    },
+    {
+      id: 'unified-inbox',
+      label: 'Unified Inbox',
+      targetUrl: 'http://172.17.0.1:8766/healthz',
+      displayUrl: 'http://192.168.0.50:8766',
+      acceptableStatuses: [200],
+      timeoutMs: 1000
     }
   ],
+  unifiedInbox: {
+    enabled: true,
+    title: 'Unified Inbox',
+    publicUrl: 'http://192.168.0.50:8766',
+    statusUrl: 'http://172.17.0.1:8766/api/unified-inbox/status',
+    note: 'Read-only message aggregation status. Dashboard exposes health, counts, and freshness only; message bodies stay in the inbox service.',
+    expectedConnectors: [
+      { id: 'discord', label: 'Discord', state: 'pending_credentials', detail: 'Connector credentials have not been authorized in this phase.' },
+      { id: 'telegram', label: 'Telegram', state: 'pending_credentials', detail: 'Connector credentials have not been authorized in this phase.' }
+    ]
+  },
   metaMcp: {
     enabled: true,
     title: 'MetaMCP aggregator',
@@ -134,6 +154,53 @@ function validateStateValue(value, field) {
     throw new Error(`Invalid dashboard config: ${field} must be a safe state label`);
   }
   return state;
+}
+
+
+function validateUnifiedInbox(unifiedInbox) {
+  if (unifiedInbox === undefined || unifiedInbox === null) return null;
+  if (typeof unifiedInbox !== 'object' || Array.isArray(unifiedInbox)) {
+    throw new Error('Invalid dashboard config: unifiedInbox must be an object');
+  }
+
+  const enabled = unifiedInbox.enabled !== false;
+  const title = requireText(unifiedInbox.title ?? 'Unified Inbox', 'unifiedInbox.title');
+  const publicUrl = requireText(unifiedInbox.publicUrl, 'unifiedInbox.publicUrl');
+  const statusUrl = requireText(unifiedInbox.statusUrl, 'unifiedInbox.statusUrl');
+  if (!isHttpUrl(publicUrl)) {
+    throw new Error('Invalid dashboard config: unifiedInbox.publicUrl must be an http(s) URL');
+  }
+  if (!isHttpUrl(statusUrl)) {
+    throw new Error('Invalid dashboard config: unifiedInbox.statusUrl must be an http(s) URL');
+  }
+  if (/[?&](?:token|api[_-]?key|key|authorization)=/i.test(`${publicUrl} ${statusUrl}`)) {
+    throw new Error('Invalid Unified Inbox config: URLs must not embed credentials');
+  }
+  const note = requireText(unifiedInbox.note ?? 'Read-only unified inbox status.', 'unifiedInbox.note');
+  const expectedConnectors = unifiedInbox.expectedConnectors ?? [];
+  if (!Array.isArray(expectedConnectors)) {
+    throw new Error('Invalid dashboard config: unifiedInbox.expectedConnectors must be an array');
+  }
+  const connectors = expectedConnectors.map((connector, index) => {
+    const id = requireText(connector?.id, `unifiedInbox.expectedConnectors[${index}].id`);
+    if (!/^[a-z0-9][a-z0-9-]{0,62}$/i.test(id)) {
+      throw new Error(`Invalid dashboard config: unifiedInbox.expectedConnectors[${index}].id must be DNS-label-like`);
+    }
+    return {
+      id,
+      label: requireText(connector?.label, `unifiedInbox.expectedConnectors[${index}].label`),
+      state: validateStateValue(connector?.state ?? 'pending_credentials', `unifiedInbox.expectedConnectors[${index}].state`),
+      detail: requireText(connector?.detail ?? 'Connector status has not been published yet.', `unifiedInbox.expectedConnectors[${index}].detail`)
+    };
+  });
+  const timeoutMs = Number(unifiedInbox.timeoutMs ?? 1000);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 5000) {
+    throw new Error('Invalid dashboard config: unifiedInbox.timeoutMs must be an integer between 100 and 5000');
+  }
+
+  const normalized = { enabled, title, publicUrl, statusUrl, note, expectedConnectors: connectors, timeoutMs };
+  assertNoUnsafeOperatorInternals(JSON.stringify(normalized), 'unifiedInbox');
+  return normalized;
 }
 
 function validateMetaMcp(metaMcp) {
@@ -292,7 +359,26 @@ function validateStatusChecks(statusChecks) {
       throw new Error(`Invalid status targetUrl for ${label}: only http(s) URLs are allowed`);
     }
 
-    const result = { id, label, targetUrl };
+const acceptableStatuses = check.acceptableStatuses ?? [200, 204, 301, 302];
+    if (!Array.isArray(acceptableStatuses) || acceptableStatuses.length === 0) {
+      throw new Error(`Invalid status acceptableStatuses for ${label}: must be a non-empty array`);
+    }
+    const normalizedStatuses = acceptableStatuses.map((status, statusIndex) => {
+      const parsed = Number(status);
+      if (!Number.isInteger(parsed) || parsed < 100 || parsed > 599) {
+        throw new Error(`Invalid status acceptableStatuses[${statusIndex}] for ${label}: must be an HTTP status code`);
+      }
+      return parsed;
+    });
+
+    const result = { id, label, targetUrl, acceptableStatuses: normalizedStatuses };
+    if (check.timeoutMs !== undefined) {
+      const timeoutMs = Number(check.timeoutMs);
+      if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 10_000) {
+        throw new Error(`Invalid status timeoutMs for ${label}: must be an integer between 100 and 10000`);
+      }
+      result.timeoutMs = timeoutMs;
+    }
     if (check.displayUrl !== undefined) {
       const displayUrl = requireText(check.displayUrl, `statusChecks[${index}].displayUrl`);
       if (!isHttpUrl(displayUrl)) {
@@ -310,6 +396,7 @@ export function normalizeConfig(rawConfig = DEFAULT_CONFIG) {
     title,
     sections: validateSections(rawConfig.sections ?? []),
     statusChecks: validateStatusChecks(rawConfig.statusChecks ?? []),
+    unifiedInbox: validateUnifiedInbox(rawConfig.unifiedInbox),
     metaMcp: validateMetaMcp(rawConfig.metaMcp),
     mobileWorkflow: validateMobileWorkflow(rawConfig.mobileWorkflow)
   };
@@ -342,6 +429,13 @@ export function toPublicConfig(config) {
       label: check.label,
       ...(check.displayUrl ? { displayUrl: check.displayUrl } : {})
     })),
+    ...(config.unifiedInbox ? { unifiedInbox: {
+      enabled: config.unifiedInbox.enabled,
+      title: config.unifiedInbox.title,
+      publicUrl: config.unifiedInbox.publicUrl,
+      note: config.unifiedInbox.note,
+      expectedConnectors: config.unifiedInbox.expectedConnectors
+    } } : {}),
     ...(config.metaMcp ? { metaMcp: config.metaMcp } : {}),
     ...(config.mobileWorkflow ? { mobileWorkflow: config.mobileWorkflow } : {})
   };

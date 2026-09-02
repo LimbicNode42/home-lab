@@ -27,7 +27,9 @@ export class StatusService {
   async probe(check) {
     const started = Date.now();
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timeoutMs = Number.isFinite(Number(check.timeoutMs)) ? Number(check.timeoutMs) : this.timeoutMs;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const acceptableStatuses = new Set(check.acceptableStatuses ?? [200, 204, 301, 302]);
 
     try {
       const response = await this.fetchImpl(check.targetUrl, {
@@ -38,7 +40,7 @@ export class StatusService {
       return {
         id: check.id,
         label: check.label,
-        status: response.ok || response.status === 204 || response.status === 301 || response.status === 302 ? 'up' : 'down',
+        status: response.ok || acceptableStatuses.has(response.status) ? 'up' : 'down',
         httpStatus: response.status,
         latencyMs: Date.now() - started,
         ...(check.displayUrl ? { displayUrl: check.displayUrl } : {})
