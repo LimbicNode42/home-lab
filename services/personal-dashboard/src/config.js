@@ -44,8 +44,10 @@ const DEFAULT_CONFIG = {
     statusUrl: 'http://172.17.0.1:8766/api/unified-inbox/status',
     note: 'Read-only message aggregation status. Dashboard exposes health, counts, and freshness only; message bodies stay in the inbox service.',
     expectedConnectors: [
-      { id: 'discord', label: 'Discord', state: 'pending_credentials', detail: 'Connector credentials have not been authorized in this phase.' },
-      { id: 'telegram', label: 'Telegram', state: 'pending_credentials', detail: 'Connector credentials have not been authorized in this phase.' }
+      { id: 'discord', label: 'Discord', state: 'pending_credentials', detail: 'Phase 2 connector implemented; gateway state / bot credentials not yet authorized.' },
+      { id: 'telegram', label: 'Telegram', state: 'pending_credentials', detail: 'Phase 2 connector implemented; bot credentials not yet authorized.' },
+      { id: 'matrix', label: 'Matrix', state: 'pending_credentials', detail: 'Phase 2 connector implemented; homeserver session not yet authorized.' },
+      { id: 'slack', label: 'Slack', state: 'pending_credentials', detail: 'Phase 2 connector implemented; workspace app/bot not yet authorized.' }
     ]
   },
   metaMcp: {
