@@ -33,6 +33,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -45,6 +46,14 @@ RAW_FIELDS = [
     "price", "shares_outstanding", "revenue", "prior_revenue",
     "net_income", "operating_cash_flow", "capital_expenditures",
     "total_assets", "total_liabilities", "current_assets", "current_liabilities",
+]
+
+# Balance-sheet and cash-flow fallbacks are never imputed. A literal zero from a
+# provider is treated as too ambiguous for missing-field hydration and is not
+# allowed to make an excluded company look complete.
+BALANCE_CASHFLOW_FIELDS = [
+    "operating_cash_flow", "capital_expenditures", "total_assets",
+    "total_liabilities", "current_assets", "current_liabilities",
 ]
 
 DERIVED_INPUTS = {
@@ -1349,13 +1358,15 @@ def hydrate_companies_from_asx_tickers(
 # Trust ranking for credentialed provider adapters. Lower index = higher
 # preference when multiple providers supply the same missing field.
 PROVIDER_TRUST_RANK = {
-    "fmp": 0,
-    "alpha_vantage": 1,
+    "eodhd": 0,
+    "fmp": 1,
+    "alpha_vantage": 2,
 }
 
-# Env var names (research note t_a8b454bb). Values are never committed; they are
-# injected at runtime from Vaultwarden/local secret storage.
+# Env var/config flag names. Secret values are never committed; credentialed
+# providers are injected at runtime from Vaultwarden/local secret storage.
 PROVIDER_ENV_VARS = {
+    "eodhd": "EODHD_API_KEY",
     "fmp": "FMP_API_KEY",
     "alpha_vantage": "ALPHA_VANTAGE_API_KEY",
 }
@@ -1412,7 +1423,7 @@ def _first_dated(items: list[dict], date_keys: tuple[str, ...]) -> Optional[dict
     )
 
 
-_SECRET_QUERY_PARAMS = frozenset({"apikey", "api_key", "access_token", "key", "token", "signature", "sig", "session", "sessionid", "session_id", "sid"})
+_SECRET_QUERY_PARAMS = frozenset({"apikey", "api_key", "api_token", "access_token", "key", "token", "signature", "sig", "session", "sessionid", "session_id", "sid"})
 _SECRET_ASSIGNMENT_RE = re.compile(
     r"(?i)(?<![A-Za-z0-9_])"
     r"(" + "|".join(re.escape(param) for param in sorted(_SECRET_QUERY_PARAMS, key=len, reverse=True)) + r")"
@@ -1613,6 +1624,120 @@ class FmpAdapter(ProviderAdapter):
         return fields
 
 
+class EodhdAdapter(ProviderAdapter):
+    """EODHD fundamentals adapter for ASX annual statement fallback fills."""
+
+    name = "eodhd"
+    env_var = "EODHD_API_KEY"
+    base_url = "https://eodhd.com/api/fundamentals"
+
+    @staticmethod
+    def _yearly_rows(section: Any) -> list[dict]:
+        if not isinstance(section, dict):
+            return []
+        yearly = section.get("yearly") or section.get("Yearly") or section.get("annual")
+        if isinstance(yearly, dict):
+            rows = [row for row in yearly.values() if isinstance(row, dict)]
+        elif isinstance(yearly, list):
+            rows = [row for row in yearly if isinstance(row, dict)]
+        else:
+            rows = []
+        return sorted(rows, key=lambda row: str(row.get("date") or row.get("filing_date") or row.get("period") or ""), reverse=True)
+
+    @staticmethod
+    def _first_present(row: dict, *names: str) -> Any:
+        for name in names:
+            value = row.get(name)
+            if value is not None:
+                return value
+        return None
+
+    @staticmethod
+    def _row_date(row: dict) -> str:
+        return str(row.get("date") or row.get("filing_date") or row.get("period") or "")
+
+    def _fetch_fields(self, ticker: str) -> dict[str, FieldValue]:
+        key = self.credential()
+        symbol = normalise_asx_ticker(ticker).replace(".AX", ".AU")
+        url = f"{self.base_url}/{urllib.parse.quote(symbol)}?api_token={urllib.parse.quote(key or '')}&fmt=json"
+        fetcher = self._fetcher or self._get_json
+
+        if self._fetcher is None:
+            # Paid endpoint, but still external infrastructure. Keep live backfills gentle.
+            try:
+                sleep_seconds = float(os.environ.get("EODHD_PROVIDER_FALLBACK_SLEEP_SECONDS", "0.75") or 0.75)
+            except ValueError:
+                sleep_seconds = 0.75
+            time.sleep(max(sleep_seconds, 0.75))
+
+        try:
+            payload = fetcher(url)
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(
+                f"recoverable EODHD fundamentals failure: status {exc.code} "
+                f"{getattr(exc, 'reason', '')}: {redact_url_secrets(exc.url or url)}"
+            ) from exc
+
+        financials = payload.get("Financials") if isinstance(payload, dict) else None
+        if not isinstance(financials, dict):
+            return {}
+
+        income_rows = self._yearly_rows(financials.get("Income_Statement"))
+        balance_rows = self._yearly_rows(financials.get("Balance_Sheet"))
+        cash_rows = self._yearly_rows(financials.get("Cash_Flow"))
+        income = income_rows[0] if income_rows else {}
+        prior_income = income_rows[1] if len(income_rows) > 1 else {}
+        balance = balance_rows[0] if balance_rows else {}
+        cash = cash_rows[0] if cash_rows else {}
+
+        fields: dict[str, FieldValue] = {}
+        if income:
+            fields["revenue"] = self._field(
+                "revenue",
+                self._first_present(income, "totalRevenue", "revenue"),
+                url,
+                self._row_date(income),
+            )
+            fields["net_income"] = self._field(
+                "net_income",
+                self._first_present(income, "netIncome", "netIncomeApplicableToCommonShares"),
+                url,
+                self._row_date(income),
+            )
+        if prior_income:
+            fields["prior_revenue"] = self._field(
+                "prior_revenue",
+                self._first_present(prior_income, "totalRevenue", "revenue"),
+                url,
+                self._row_date(prior_income),
+            )
+        if balance:
+            fields["total_assets"] = self._field("total_assets", self._first_present(balance, "totalAssets"), url, self._row_date(balance))
+            fields["total_liabilities"] = self._field(
+                "total_liabilities",
+                self._first_present(balance, "totalLiab", "totalLiabilities", "totalLiabilitiesNetMinorityInterest"),
+                url,
+                self._row_date(balance),
+            )
+            fields["current_assets"] = self._field("current_assets", self._first_present(balance, "totalCurrentAssets"), url, self._row_date(balance))
+            fields["current_liabilities"] = self._field("current_liabilities", self._first_present(balance, "totalCurrentLiabilities"), url, self._row_date(balance))
+        if cash:
+            fields["operating_cash_flow"] = self._field(
+                "operating_cash_flow",
+                self._first_present(cash, "totalCashFromOperatingActivities", "operatingCashFlow", "operatingCashflow"),
+                url,
+                self._row_date(cash),
+            )
+            fields["capital_expenditures"] = self._field(
+                "capital_expenditures",
+                self._first_present(cash, "capitalExpenditures", "capitalExpenditure"),
+                url,
+                self._row_date(cash),
+            )
+
+        return {name: fv for name, fv in fields.items() if fv.value is not None}
+
+
 class AlphaVantageAdapter(ProviderAdapter):
     """Alpha Vantage fundamentals adapter (spot-fill only; 25 req/day free tier)."""
 
@@ -1660,6 +1785,7 @@ class AlphaVantageAdapter(ProviderAdapter):
 
 
 ADAPTER_CLASSES: dict[str, type] = {
+    "eodhd": EodhdAdapter,
     "fmp": FmpAdapter,
     "alpha_vantage": AlphaVantageAdapter,
 }
@@ -1701,9 +1827,14 @@ def merge_missing_fields(
         fv: Optional[FieldValue] = company.get(field_name)
         if fv is not None and fv.value is not None:
             continue
+        reject_zero = field_name in BALANCE_CASHFLOW_FIELDS
         for provider_name, fields in provider_fields:
             candidate = fields.get(field_name)
             if candidate is not None and candidate.value is not None:
+                if reject_zero and candidate.value == 0:
+                    # Zero BS/cash-flow fallbacks are a fabrication risk; leave
+                    # the field explicitly missing rather than manufacturing coverage.
+                    continue
                 company[field_name] = sanitized_field_value(field_name, candidate)
                 filled[field_name] = provider_name
                 break

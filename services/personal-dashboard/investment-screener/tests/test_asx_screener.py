@@ -107,6 +107,14 @@ def asx_company(**overrides):
     return base
 
 
+def _revenue_only_company(**overrides):
+    """A company with income/valuation inputs but no balance/cash-flow fields."""
+    company = asx_company(ticker="REV.AX", **overrides)
+    for name in scr.BALANCE_CASHFLOW_FIELDS:
+        company[name] = scr.missing_field_value(name, "provider_absent", "yahoo-finance")
+    return company
+
+
 def bhp_timeseries_fixture():
     """Minimal Yahoo timeseries fixture for BHP.AX."""
     return {
@@ -1135,6 +1143,14 @@ class TestProviderAdapterFailClosed(unittest.TestCase):
         self.assertFalse(adapter.enabled())
         self.assertEqual(adapter.fetch("BHP.AX"), {})
 
+    def test_eodhd_adapter_disabled_without_credential_is_noop(self):
+        calls = []
+        adapter = scr.EodhdAdapter(env={}, fetcher=lambda url, timeout=None: calls.append(url) or {})
+
+        self.assertFalse(adapter.enabled())
+        self.assertEqual(adapter.fetch("BHP.AX"), {})
+        self.assertEqual(calls, [])
+
     def test_adapter_status_reports_missing_credential_reason(self):
         adapter = scr.AlphaVantageAdapter(env={})
         status = adapter.status()
@@ -1298,6 +1314,125 @@ class TestProviderAdaptersNormalize(unittest.TestCase):
         self.assertIn("recoverable FMP endpoint failures", str(adapter.last_error))
         self.assertNotIn("test-key", str(adapter.last_error))
 
+    def test_eodhd_adapter_normalizes_annual_fundamentals_with_prior_period(self):
+        calls = []
+
+        def fetcher(url, timeout=None, cache_dir=None):
+            calls.append(url)
+            parsed = scr.urllib.parse.urlsplit(url)
+            query = dict(scr.urllib.parse.parse_qsl(parsed.query))
+            self.assertEqual(parsed.netloc, "eodhd.com")
+            self.assertEqual(parsed.path, "/api/fundamentals/BHP.AU")
+            self.assertEqual(query.get("api_token"), "test-eodhd-key")
+            return {
+                "Financials": {
+                    "Income_Statement": {
+                        "yearly": {
+                            "2024-06-30": {"date": "2024-06-30", "totalRevenue": "55000000000", "netIncome": "9000000000"},
+                            "2025-06-30": {"date": "2025-06-30", "totalRevenue": "60000000000", "netIncome": "10000000000"},
+                        }
+                    },
+                    "Balance_Sheet": {
+                        "yearly": {
+                            "2025-06-30": {
+                                "date": "2025-06-30",
+                                "totalAssets": "113137000000",
+                                "totalLiab": "65066000000",
+                                "totalCurrentAssets": "25269000000",
+                                "totalCurrentLiabilities": "17050000000",
+                            }
+                        }
+                    },
+                    "Cash_Flow": {
+                        "yearly": {
+                            "2025-06-30": {
+                                "date": "2025-06-30",
+                                "totalCashFromOperatingActivities": "18831000000",
+                                "capitalExpenditures": "10170000000",
+                            }
+                        }
+                    },
+                }
+            }
+
+        adapter = scr.EodhdAdapter(env={"EODHD_API_KEY": "test-eodhd-key"}, fetcher=fetcher)
+        fields = adapter.fetch("BHP.AX")
+
+        self.assertEqual(len(calls), 1)
+        self.assertAlmostEqual(fields["revenue"].value, 60_000_000_000.0)
+        self.assertAlmostEqual(fields["prior_revenue"].value, 55_000_000_000.0)
+        self.assertAlmostEqual(fields["net_income"].value, 10_000_000_000.0)
+        self.assertAlmostEqual(fields["total_assets"].value, 113_137_000_000.0)
+        self.assertAlmostEqual(fields["total_liabilities"].value, 65_066_000_000.0)
+        self.assertAlmostEqual(fields["operating_cash_flow"].value, 18_831_000_000.0)
+        self.assertLess(fields["capital_expenditures"].value, 0)
+        prov = fields["revenue"].provenance
+        self.assertEqual(prov["provider"], "eodhd")
+        self.assertEqual(prov["source_family"], "eodhd")
+        self.assertEqual(prov["data_as_of"], "2025-06-30")
+        self.assertEqual(fields["prior_revenue"].provenance["data_as_of"], "2024-06-30")
+        self.assertNotIn("api_token", json.dumps([fv.provenance for fv in fields.values()]))
+        self.assertNotIn("test-eodhd-key", json.dumps([fv.provenance for fv in fields.values()]))
+
+    def test_eodhd_recoverable_403_returns_no_fabricated_fields_and_redacts_key(self):
+        def fetcher(url, timeout=None, cache_dir=None):
+            raise urllib.error.HTTPError(url, 403, "Only EOD data allowed for free users", None, None)
+
+        adapter = scr.EodhdAdapter(env={"EODHD_API_KEY": "test-eodhd-key"}, fetcher=fetcher)
+        fields = adapter.fetch("CTS.AX")
+
+        self.assertEqual(fields, {})
+        self.assertIsNotNone(adapter.last_error)
+        self.assertIn("403", str(adapter.last_error))
+        self.assertNotIn("api_token", str(adapter.last_error))
+        self.assertNotIn("test-eodhd-key", str(adapter.last_error))
+
+    def test_eodhd_fallback_improves_balance_cashflow_field_coverage_without_fabricated_fill(self):
+        cfg = load_config(CONFIG_PATH)
+        partial = _revenue_only_company()
+        before_payload = build_file_first_run_payload(
+            rank_companies([partial], cfg),
+            source="yahoo-finance",
+            mode="asx-yahoo-timeseries",
+            universe=["REV.AX"],
+        )
+
+        class FakeEodhd:
+            name = "eodhd"
+            last_error = None
+            def fetch(self, ticker):
+                return {
+                    "total_assets": FieldValue(100_000_000, {"source_family": "eodhd", "provider": "eodhd", "field_name": "total_assets"}),
+                    "total_liabilities": FieldValue(40_000_000, {"source_family": "eodhd", "provider": "eodhd", "field_name": "total_liabilities"}),
+                    "current_assets": FieldValue(50_000_000, {"source_family": "eodhd", "provider": "eodhd", "field_name": "current_assets"}),
+                    "current_liabilities": FieldValue(20_000_000, {"source_family": "eodhd", "provider": "eodhd", "field_name": "current_liabilities"}),
+                    "operating_cash_flow": FieldValue(30_000_000, {"source_family": "eodhd", "provider": "eodhd", "field_name": "operating_cash_flow"}),
+                    "capital_expenditures": FieldValue(-10_000_000, {"source_family": "eodhd", "provider": "eodhd", "field_name": "capital_expenditures"}),
+                }
+
+        hydrated, failures = scr.apply_provider_fallbacks_to_companies([partial], [FakeEodhd()])
+        after_payload = build_file_first_run_payload(
+            rank_companies(hydrated, cfg),
+            source="yahoo-finance",
+            mode="asx-yahoo-timeseries",
+            universe=["REV.AX"],
+        )
+
+        def present_balance_cashflow_fields(payload):
+            return {
+                row["field_name"]
+                for row in payload["observations"]
+                if row["field_name"] in scr.BALANCE_CASHFLOW_FIELDS and row["value"] is not None
+            }
+
+        before_fields = present_balance_cashflow_fields(before_payload)
+        after_fields = present_balance_cashflow_fields(after_payload)
+        self.assertEqual(failures, [])
+        self.assertEqual(before_fields, set())
+        self.assertEqual(after_fields, set(scr.BALANCE_CASHFLOW_FIELDS))
+        self.assertGreater(len(after_fields), len(before_fields))
+        self.assertEqual(hydrated[0]["operating_cash_flow"].provenance["provider"], "eodhd")
+
 
 class TestProvenanceSourceUrlRedaction(unittest.TestCase):
     """Persisted provenance.source_url must never carry provider secrets."""
@@ -1317,6 +1452,13 @@ class TestProvenanceSourceUrlRedaction(unittest.TestCase):
         self.assertIn("function=INCOME_STATEMENT", redacted)
         self.assertIn("symbol=BHP", redacted)
         self.assertNotIn("apikey", redacted)
+        self.assertNotIn("SUPER_SECRET_FAKE_KEY_123", redacted)
+
+    def test_redact_url_secrets_strips_eodhd_api_token(self):
+        url = "https://eodhd.com/api/fundamentals/BHP.AU?api_token=SUPER_SECRET_FAKE_KEY_123&fmt=json"
+        redacted = scr.redact_url_secrets(url)
+        self.assertIn("fmt=json", redacted)
+        self.assertNotIn("api_token", redacted)
         self.assertNotIn("SUPER_SECRET_FAKE_KEY_123", redacted)
 
     def test_redact_url_secrets_noop_without_query(self):
@@ -1638,9 +1780,9 @@ class TestFallbackRegistry(unittest.TestCase):
         self.assertEqual(adapters, [])
 
     def test_build_fallback_adapters_orders_by_trust_rank(self):
-        env = {"FMP_API_KEY": "f", "ALPHA_VANTAGE_API_KEY": "a"}
+        env = {"EODHD_API_KEY": "e", "FMP_API_KEY": "f", "ALPHA_VANTAGE_API_KEY": "a"}
         adapters = scr.build_fallback_adapters(env=env)
-        self.assertEqual([adapter.name for adapter in adapters], ["fmp", "alpha_vantage"])
+        self.assertEqual([adapter.name for adapter in adapters], ["eodhd", "fmp", "alpha_vantage"])
 
     def test_fill_company_missing_fields_records_disabled_providers(self):
         company = self._company_with_missing__helper()
