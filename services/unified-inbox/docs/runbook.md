@@ -18,6 +18,8 @@ Get explicit approval before any of these actions:
 8. Expose message bodies/senders in the dashboard before sanitizer/auth review.
 9. Enable webhook ingestion — the `POST /api/unified-inbox/webhook/*` route is opt-in and off by default (no `webhookIngest` router means `404`); public exposure additionally requires the public webhook exposure review.
 10. Wire any IMAP/RSS connector with real credentials — app passwords/OAuth refs must be rendered from Vaultwarden only.
+11. Modify or restart Ben's Discord-connected Hermes gateway to feed a Discord connector. Phase 2 consumes an existing sanctioned state export / read-only bot backfill only; any gateway config change is a separate approval gate.
+12. Render Discord/Telegram/Matrix/Slack bot tokens or access tokens — those come only from Vaultwarden folder `homelab` at review time, never committed.
 
 ## Local verification
 
@@ -46,4 +48,6 @@ The secret scanner should produce no matches for credential values. Variable nam
 - Add connector tests before production connector code.
 - Confirm Vaultwarden item and fields in `env.map.example`.
 - Confirm rate-limit/backoff behavior reports structured health rather than crash-looping.
-- Do not add reply/send/delete/archive/mark-read paths in phase 1.
+- Do not add reply/send/delete/archive/mark-read paths in any phase.
+- Phase 2 connectors treat sync cursors/tokens as sensitive runtime state (never committed; see `src/connectors/cursor-state.js`).
+- Discord integration consumes an existing sanctioned state export or read-only bot backfill; any gateway config change is a separate approval gate.

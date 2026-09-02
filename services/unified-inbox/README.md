@@ -61,12 +61,24 @@ Phase 1 ships three read-only connectors behind `ReadOnlyMessageStream`:
 | RSS/Atom | `rss` | Poll (bounded, rate-limited) | Fetch/parse only; no upstream write | `unified-inbox/rss/<feed-or-source>` | non-secret: `feed_url`; optional: `min_interval_ms` |
 | Webhook | `webhook` | Push (receive) | Signature-verified inbound only; no upstream mutation | `unified-inbox/webhook/<source>` | non-secret: `source_label`; secret: `webhook_signing_secret` |
 
+## Connectors (phase 2 implemented)
+
+Phase 2 adds four sanctioned chat/workspace connectors, all read-only behind `ReadOnlyMessageStream`:
+
+| Connector | Source id | Ingestion mode | Read-only guarantees | Vaultwarden item | Secret/non-secret fields |
+| --- | --- | --- | --- | --- | --- |
+| Discord | `discord` | Gateway state / bounded REST read-back | Consumes an already-connected Hermes gateway state export or a read-only bot backfill; NO send/reply/react/delete/archive/mark-read; does NOT modify or restart gateway config | `unified-inbox/discord/<account-or-workspace>` | non-secret: `application_id`, `guild_id_allowlist`, `channel_id_allowlist`; secret: `bot_token` |
+| Telegram | `telegram` | Poll `getUpdates` (bounded, rate-limited) | `getUpdates`/read only; NO `sendMessage`/`deleteMessage`/`editMessage*`/`forwardMessage` | `unified-inbox/telegram/<account-or-bot>` | non-secret: `min_interval_ms`, `webhook_secret_ref`; secret: `bot_token` |
+| Matrix | `matrix` | `GET /sync` incremental (bounded, rate-limited) | Read `/sync` only; NO send/redact/delete/join; encrypted events surfaced explicitly, not decrypted | `unified-inbox/matrix/<account>` | non-secret: `homeserver_url`, `user_id`, `device_id`, `min_interval_ms`; secret: `access_token` |
+| Slack | `slack` | `conversations.history` read (bounded, rate-limited) | Read history only; NO `chat.postMessage`/`chat.delete`/`reactions.add`/archive; read scopes only, no `chat:write` | `unified-inbox/slack/<workspace>` | non-secret: `app_id`, `workspace_id`, `channel_id_allowlist`, `min_interval_ms`; secret: `bot_token`, `signing_secret` |
+
 Notes:
 
 - Email `read_state` is derived from the observed `\Seen` flag and reported, never written back upstream.
 - RSS item identity (idempotency key) is GUID/link/id with a deterministic fallback; cursor stops re-ingest of already-seen items.
 - Webhook ingestion is **opt-in and off by default**. `createApp` requires an explicit `webhookIngest` router; without it, `POST /api/unified-inbox/webhook/*` returns `404`. Signatures are HMAC (sha256 or sha1) with constant-time comparison.
 - All connectors bound their work via `max_messages` and a runtime clock, and report structured health (including `rate_limited`) instead of crash-looping.
+- Phase 2 connector sync cursors (Discord last-message id, Telegram `update_id`, Matrix `since` token, Slack per-channel cursor/thread_ts) are sensitive runtime state: serializable, never committed to Git or written into fixtures/docs/logs. Cursor handling is centralized in `src/connectors/cursor-state.js`, which also rejects credential-shaped tokens.
 
 Credentials are materialized by the operator from Vaultwarden and passed to connectors at construction. Only field/reference names live in the repo; no values.
 
