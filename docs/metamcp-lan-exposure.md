@@ -46,7 +46,7 @@ Not changed:
 - `metamcp` / `metamcp-pg` containers (no recreate)
 - Docker published port (still `127.0.0.1:12008->12008/tcp`)
 - Traefik, DNS, Cloudflare Tunnel, WAN, guest Wi-Fi, untrusted VLAN routing
-- Firewall: INPUT is ACCEPT, no ufw/nft rules; nothing added
+- Firewall: INPUT policy remains `ACCEPT`, but an approved host-local iptables allowlist now restricts TCP `12008` to `192.168.0.0/24` and rejects other routed IPv4 sources to `192.168.0.20:12008`
 - No API key / bearer / `BETTER_AUTH_SECRET` read into the shell in plaintext, printed, or committed
 
 ## Preflight receipts (recorded before change)
@@ -161,18 +161,56 @@ Recorded verification results (all passed):
 
 ## Guest/untrusted network assurance status
 
-Current assurance is host-local plus trusted-LAN only. The relay is bound to `192.168.0.20` rather than `0.0.0.0`, but tori's host firewall currently has INPUT policy `ACCEPT` and no on-host source allowlist for TCP `12008`. That means the host itself does not distinguish trusted LAN clients from any other routed subnet that can reach `192.168.0.20:12008`.
+Current assurance is host-local plus trusted-LAN source restriction. The relay is bound to `192.168.0.20` rather than `0.0.0.0`, and the approved remediation added a host-local iptables allowlist on tori for TCP `12008`.
 
-As of the remediation audit, there is no committed evidence from a real guest Wi-Fi/untrusted-VLAN client and no router/firewall ACL export proving that those networks cannot route to `192.168.0.20:12008`. Do not treat the LAN bind alone as guest-network isolation.
+Live rules after remediation:
 
-If guest/untrusted non-reachability cannot be proven from router ACLs or a real untrusted vantage point, the bounded remediation is to add an explicit source restriction, after approval, at one of these layers:
+```bash
+-A INPUT -s 192.168.0.0/24 -d 192.168.0.20/32 -p tcp -m tcp --dport 12008 -j ACCEPT
+-A INPUT -d 192.168.0.20/32 -p tcp -m tcp --dport 12008 -j REJECT --reject-with tcp-reset
+```
 
-1. Preferred upstream control: router/firewall ACL denying guest/untrusted VLANs to `192.168.0.20:12008` while allowing only the intended trusted management/client subnet(s).
-2. Host-local fallback: an nftables/iptables rule or systemd-managed firewall policy on tori allowing TCP `12008` only from approved source CIDRs/hosts and dropping/rejecting everything else.
+The rules are managed by `metamcp-lan-allowlist.service`:
 
-Any firewall/router ACL mutation requires a separate approval gate and a rollback command. Do not silently apply it from this runbook.
+```ini
+[Unit]
+Description=MetaMCP LAN relay source allowlist (TCP 12008)
+After=network-online.target
+Before=metamcp-lan-relay.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c '/usr/sbin/iptables -C INPUT -p tcp -d 192.168.0.20 --dport 12008 -s 192.168.0.0/24 -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I INPUT 1 -p tcp -d 192.168.0.20 --dport 12008 -s 192.168.0.0/24 -j ACCEPT; /usr/sbin/iptables -C INPUT -p tcp -d 192.168.0.20 --dport 12008 -j REJECT --reject-with tcp-reset 2>/dev/null || /usr/sbin/iptables -I INPUT 2 -p tcp -d 192.168.0.20 --dport 12008 -j REJECT --reject-with tcp-reset'
+ExecStop=/bin/sh -c '/usr/sbin/iptables -D INPUT -p tcp -d 192.168.0.20 --dport 12008 -j REJECT --reject-with tcp-reset 2>/dev/null || true; /usr/sbin/iptables -D INPUT -p tcp -d 192.168.0.20 --dport 12008 -s 192.168.0.0/24 -j ACCEPT 2>/dev/null || true'
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Private rollback/evidence backup for this firewall remediation: `/root/.hermes/profiles/kobold/runtime/metamcp-lan-allowlist-20260902T232822Z/`.
+
+No real guest Wi-Fi client or router ACL export was available during this run. Instead, a temporary local network namespace on tori with source `10.254.120.2/30` was used as a simulated non-`192.168.0.0/24` routed source; `curl http://192.168.0.20:12008/health` failed with `000 exit=7` after the allowlist was installed. This is defense-in-depth host enforcement, not a claim that the upstream router is correctly segmented. Small distinction; large blast radius.
 
 ## Rollback (restore loopback-only binding)
+
+To remove only the source allowlist while leaving the LAN relay running:
+
+```bash
+systemctl disable --now metamcp-lan-allowlist.service \
+  && rm /etc/systemd/system/metamcp-lan-allowlist.service \
+  && systemctl daemon-reload
+```
+
+The allowlist unit's `ExecStop` removes both TCP `12008` INPUT rules. If the unit file is missing or rollback is being done manually, delete the rules directly:
+
+```bash
+iptables -D INPUT -p tcp -d 192.168.0.20 --dport 12008 -j REJECT --reject-with tcp-reset 2>/dev/null || true
+iptables -D INPUT -p tcp -d 192.168.0.20 --dport 12008 -s 192.168.0.0/24 -j ACCEPT 2>/dev/null || true
+```
+
+To remove the LAN relay entirely and return MetaMCP to loopback-only:
 
 ```bash
 systemctl disable --now metamcp-lan-relay.service \
