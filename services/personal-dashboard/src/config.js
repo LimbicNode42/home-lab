@@ -44,10 +44,13 @@ const DEFAULT_CONFIG = {
     statusUrl: 'http://172.17.0.1:8766/api/unified-inbox/status',
     note: 'Read-only message aggregation status. Dashboard exposes health, counts, and freshness only; message bodies stay in the inbox service.',
     expectedConnectors: [
-      { id: 'discord', label: 'Discord', state: 'pending_credentials', detail: 'Phase 2 connector implemented; gateway state / bot credentials not yet authorized.' },
-      { id: 'telegram', label: 'Telegram', state: 'pending_credentials', detail: 'Phase 2 connector implemented; bot credentials not yet authorized.' },
-      { id: 'matrix', label: 'Matrix', state: 'pending_credentials', detail: 'Phase 2 connector implemented; homeserver session not yet authorized.' },
-      { id: 'slack', label: 'Slack', state: 'pending_credentials', detail: 'Phase 2 connector implemented; workspace app/bot not yet authorized.' }
+      { id: 'email-imap', label: 'Email (IMAP)', state: 'not_configured', detail: 'Phase 1 read-only IMAP connector. Awaiting Vaultwarden-rendered account credentials.' },
+      { id: 'rss', label: 'RSS', state: 'not_configured', detail: 'Phase 1 bounded, rate-limited RSS/Atom polling. Awaiting a feed URL reference.' },
+      { id: 'webhook', label: 'Webhook', state: 'not_configured', detail: 'Phase 1 opt-in HMAC-verified webhook ingestion. Not enabled until public-exposure review.' },
+      { id: 'discord', label: 'Discord', state: 'planned', detail: 'Phase 2 connector implemented; not yet deployed or authorized.' },
+      { id: 'telegram', label: 'Telegram', state: 'planned', detail: 'Phase 2 connector implemented; not yet deployed or authorized.' },
+      { id: 'matrix', label: 'Matrix', state: 'planned', detail: 'Phase 2 connector implemented; not yet deployed or authorized.' },
+      { id: 'slack', label: 'Slack', state: 'planned', detail: 'Phase 2 connector implemented; not yet deployed or authorized.' }
     ]
   },
   metaMcp: {

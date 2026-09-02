@@ -11,7 +11,12 @@ services:
       UNIFIED_INBOX_RUNTIME_ROOT: /app/state
       UNIFIED_INBOX_NAS_ROOT: /app/nas-export
     ports:
-      - "127.0.0.1:8766:8766"
+      # Bind only to the Docker bridge host gateway (172.17.0.1), matching the
+      # publish used by scripts/run-critical-docker.sh — the canonical deploy
+      # path since critical has no Compose plugin. Traefik/dashboard status
+      # probes reach the backend via http://172.17.0.1:8766. Do not publish on
+      # the LAN IP 0.0.0.0/192.168.0.50; public exposure is a separate gate.
+      - "172.17.0.1:8766:8766"
     volumes:
       # Host-local writable state. Do not place this on NAS/NFS.
       - /var/lib/unified-inbox:/app/state
