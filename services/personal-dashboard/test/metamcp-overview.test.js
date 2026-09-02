@@ -56,7 +56,7 @@ const metamcpConfig = {
       note: 'LAN gateway requires authentication; the dashboard stores only the URL.',
       links: [
         { label: 'Open MetaMCP gateway', href: 'http://192.168.0.20:12008' },
-        { label: 'MCP endpoint', href: 'http://192.168.0.20:12008/mcp' }
+        { label: 'MCP endpoint', href: 'http://192.168.0.20:12008/metamcp/financial-data/mcp' }
       ]
     }
   }
@@ -72,7 +72,7 @@ test('normalizes MetaMCP overview metadata for public display', () => {
   assert.deepEqual(publicConfig.metaMcp.tools.domains.map((domain) => domain.id), ['filesystem', 'git', 'memory', 'fetch']);
   assert.equal(publicConfig.metaMcp.access.mode, 'lan_gateway');
   assert.equal(publicConfig.metaMcp.access.localUrl, 'http://192.168.0.20:12008');
-  assert.deepEqual(publicConfig.metaMcp.access.links.map((link) => link.href), ['http://192.168.0.20:12008', 'http://192.168.0.20:12008/mcp']);
+  assert.deepEqual(publicConfig.metaMcp.access.links.map((link) => link.href), ['http://192.168.0.20:12008', 'http://192.168.0.20:12008/metamcp/financial-data/mcp']);
   assert.equal(JSON.stringify(publicConfig).includes('bearer'), false);
   assert.equal(JSON.stringify(publicConfig).includes('/root/'), false);
 });
@@ -85,6 +85,17 @@ test('accepts reviewed MetaMCP LAN gateway links without embedding credentials',
   assert.equal(publicConfig.metaMcp.access.links[0].href, 'http://192.168.0.20:12008');
   assert.equal(serialized.includes('api_key'), false);
   assert.equal(serialized.includes('token='), false);
+});
+
+test('configured MetaMCP status probe targets the auth-bound namespace endpoint', async () => {
+  const source = JSON.parse(await readFile(new URL('../config/dashboard.public.json', import.meta.url), 'utf8'));
+  const normalized = normalizeConfig(source);
+  const metaMcpStatus = normalized.statusChecks.find((check) => check.id === 'metamcp-gateway');
+
+  assert.equal(metaMcpStatus.targetUrl, 'http://192.168.0.20:12008/metamcp/financial-data/mcp');
+  assert.deepEqual(metaMcpStatus.acceptableStatuses, [200, 401]);
+  assert.equal(metaMcpStatus.displayUrl, 'http://192.168.0.20:12008');
+  assert.equal(JSON.stringify(toPublicConfig(normalized)).includes('targetUrl'), false);
 });
 
 test('rejects MetaMCP LAN links with credential query parameters', () => {

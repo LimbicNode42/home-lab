@@ -126,7 +126,7 @@ body_file=$(mktemp)
 trap 'rm -f "$headers_file" "$body_file"' EXIT
 
 curl --max-time 10 -sS -D "$headers_file" -o "$body_file" \
-  -H "X-API-Key: $METAMCP_API_KEY" \
+  -H "X-API-Key: ${METAMCP_API_KEY}" \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
   --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"lan-smoke","version":"1.0"}}}' \
@@ -136,7 +136,7 @@ session_id=$(awk 'BEGIN{IGNORECASE=1} /^mcp-session-id:/ {gsub("\\r", "", $2); p
 test -n "$session_id"
 
 curl --max-time 10 -sS \
-  -H "X-API-Key: $METAMCP_API_KEY" \
+  -H "X-API-Key: ${METAMCP_API_KEY}" \
   -H "mcp-session-id: $session_id" \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
