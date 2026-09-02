@@ -53,7 +53,7 @@
     {
       "id": "unified-inbox",
       "label": "Unified Inbox",
-      "targetUrl": "http://192.168.0.50:8766/healthz",
+      "targetUrl": "http://172.17.0.1:8766/healthz",
       "displayUrl": "http://192.168.0.50:8766",
       "acceptableStatuses": [
         200
@@ -173,7 +173,7 @@
     "enabled": true,
     "title": "Unified Inbox",
     "publicUrl": "http://192.168.0.50:8766",
-    "statusUrl": "http://192.168.0.50:8766/api/unified-inbox/status",
+    "statusUrl": "http://172.17.0.1:8766/api/unified-inbox/status",
     "note": "Read-only message aggregation status. Dashboard exposes connector health, counts, freshness, and exclusions only; message bodies stay in the inbox service.",
     "expectedConnectors": [
       {
