@@ -113,22 +113,36 @@ curl --max-time 5 -i http://192.168.0.20:12008/metamcp/financial-data/mcp
 
 Expected: HTTP `401` with `authentication_required`. (A bare GET without the JSON-RPC initialize body still returns the 401 auth boundary.)
 
-Authenticated `initialize` + `tools/list` from a LAN-origin host — API key provided via local secret env only, never on the command line or in logs:
+Authenticated `initialize` + `tools/list` from a LAN-origin host — API key provided via local secret env only, never echoed, committed, or pasted into logs:
 
 ```bash
 export METAMCP_API_KEY_FILE=/path/to/local/secret/file
 METAMCP_API_KEY=$(cat "$METAMCP_API_KEY_FILE")
 endpoint='http://192.168.0.20:12008/metamcp/financial-data/mcp'
+headers_file=$(mktemp)
+body_file=$(mktemp)
+trap 'rm -f "$headers_file" "$body_file"' EXIT
 
-curl --max-time 10 -sS -D /tmp/metamcp-init.headers \
+curl --max-time 10 -sS -D "$headers_file" -o "$body_file" \
   -H "X-API-Key: $METAMCP_API_KEY" \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
   --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"lan-smoke","version":"1.0"}}}' \
   "$endpoint"
+
+session_id=$(awk 'BEGIN{IGNORECASE=1} /^mcp-session-id:/ {gsub("\\r", "", $2); print $2}' "$headers_file")
+test -n "$session_id"
+
+curl --max-time 10 -sS \
+  -H "X-API-Key: $METAMCP_API_KEY" \
+  -H "mcp-session-id: $session_id" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+  "$endpoint"
 ```
 
-Expected authenticated result: HTTP `200`, `content-type: text/event-stream`, and an `mcp-session-id` header. Use that session header for `tools/list`; expected current count is `89` tools, including `eodhd__get_historical_stock_prices` and `eodhd__get_user_details`.
+Expected authenticated result: `initialize` returns HTTP `200`, `content-type: text/event-stream`, and an `mcp-session-id` header. The follow-up `tools/list` with that session header returns HTTP `200`; expected current count is `89` tools, including `eodhd__get_historical_stock_prices` and `eodhd__get_user_details`. Do not print the API key while debugging this command; inspect only status, headers, and sanitized tool counts.
 
 True cross-host probe (from `critical`, `192.168.0.50`, via ssh):
 
@@ -144,6 +158,19 @@ Recorded verification results (all passed):
 - LAN authed `initialize` -> `200` + `mcp-session-id`; `tools/list` -> `89` tools
 - Cross-host from critical: `/health` 200, unauth MCP 401
 - Rollback tested live (see below), then re-enabled
+
+## Guest/untrusted network assurance status
+
+Current assurance is host-local plus trusted-LAN only. The relay is bound to `192.168.0.20` rather than `0.0.0.0`, but tori's host firewall currently has INPUT policy `ACCEPT` and no on-host source allowlist for TCP `12008`. That means the host itself does not distinguish trusted LAN clients from any other routed subnet that can reach `192.168.0.20:12008`.
+
+As of the remediation audit, there is no committed evidence from a real guest Wi-Fi/untrusted-VLAN client and no router/firewall ACL export proving that those networks cannot route to `192.168.0.20:12008`. Do not treat the LAN bind alone as guest-network isolation.
+
+If guest/untrusted non-reachability cannot be proven from router ACLs or a real untrusted vantage point, the bounded remediation is to add an explicit source restriction, after approval, at one of these layers:
+
+1. Preferred upstream control: router/firewall ACL denying guest/untrusted VLANs to `192.168.0.20:12008` while allowing only the intended trusted management/client subnet(s).
+2. Host-local fallback: an nftables/iptables rule or systemd-managed firewall policy on tori allowing TCP `12008` only from approved source CIDRs/hosts and dropping/rejecting everything else.
+
+Any firewall/router ACL mutation requires a separate approval gate and a rollback command. Do not silently apply it from this runbook.
 
 ## Rollback (restore loopback-only binding)
 
