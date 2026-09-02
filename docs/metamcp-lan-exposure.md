@@ -117,7 +117,9 @@ Authenticated `initialize` + `tools/list` from a LAN-origin host — API key pro
 
 ```bash
 export METAMCP_API_KEY_FILE=/path/to/local/secret/file
-METAMCP_API_KEY=$(cat "$METAMCP_API_KEY_FILE")
+test -r "$METAMCP_API_KEY_FILE"
+METAMCP_API_KEY=$(tr -d '\r\n' < "$METAMCP_API_KEY_FILE")
+test -n "$METAMCP_API_KEY"
 endpoint='http://192.168.0.20:12008/metamcp/financial-data/mcp'
 headers_file=$(mktemp)
 body_file=$(mktemp)
