@@ -2557,7 +2557,7 @@ function getEpics(dbPath, docs = []) {
 
 
 
-const UNIFIED_INBOX_CONNECTOR_STATES = new Set(['ok', 'healthy', 'up', 'configured', 'pending_credentials', 'not_configured', 'excluded', 'error', 'down', 'stale', 'unknown']);
+const UNIFIED_INBOX_CONNECTOR_STATES = new Set(['ok', 'healthy', 'up', 'configured', 'pending_credentials', 'not_configured', 'planned', 'excluded', 'error', 'down', 'stale', 'unknown']);
 
 function sanitizeUnifiedInboxText(value, fallback = null, maxLength = 240) {
   if (typeof value !== 'string') return fallback;
