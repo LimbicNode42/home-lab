@@ -1,6 +1,6 @@
 # Unified Inbox — Phase 2 deploy plan (t_6e698bb7)
 
-Status: READY TO APPLY, awaiting Ben approval. No live mutation has been performed.
+Status: APPLIED on critical at 2026-09-02T23:59:02Z under Ben's bounded approval. Live mutation was limited to recreating `unified-inbox` and `personal-dashboard`; no gateway, Traefik, Cloudflare, DNS, firewall, credential, provider-app, or data-deletion change was performed.
 
 ## What this deploys
 
@@ -75,6 +75,25 @@ ssh root@192.168.0.50 'docker tag personal-dashboard:local personal-dashboard:ro
 #     Write the 4-connector config to /mnt/nas/services/personal-dashboard/config/dashboard.public.json,
 #     sync src/config.js, then recreate via existing run-critical-docker.sh + sync-runtime-snapshots.sh.
 ```
+
+## Apply evidence
+
+Applied at `2026-09-02T23:59:02Z` using the bounded procedure above.
+
+- Rollback images created:
+  - `unified-inbox:rollback-t_6e698bb7-20260902T235902Z`
+  - `personal-dashboard:rollback-t_6e698bb7-20260902T235902Z`
+- Deployed file set checksum-matched the reviewed repo files after sync:
+  - `services/unified-inbox/src/connectors/{discord,telegram,matrix,slack,cursor-state}.js`
+  - `services/unified-inbox/test/{discord,telegram,matrix,slack,cursor-state}.test.js`
+  - `services/personal-dashboard/config/dashboard.public.json`
+  - `services/personal-dashboard/src/config.js`
+- Runtime verification:
+  - `unified-inbox` healthy on `172.17.0.1:8766`, `connectors: []`, `message_count: 0`, mandatory WhatsApp/Instagram DM exclusions present.
+  - `personal-dashboard` healthy on `172.17.0.1:4322`.
+  - Dashboard `/api/unified-inbox/status` shows Discord, Telegram, Matrix, and Slack as `pending_credentials`, with Phase 1 email/RSS/webhook still `not_configured`.
+  - Log tails contained only startup lines and the existing Node SQLite experimental warning; no token/session/DB URL/local-path-shaped values were present.
+- No provider API hammering observed: backend still boots `createApp({ store, connectors: [] })`; no connector adapters are wired or configured.
 
 ## Rollback
 
