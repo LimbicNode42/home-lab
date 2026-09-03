@@ -1,0 +1,14 @@
+{
+  "name": "unified-inbox",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only unified message aggregation inbox backend foundation",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node scripts/test-node22.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

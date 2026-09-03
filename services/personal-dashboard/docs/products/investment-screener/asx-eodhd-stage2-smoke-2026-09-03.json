@@ -1,0 +1,836 @@
+{
+  "baseline_coverage": {
+    "denominator": 1838,
+    "percent": 55.2,
+    "usable": 1015
+  },
+  "baseline_latest_run_id": "investment-screener_ASX_asx-yahoo-timeseries_2026-08-31T110621Z_d750769bde5b",
+  "generated_at": "2026-09-02T15:22:43.673688Z",
+  "notes": [
+    "No raw API key stored or printed; source_url intentionally omits api_token.",
+    "current_assets/current_liabilities are recorded when exposed but are not fabricated from totals."
+  ],
+  "pass_bar": "at least 8 of 10 with >=2 annual income/balance/cash-flow rows and required fields present",
+  "pass_count": 7,
+  "results": [
+    {
+      "annual_depth": {
+        "balance_sheet": 25,
+        "cash_flow": 25,
+        "income": 25
+      },
+      "baseline_exclusion_reason": "revenue stale: data_as_of/retrieved_at is older than 730 days; net_income stale: data_as_of/retrieved_at is older than 730 days; total_assets stale: data_as_of/retrieved_at is older than 730 days; total_liabilities stale: data_as_of/retriev",
+      "eodhd_symbol": "EVN.AU",
+      "error": null,
+      "field_presence": {
+        "capital_expenditures": {
+          "period": "2026-06-30",
+          "present": true,
+          "source_keys": [
+            "capitalExpenditures"
+          ]
+        },
+        "current_assets": {
+          "period": "2026-06-30",
+          "present": true,
+          "source_keys": [
+            "totalCurrentAssets"
+          ]
+        },
+        "current_liabilities": {
+          "period": "2026-06-30",
+          "present": true,
+          "source_keys": [
+            "totalCurrentLiabilities"
+          ]
+        },
+        "net_income": {
+          "period": "2026-06-30",
+          "present": true,
+          "source_keys": [
+            "netIncome"
+          ]
+        },
+        "operating_cash_flow": {
+          "period": "2026-06-30",
+          "present": true,
+          "source_keys": [
+            "totalCashFromOperatingActivities"
+          ]
+        },
+        "prior_revenue": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalRevenue"
+          ]
+        },
+        "revenue": {
+          "period": "2026-06-30",
+          "present": true,
+          "source_keys": [
+            "totalRevenue"
+          ]
+        },
+        "total_assets": {
+          "period": "2026-06-30",
+          "present": true,
+          "source_keys": [
+            "totalAssets"
+          ]
+        },
+        "total_liabilities": {
+          "period": "2026-06-30",
+          "present": true,
+          "source_keys": [
+            "totalLiab"
+          ]
+        }
+      },
+      "http_status": 200,
+      "latest_periods": {
+        "balance_sheet": "2026-06-30",
+        "cash_flow": "2026-06-30",
+        "income": "2026-06-30"
+      },
+      "market_cap_aud": 30770279241,
+      "name": "EVOLUTION MINING LIMITED",
+      "pass": true,
+      "recoverable_miss": false,
+      "source_url": "https://eodhd.com/api/fundamentals/EVN.AU?fmt=json",
+      "ticker": "EVN.AX"
+    },
+    {
+      "annual_depth": {
+        "balance_sheet": 13,
+        "cash_flow": 12,
+        "income": 13
+      },
+      "baseline_exclusion_reason": "net_income stale: data_as_of/retrieved_at is older than 730 days; total_assets stale: data_as_of/retrieved_at is older than 730 days; total_liabilities stale: data_as_of/retrieved_at is older than 730 days",
+      "eodhd_symbol": "VMM.AU",
+      "error": null,
+      "field_presence": {
+        "capital_expenditures": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "capitalExpenditures"
+          ]
+        },
+        "current_assets": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalCurrentAssets"
+          ]
+        },
+        "current_liabilities": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalCurrentLiabilities"
+          ]
+        },
+        "net_income": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "netIncome"
+          ]
+        },
+        "operating_cash_flow": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalCashFromOperatingActivities"
+          ]
+        },
+        "prior_revenue": {
+          "period": "2024-06-30",
+          "present": true,
+          "source_keys": [
+            "totalRevenue"
+          ]
+        },
+        "revenue": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalRevenue"
+          ]
+        },
+        "total_assets": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalAssets"
+          ]
+        },
+        "total_liabilities": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalLiab"
+          ]
+        }
+      },
+      "http_status": 200,
+      "latest_periods": {
+        "balance_sheet": "2025-06-30",
+        "cash_flow": "2025-06-30",
+        "income": "2025-06-30"
+      },
+      "market_cap_aud": 566481786,
+      "name": "VIRIDIS MINING AND MINERALS LIMITED",
+      "pass": true,
+      "recoverable_miss": false,
+      "source_url": "https://eodhd.com/api/fundamentals/VMM.AU?fmt=json",
+      "ticker": "VMM.AX"
+    },
+    {
+      "annual_depth": {
+        "balance_sheet": 37,
+        "cash_flow": 37,
+        "income": 37
+      },
+      "baseline_exclusion_reason": "net_income stale: data_as_of/retrieved_at is older than 730 days; total_assets stale: data_as_of/retrieved_at is older than 730 days; total_liabilities stale: data_as_of/retrieved_at is older than 730 days",
+      "eodhd_symbol": "TAM.AU",
+      "error": null,
+      "field_presence": {
+        "capital_expenditures": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "capitalExpenditures"
+          ]
+        },
+        "current_assets": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalCurrentAssets"
+          ]
+        },
+        "current_liabilities": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalCurrentLiabilities"
+          ]
+        },
+        "net_income": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "netIncome"
+          ]
+        },
+        "operating_cash_flow": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalCashFromOperatingActivities"
+          ]
+        },
+        "prior_revenue": {
+          "period": "2024-06-30",
+          "present": true,
+          "source_keys": [
+            "totalRevenue"
+          ]
+        },
+        "revenue": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalRevenue"
+          ]
+        },
+        "total_assets": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalAssets"
+          ]
+        },
+        "total_liabilities": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalLiab"
+          ]
+        }
+      },
+      "http_status": 200,
+      "latest_periods": {
+        "balance_sheet": "2025-06-30",
+        "cash_flow": "2025-06-30",
+        "income": "2025-06-30"
+      },
+      "market_cap_aud": 145712034,
+      "name": "TANAMI GOLD NL",
+      "pass": true,
+      "recoverable_miss": false,
+      "source_url": "https://eodhd.com/api/fundamentals/TAM.AU?fmt=json",
+      "ticker": "TAM.AX"
+    },
+    {
+      "annual_depth": {
+        "balance_sheet": 0,
+        "cash_flow": 0,
+        "income": 0
+      },
+      "baseline_exclusion_reason": "missing price or shares_outstanding prevents market_cap and valuation scoring",
+      "eodhd_symbol": "CTS.AU",
+      "error": null,
+      "field_presence": {
+        "capital_expenditures": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        },
+        "current_assets": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        },
+        "current_liabilities": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        },
+        "net_income": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        },
+        "operating_cash_flow": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        },
+        "prior_revenue": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        },
+        "revenue": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        },
+        "total_assets": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        },
+        "total_liabilities": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        }
+      },
+      "http_status": 200,
+      "latest_periods": {
+        "balance_sheet": null,
+        "cash_flow": null,
+        "income": null
+      },
+      "market_cap_aud": 53888125,
+      "name": "CERETAS LIMITED",
+      "pass": false,
+      "recoverable_miss": false,
+      "source_url": "https://eodhd.com/api/fundamentals/CTS.AU?fmt=json",
+      "ticker": "CTS.AX"
+    },
+    {
+      "annual_depth": {
+        "balance_sheet": 0,
+        "cash_flow": 0,
+        "income": 0
+      },
+      "baseline_exclusion_reason": "missing price or shares_outstanding prevents market_cap and valuation scoring",
+      "eodhd_symbol": "KTK.AU",
+      "error": null,
+      "field_presence": {
+        "capital_expenditures": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        },
+        "current_assets": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        },
+        "current_liabilities": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        },
+        "net_income": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        },
+        "operating_cash_flow": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        },
+        "prior_revenue": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        },
+        "revenue": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        },
+        "total_assets": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        },
+        "total_liabilities": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        }
+      },
+      "http_status": 200,
+      "latest_periods": {
+        "balance_sheet": null,
+        "cash_flow": null,
+        "income": null
+      },
+      "market_cap_aud": 30910000,
+      "name": "KTEK AEROSYSTEMS LTD",
+      "pass": false,
+      "recoverable_miss": false,
+      "source_url": "https://eodhd.com/api/fundamentals/KTK.AU?fmt=json",
+      "ticker": "KTK.AX"
+    },
+    {
+      "annual_depth": {
+        "balance_sheet": 13,
+        "cash_flow": 13,
+        "income": 13
+      },
+      "baseline_exclusion_reason": "net_income stale: data_as_of/retrieved_at is older than 730 days; total_assets stale: data_as_of/retrieved_at is older than 730 days; total_liabilities stale: data_as_of/retrieved_at is older than 730 days",
+      "eodhd_symbol": "SMM.AU",
+      "error": null,
+      "field_presence": {
+        "capital_expenditures": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "capitalExpenditures"
+          ]
+        },
+        "current_assets": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalCurrentAssets"
+          ]
+        },
+        "current_liabilities": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalCurrentLiabilities"
+          ]
+        },
+        "net_income": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "netIncome"
+          ]
+        },
+        "operating_cash_flow": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalCashFromOperatingActivities"
+          ]
+        },
+        "prior_revenue": {
+          "period": "2024-06-30",
+          "present": true,
+          "source_keys": [
+            "totalRevenue"
+          ]
+        },
+        "revenue": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalRevenue"
+          ]
+        },
+        "total_assets": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalAssets"
+          ]
+        },
+        "total_liabilities": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalLiab"
+          ]
+        }
+      },
+      "http_status": 200,
+      "latest_periods": {
+        "balance_sheet": "2025-06-30",
+        "cash_flow": "2025-06-30",
+        "income": "2025-06-30"
+      },
+      "market_cap_aud": 19255501,
+      "name": "SOMERSET MINERALS LIMITED",
+      "pass": true,
+      "recoverable_miss": false,
+      "source_url": "https://eodhd.com/api/fundamentals/SMM.AU?fmt=json",
+      "ticker": "SMM.AX"
+    },
+    {
+      "annual_depth": {
+        "balance_sheet": 0,
+        "cash_flow": 0,
+        "income": 0
+      },
+      "baseline_exclusion_reason": "missing price or shares_outstanding prevents market_cap and valuation scoring",
+      "eodhd_symbol": "EGA.AU",
+      "error": null,
+      "field_presence": {
+        "capital_expenditures": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        },
+        "current_assets": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        },
+        "current_liabilities": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        },
+        "net_income": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        },
+        "operating_cash_flow": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        },
+        "prior_revenue": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        },
+        "revenue": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        },
+        "total_assets": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        },
+        "total_liabilities": {
+          "period": null,
+          "present": false,
+          "source_keys": []
+        }
+      },
+      "http_status": 200,
+      "latest_periods": {
+        "balance_sheet": null,
+        "cash_flow": null,
+        "income": null
+      },
+      "market_cap_aud": 11700000,
+      "name": "EASTERN GAS CORPORATION LIMITED",
+      "pass": false,
+      "recoverable_miss": false,
+      "source_url": "https://eodhd.com/api/fundamentals/EGA.AU?fmt=json",
+      "ticker": "EGA.AX"
+    },
+    {
+      "annual_depth": {
+        "balance_sheet": 7,
+        "cash_flow": 7,
+        "income": 7
+      },
+      "baseline_exclusion_reason": "revenue stale: data_as_of/retrieved_at is older than 730 days; net_income stale: data_as_of/retrieved_at is older than 730 days; total_assets stale: data_as_of/retrieved_at is older than 730 days; total_liabilities stale: data_as_of/retriev",
+      "eodhd_symbol": "WC1.AU",
+      "error": null,
+      "field_presence": {
+        "capital_expenditures": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "capitalExpenditures"
+          ]
+        },
+        "current_assets": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalCurrentAssets"
+          ]
+        },
+        "current_liabilities": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalCurrentLiabilities"
+          ]
+        },
+        "net_income": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "netIncome"
+          ]
+        },
+        "operating_cash_flow": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalCashFromOperatingActivities"
+          ]
+        },
+        "prior_revenue": {
+          "period": "2024-06-30",
+          "present": true,
+          "source_keys": [
+            "totalRevenue"
+          ]
+        },
+        "revenue": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalRevenue"
+          ]
+        },
+        "total_assets": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalAssets"
+          ]
+        },
+        "total_liabilities": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalLiab"
+          ]
+        }
+      },
+      "http_status": 200,
+      "latest_periods": {
+        "balance_sheet": "2025-06-30",
+        "cash_flow": "2025-06-30",
+        "income": "2025-06-30"
+      },
+      "market_cap_aud": 7070688,
+      "name": "WEST COBAR METALS LIMITED",
+      "pass": true,
+      "recoverable_miss": false,
+      "source_url": "https://eodhd.com/api/fundamentals/WC1.AU?fmt=json",
+      "ticker": "WC1.AX"
+    },
+    {
+      "annual_depth": {
+        "balance_sheet": 6,
+        "cash_flow": 7,
+        "income": 6
+      },
+      "baseline_exclusion_reason": "revenue stale: data_as_of/retrieved_at is older than 730 days; net_income stale: data_as_of/retrieved_at is older than 730 days; total_assets stale: data_as_of/retrieved_at is older than 730 days; total_liabilities stale: data_as_of/retriev",
+      "eodhd_symbol": "VFX.AU",
+      "error": null,
+      "field_presence": {
+        "capital_expenditures": {
+          "period": "2026-06-30",
+          "present": true,
+          "source_keys": [
+            "capitalExpenditures"
+          ]
+        },
+        "current_assets": {
+          "period": "2026-06-30",
+          "present": true,
+          "source_keys": [
+            "totalCurrentAssets"
+          ]
+        },
+        "current_liabilities": {
+          "period": "2026-06-30",
+          "present": true,
+          "source_keys": [
+            "totalCurrentLiabilities"
+          ]
+        },
+        "net_income": {
+          "period": "2026-06-30",
+          "present": true,
+          "source_keys": [
+            "netIncome"
+          ]
+        },
+        "operating_cash_flow": {
+          "period": "2026-06-30",
+          "present": true,
+          "source_keys": [
+            "totalCashFromOperatingActivities"
+          ]
+        },
+        "prior_revenue": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalRevenue"
+          ]
+        },
+        "revenue": {
+          "period": "2026-06-30",
+          "present": true,
+          "source_keys": [
+            "totalRevenue"
+          ]
+        },
+        "total_assets": {
+          "period": "2026-06-30",
+          "present": true,
+          "source_keys": [
+            "totalAssets"
+          ]
+        },
+        "total_liabilities": {
+          "period": "2026-06-30",
+          "present": true,
+          "source_keys": [
+            "totalLiab"
+          ]
+        }
+      },
+      "http_status": 200,
+      "latest_periods": {
+        "balance_sheet": "2026-06-30",
+        "cash_flow": "2026-06-30",
+        "income": "2026-06-30"
+      },
+      "market_cap_aud": 4332175,
+      "name": "VISIONFLEX GROUP LIMITED",
+      "pass": true,
+      "recoverable_miss": false,
+      "source_url": "https://eodhd.com/api/fundamentals/VFX.AU?fmt=json",
+      "ticker": "VFX.AX"
+    },
+    {
+      "annual_depth": {
+        "balance_sheet": 38,
+        "cash_flow": 38,
+        "income": 38
+      },
+      "baseline_exclusion_reason": "revenue stale: data_as_of/retrieved_at is older than 730 days; net_income stale: data_as_of/retrieved_at is older than 730 days; total_assets stale: data_as_of/retrieved_at is older than 730 days; total_liabilities stale: data_as_of/retriev",
+      "eodhd_symbol": "LCE.AU",
+      "error": null,
+      "field_presence": {
+        "capital_expenditures": {
+          "period": "2026-06-30",
+          "present": true,
+          "source_keys": [
+            "capitalExpenditures"
+          ]
+        },
+        "current_assets": {
+          "period": "2026-06-30",
+          "present": true,
+          "source_keys": [
+            "totalCurrentAssets"
+          ]
+        },
+        "current_liabilities": {
+          "period": "2026-06-30",
+          "present": false,
+          "source_keys": [
+            "totalCurrentLiabilities"
+          ]
+        },
+        "net_income": {
+          "period": "2026-06-30",
+          "present": true,
+          "source_keys": [
+            "netIncome"
+          ]
+        },
+        "operating_cash_flow": {
+          "period": "2026-06-30",
+          "present": true,
+          "source_keys": [
+            "totalCashFromOperatingActivities"
+          ]
+        },
+        "prior_revenue": {
+          "period": "2025-06-30",
+          "present": true,
+          "source_keys": [
+            "totalRevenue"
+          ]
+        },
+        "revenue": {
+          "period": "2026-06-30",
+          "present": true,
+          "source_keys": [
+            "totalRevenue"
+          ]
+        },
+        "total_assets": {
+          "period": "2026-06-30",
+          "present": true,
+          "source_keys": [
+            "totalAssets"
+          ]
+        },
+        "total_liabilities": {
+          "period": "2026-06-30",
+          "present": true,
+          "source_keys": [
+            "totalLiab"
+          ]
+        }
+      },
+      "http_status": 200,
+      "latest_periods": {
+        "balance_sheet": "2026-06-30",
+        "cash_flow": "2026-06-30",
+        "income": "2026-06-30"
+      },
+      "market_cap_aud": 0,
+      "name": "LONDON CITY EQUITIES LIMITED",
+      "pass": true,
+      "recoverable_miss": false,
+      "source_url": "https://eodhd.com/api/fundamentals/LCE.AU?fmt=json",
+      "ticker": "LCE.AX"
+    }
+  ],
+  "sample_size": 10,
+  "task_id": "t_65e3c02d",
+  "verdict": "FAIL"
+}

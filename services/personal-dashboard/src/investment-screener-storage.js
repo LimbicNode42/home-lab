@@ -18,7 +18,9 @@ const COMPANY_PARQUET_SCHEMA = new ParquetSchema({
   ticker: { type: 'UTF8' },
   name: { type: 'UTF8' },
   market: { type: 'UTF8' },
-  currency: { type: 'UTF8', optional: true }
+  currency: { type: 'UTF8', optional: true },
+  sector: { type: 'UTF8', optional: true },
+  industry: { type: 'UTF8', optional: true }
 });
 
 const SCORE_PARQUET_SCHEMA = new ParquetSchema({
@@ -27,6 +29,8 @@ const SCORE_PARQUET_SCHEMA = new ParquetSchema({
   name: { type: 'UTF8', optional: true },
   market: { type: 'UTF8' },
   currency: { type: 'UTF8', optional: true },
+  sector: { type: 'UTF8', optional: true },
+  industry: { type: 'UTF8', optional: true },
   composite_score: { type: 'DOUBLE', optional: true },
   sub_scores_json: { type: 'UTF8', optional: true },
   excluded: { type: 'BOOLEAN' },
@@ -114,7 +118,9 @@ function sanitizeCompany(row, fallbackMarket) {
     ticker,
     name: name ?? ticker,
     market: assertSafeSlug(String(row?.market ?? fallbackMarket).toUpperCase(), 'company market'),
-    currency: sanitizeText(row?.currency, null, 16)
+    currency: sanitizeText(row?.currency, null, 16),
+    sector: sanitizeText(row?.sector, null, 80),
+    industry: sanitizeText(row?.industry, null, 80)
   };
 }
 
@@ -129,6 +135,8 @@ function sanitizeScore(row, fallbackMarket, index) {
     name: sanitizeText(row?.name, ticker, 180),
     market: assertSafeSlug(String(row?.market ?? fallbackMarket).toUpperCase(), 'score market'),
     currency: sanitizeText(row?.currency, null, 16),
+    sector: sanitizeText(row?.sector, null, 80),
+    industry: sanitizeText(row?.industry, null, 80),
     composite_score: score,
     sub_scores: row?.sub_scores && typeof row.sub_scores === 'object' && !Array.isArray(row.sub_scores) ? row.sub_scores : {},
     excluded,
@@ -372,6 +380,8 @@ function rankedCandidates(run) {
       name: score.name,
       market: score.market,
       currency: score.currency,
+      sector: score.sector ?? null,
+      industry: score.industry ?? null,
       score: score.composite_score,
       sub_scores: score.sub_scores,
       missing_penalty_points: 0,
@@ -494,6 +504,8 @@ export async function publishInvestmentScreenerRun({ dataRoot, run, now = new Da
       name: candidate.name,
       market: candidate.market,
       currency: candidate.currency,
+      sector: candidate.sector ?? null,
+      industry: candidate.industry ?? null,
       composite_score: candidate.score,
       sub_scores_json: JSON.stringify(candidate.sub_scores),
       excluded: false,
@@ -835,7 +847,7 @@ export async function readInvestmentScreenerCompanyDetail({ dataRoot, ticker, ma
   const provenanceValues = [...provenance.values()];
   const providerNames = [...new Set(provenanceValues.map((row) => row.provider).filter(Boolean))];
   const sourceFamilies = [...new Set(provenanceValues.map((row) => row.source_family).filter(Boolean))];
-  const identityUnavailable = ['exchange', 'region', 'sector', 'industry'];
+  const identityUnavailable = ['exchange', 'region'];
   return {
     schema_version: 'investment-screener-company-detail/v1',
     ticker: wantedTicker,
@@ -848,8 +860,8 @@ export async function readInvestmentScreenerCompanyDetail({ dataRoot, ticker, ma
       market: sanitizeText(company?.market ?? score?.market, safeMarket, 32),
       exchange: null,
       region: null,
-      sector: null,
-      industry: null,
+      sector: sanitizeText(company?.sector ?? score?.sector, null, 80),
+      industry: sanitizeText(company?.industry ?? score?.industry, null, 80),
       currency,
       unavailable: identityUnavailable
     },
@@ -896,7 +908,7 @@ export async function buildInvestmentScreenerDuckDbSummary({ dataRoot, market = 
     const rankedParquet = join(runDir, manifest.artifacts.ranked_candidates_parquet.path).replaceAll("'", "''");
     await connection.run(`CREATE OR REPLACE TABLE ranked_candidates AS SELECT * FROM read_parquet('${rankedParquet}')`);
     const rankedRows = await duckRows(connection, `
-      SELECT rank, ticker, name, market, currency, composite_score AS score, sub_scores_json
+      SELECT rank, ticker, name, market, currency, sector, industry, composite_score AS score, sub_scores_json
       FROM ranked_candidates
       WHERE market = '${safeMarket}' AND excluded = false AND composite_score IS NOT NULL
       ORDER BY composite_score DESC, rank ASC
@@ -908,6 +920,8 @@ export async function buildInvestmentScreenerDuckDbSummary({ dataRoot, market = 
       name: row.name,
       market: row.market,
       currency: row.currency,
+      sector: row.sector ?? null,
+      industry: row.industry ?? null,
       score: Number(row.score),
       sub_scores: row.sub_scores_json ? JSON.parse(row.sub_scores_json) : {}
     }));

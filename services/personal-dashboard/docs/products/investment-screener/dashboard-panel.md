@@ -36,8 +36,8 @@ Use the plain-text report only as a fallback or when comparing output outside th
 | Market | Limits visible candidates to a market label in the current export. | Does not fetch new markets or enrich missing market data. |
 | Exchange | Currently disabled until safely exported. | Does not imply exchange is unknown forever. |
 | Region | Currently disabled until safely exported. | Does not infer geography from ticker suffix. |
-| Sector | Currently disabled until safely exported. | Does not classify companies client-side. |
-| Industry | Currently disabled until safely exported. | Does not classify companies client-side. |
+| Sector | Limits visible candidates to one or more GICS sector labels from the universe seed (hold Ctrl/Cmd to multi-select). | Does not classify companies client-side or invent a sector for an unclassified name. |
+| Industry | Limits visible candidates to one or more industry labels from the universe seed (multi-select). | Does not classify companies client-side or invent an industry for an unclassified name. |
 | Score focus | Re-sorts by a public sub-score. | Does not recompute the underlying score. |
 | Weight preset | Applies a display tilt using public sub-scores. | Does not change generator weights or persist preferences. |
 | Suggestions | Limits the number of rendered candidate cards. | Does not change the exported file. |
@@ -56,7 +56,7 @@ The panel renders:
 - disclaimer;
 - generation and data-as-of timestamps;
 - active filter messages;
-- candidate cards with rank, ticker, name, market, currency, and score;
+- candidate cards with rank, ticker, name, market, currency, sector, industry, and score;
 - selected risk flags and caveats;
 - run-level limitations; and
 - links to approved committed docs.

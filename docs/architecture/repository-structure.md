@@ -37,7 +37,7 @@ Rules:
 
 ### `docs/`
 
-Human-readable architecture notes, runbooks, migration plans, service catalogues, and operational decisions.
+Human-readable architecture notes, runbooks, migration plans, service catalogues, operational decisions, and delivery conventions. `docs/delivery-conventions.md` is the active policy for completion visibility: implementation epics that build or deploy user-facing/homelab capabilities must add/update a dashboard/status/docs/report surface or explicitly record why none is useful.
 
 ### `infrastructure/`
 

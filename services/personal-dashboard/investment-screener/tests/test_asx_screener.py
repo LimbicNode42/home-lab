@@ -473,6 +473,34 @@ class TestDashboardExportShape(unittest.TestCase):
         for candidate in export["candidates"]:
             self.assertEqual(candidate["market"], "ASX")
 
+    def test_export_candidates_carry_sector_and_industry_when_present(self):
+        cfg = load_config(CONFIG_PATH)
+        c = asx_company(sector="Materials", industry="Metals & Mining")
+        ranked = rank_companies([c], cfg)
+        export = build_dashboard_ranked_export(ranked, mode="asx-yahoo-timeseries")
+
+        self.assertEqual(export["candidates"][0]["sector"], "Materials")
+        self.assertEqual(export["candidates"][0]["industry"], "Metals & Mining")
+
+    def test_export_candidates_omit_sector_industry_when_classification_missing(self):
+        cfg = load_config(CONFIG_PATH)
+        c = asx_company()
+        ranked = rank_companies([c], cfg)
+        export = build_dashboard_ranked_export(ranked, mode="asx-yahoo-timeseries")
+
+        self.assertIsNone(export["candidates"][0]["sector"])
+        self.assertIsNone(export["candidates"][0]["industry"])
+
+    def test_apply_filters_matches_sector_and_industry_case_insensitive(self):
+        cfg = load_config(CONFIG_PATH)
+        ranked = rank_companies([
+            asx_company(ticker="BHP.AX", sector="Materials", industry="Metals & Mining"),
+            asx_company(ticker="CBA.AX", sector="Banks", industry="Banks"),
+        ], cfg)
+
+        filtered = scr.apply_filters(ranked, {"sector": ["materials"], "industry": ["metals & mining"]})
+
+        self.assertEqual([r["ticker"] for r in filtered], ["BHP.AX"])
 
     def test_derived_metric_provenance_is_labeled_as_derived(self):
         company = asx_company()

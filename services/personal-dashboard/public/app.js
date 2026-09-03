@@ -12,6 +12,7 @@ const mobileWorkflowOverview = document.querySelector('#mobile-workflow-overview
 const unifiedInboxOverview = document.querySelector('#unified-inbox-overview');
 const refreshUnifiedInboxButton = document.querySelector('#refresh-unified-inbox');
 const refreshMobileWorkflowButton = document.querySelector('#refresh-mobile-workflow');
+let dashboardConfig = null;
 const refreshButton = document.querySelector('#refresh-status');
 const finnickContent = document.querySelector('#finnick-content');
 const refreshFinnickButton = document.querySelector('#refresh-finnick');
@@ -25,6 +26,8 @@ const refreshInvestmentScreenerButton = document.querySelector('#refresh-investm
 const investmentScreenerControls = document.querySelector('#investment-screener-controls');
 const investmentSearchFilter = document.querySelector('#investment-search-filter');
 const investmentMarketFilter = document.querySelector('#investment-market-filter');
+const investmentSectorFilter = document.querySelector('#investment-sector-filter');
+const investmentIndustryFilter = document.querySelector('#investment-industry-filter');
 const investmentMetricFilter = document.querySelector('#investment-metric-filter');
 const investmentWeightFilter = document.querySelector('#investment-weight-filter');
 const investmentTopNFilter = document.querySelector('#investment-topn-filter');
@@ -195,7 +198,7 @@ function renderConfig(config) {
 }
 
 
-function renderMetaMcpOverview(metaMcp) {
+function renderMetaMcpOverview(metaMcp, statusPayload = null) {
   if (!metamcpOverview) return;
   metamcpOverview.replaceChildren();
   if (!metaMcp?.enabled) {
@@ -205,6 +208,13 @@ function renderMetaMcpOverview(metaMcp) {
 
   const services = Array.isArray(metaMcp.services) ? metaMcp.services : [];
   const domains = Array.isArray(metaMcp.tools?.domains) ? metaMcp.tools.domains : [];
+  const liveGateway = Array.isArray(statusPayload?.checks)
+    ? statusPayload.checks.find((check) => check.id === 'metamcp-gateway')
+    : null;
+  const gatewayStatus = liveGateway?.status || 'unknown';
+  const gatewayStatusDetail = liveGateway
+    ? `${liveGateway.httpStatus ?? liveGateway.error ?? 'no response'} · ${liveGateway.latencyMs}ms`
+    : 'Waiting for live status probe.';
   const serviceCards = services.length > 0
     ? services.map((service) => el('article', { className: 'status-card metamcp-service-card' }, [
       el('div', { className: 'status-title', text: service.label || service.id || 'MetaMCP service' }),
@@ -225,17 +235,24 @@ function renderMetaMcpOverview(metaMcp) {
   if (access.mode === 'ssh_tunnel') {
     accessChildren.push(el('p', { className: 'metamcp-access-label', text: 'Use SSH tunnel:' }));
     accessChildren.push(el('code', { text: access.command || 'ssh -L 12008:127.0.0.1:12008 tori' }));
-    if (access.localUrl) {
-      accessChildren.push(el('a', { href: access.localUrl, text: 'Open local MetaMCP UI after tunnel is running', rel: 'noreferrer noopener' }));
-    }
+  }
+  const safeLinks = Array.isArray(access.links) ? access.links : [];
+  if (safeLinks.length > 0) {
+    accessChildren.push(el('div', { className: 'metamcp-access-links' }, safeLinks.map((link) => el('a', { href: link.href, text: link.label, rel: 'noreferrer noopener' }))));
+  } else if (access.localUrl) {
+    accessChildren.push(el('a', { href: access.localUrl, text: access.mode === 'lan_gateway' ? 'Open MetaMCP gateway' : 'Open local MetaMCP UI after tunnel is running', rel: 'noreferrer noopener' }));
   } else {
-    accessChildren.push(el('p', { className: 'error', text: 'No safe direct MetaMCP UI link is configured.' }));
+    accessChildren.push(el('p', { className: 'error', text: 'No safe MetaMCP gateway link is configured.' }));
   }
 
   metamcpOverview.append(el('div', { className: 'metamcp-grid' }, [
     el('article', { className: 'metamcp-summary-card' }, [
       el('h3', { text: metaMcp.title || 'MetaMCP aggregator' }),
       el('p', { className: 'muted', text: `Version ${metaMcp.version || 'unknown'} · ${metaMcp.tools?.total ?? 0} last-known tools` }),
+      el('div', { className: 'metamcp-live-status' }, [
+        el('span', { className: `badge ${gatewayStatus}`, text: `Live gateway: ${gatewayStatus}` }),
+        el('span', { className: 'muted', text: gatewayStatusDetail })
+      ]),
       domainList
     ]),
     el('article', { className: 'metamcp-access-card' }, accessChildren)
@@ -443,7 +460,9 @@ function renderStatus(payload) {
 async function refreshStatus() {
   refreshButton.disabled = true;
   try {
-    renderStatus(await getJson('/api/status'));
+    const payload = await getJson('/api/status');
+    renderStatus(payload);
+    if (dashboardConfig?.metaMcp) renderMetaMcpOverview(dashboardConfig.metaMcp, payload);
   } catch (error) {
     statusList.replaceChildren(el('p', { className: 'error', text: `Status unavailable: ${error.message}` }));
   } finally {
@@ -466,6 +485,7 @@ function tabIdFromHash(hash = window.location.hash) {
 async function loadOverviewData() {
   try {
     const config = await getJson('/api/config/public');
+    dashboardConfig = config;
     renderConfig(config);
     renderMetaMcpOverview(config.metaMcp);
     unifiedInboxConfig = config.unifiedInbox || null;
@@ -893,14 +913,25 @@ function investmentScreenerRequestPath() {
   const metric = investmentMetricFilter?.value?.trim();
   const weight = investmentWeightFilter?.value?.trim();
   const topN = investmentTopNFilter?.value?.trim();
+  const sectors = investmentSelectedOptions(investmentSectorFilter);
+  const industries = investmentSelectedOptions(investmentIndustryFilter);
   if (queryText) searchParams.set('q', queryText);
   if (market) searchParams.set('market', market);
+  for (const sector of sectors) searchParams.append('sector', sector);
+  for (const industry of industries) searchParams.append('industry', industry);
   if (metric && metric !== 'composite') searchParams.set('metric', metric);
   if (weight && weight !== 'balanced') searchParams.set('weight', weight);
   if (topN) searchParams.set('limit', topN);
   if (investmentScreenerOffset > 0) searchParams.set('offset', String(investmentScreenerOffset));
   const query = searchParams.toString();
   return query ? `/api/investment-screener/ranked?${query}` : '/api/investment-screener/ranked';
+}
+
+function investmentSelectedOptions(select) {
+  if (!select || typeof select.selectedOptions === 'undefined') return [];
+  return [...select.selectedOptions]
+    .map((option) => option.value.trim())
+    .filter(Boolean);
 }
 
 function investmentCompanyDetailRequestPath(ticker) {
@@ -1000,6 +1031,7 @@ function renderInvestmentScreener(payload) {
   const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
   const suggestionLimit = investmentSuggestionLimit(payload);
   updateInvestmentPaginationControls(payload);
+  syncInvestmentFacets(payload);
   const metaItems = [
     payload.mode ? `Mode: ${payload.mode}` : null,
     payload.generated_at ? `Generated: ${formatDateTime(payload.generated_at)}` : null,
@@ -1052,11 +1084,34 @@ function renderInvestmentScreener(payload) {
   investmentScreenerContent.replaceChildren(el('div', { className: 'investment-screener-card' }, children));
 }
 
+function syncInvestmentFacets(payload) {
+  const facets = payload?.available_facets ?? {};
+  populateInvestmentFacetSelect(investmentSectorFilter, Array.isArray(facets.sectors) ? facets.sectors : [], 'All sectors');
+  populateInvestmentFacetSelect(investmentIndustryFilter, Array.isArray(facets.industries) ? facets.industries : [], 'All industries');
+}
+
+function populateInvestmentFacetSelect(select, values, emptyLabel) {
+  if (!select) return;
+  const selected = investmentSelectedOptions(select);
+  const options = values.map((value) => el('option', { value, text: value }));
+  const empty = el('option', { value: '', text: emptyLabel });
+  // Preserve the "All" placeholder as the first option, then rebuild the rest from
+  // the current facet values. Re-apply any prior selection so a re-render triggered
+  // by a change event does not drop the user's pick.
+  select.replaceChildren(empty, ...options);
+  for (const value of selected) {
+    const option = [...select.options].find((candidate) => candidate.value === value);
+    if (option) option.selected = true;
+  }
+}
+
 function investmentAppliedFilterSummary(appliedFilters) {
   if (!appliedFilters || typeof appliedFilters !== 'object') return null;
   const parts = [];
   if (appliedFilters.q) parts.push(`Search: ${appliedFilters.q}`);
   if (appliedFilters.market) parts.push(`Market: ${appliedFilters.market}`);
+  if (Array.isArray(appliedFilters.sector) && appliedFilters.sector.length) parts.push(`Sector: ${appliedFilters.sector.join(', ')}`);
+  if (Array.isArray(appliedFilters.industry) && appliedFilters.industry.length) parts.push(`Industry: ${appliedFilters.industry.join(', ')}`);
   if (appliedFilters.metric) parts.push(`Score focus: ${appliedFilters.metric}`);
   if (appliedFilters.weight) parts.push(`Sort preset: ${appliedFilters.weight}`);
   if (appliedFilters.limit || appliedFilters.topN) parts.push(`Page size: ${appliedFilters.limit ?? appliedFilters.topN}`);
@@ -1065,7 +1120,7 @@ function investmentAppliedFilterSummary(appliedFilters) {
 }
 
 function renderInvestmentCandidate(candidate) {
-  const meta = [candidate.market, candidate.currency].filter(Boolean).join(' · ');
+  const meta = [candidate.market, candidate.currency, candidate.sector, candidate.industry].filter(Boolean).join(' · ');
   const riskFlags = Array.isArray(candidate.risk_flags) ? candidate.risk_flags.slice(0, 3) : [];
   const caveats = Array.isArray(candidate.caveats) ? candidate.caveats.slice(0, 2) : [];
   const detailButton = el('button', { className: 'investment-detail-button', type: 'button', text: 'Fundamentals' });
@@ -1205,12 +1260,20 @@ if (resetInvestmentScreenerFiltersButton) {
   resetInvestmentScreenerFiltersButton.addEventListener('click', () => {
     if (investmentSearchFilter) investmentSearchFilter.value = '';
     if (investmentMarketFilter) investmentMarketFilter.value = '';
+    if (investmentSectorFilter) investmentClearSelection(investmentSectorFilter);
+    if (investmentIndustryFilter) investmentClearSelection(investmentIndustryFilter);
     if (investmentMetricFilter) investmentMetricFilter.value = 'composite';
     if (investmentWeightFilter) investmentWeightFilter.value = 'balanced';
     if (investmentTopNFilter) investmentTopNFilter.value = '6';
     investmentScreenerOffset = 0;
     refreshInvestmentScreener();
   });
+}
+
+function investmentClearSelection(select) {
+  if (!select) return;
+  for (const option of select.options) option.selected = false;
+  select.value = '';
 }
 
 if (investmentPrevPageButton) {

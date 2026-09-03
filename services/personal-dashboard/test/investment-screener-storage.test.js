@@ -171,7 +171,7 @@ test('readInvestmentScreenerCompanyDetail maps latest file-first fundamentals wi
 
     assert.equal(detail.ticker, 'BHP.AX');
     assert.equal(detail.identity.name, 'BHP Group');
-    assert.deepEqual(detail.identity.unavailable, ['exchange', 'region', 'sector', 'industry']);
+    assert.deepEqual(detail.identity.unavailable, ['exchange', 'region']);
     assert.equal(detail.valuation.market_cap.value, 225000000000);
     assert.equal(detail.valuation.market_cap.display_value, '225.0B');
     assert.equal(detail.valuation.market_cap.display_unit, 'AUD');
@@ -194,7 +194,7 @@ test('readInvestmentScreenerCompanyDetail maps latest file-first fundamentals wi
     assert.equal(detail.dividends.dividend_yield.state, 'missing');
     assert.equal(detail.dividends.dividend_yield.value, null);
     assert.equal(detail.earnings.eps.state, 'unavailable');
-    assert.ok(detail.unavailable_data.some((item) => item.field === 'sector' && item.state === 'unavailable'));
+    assert.ok(detail.unavailable_data.some((item) => item.field === 'exchange' && item.state === 'unavailable'));
     assert.equal(detail.freshness.latest_retrieved_at, '2026-08-23T10:00:32.000Z');
     assert.equal(detail.source_notes.providers.includes('yahoo-finance'), true);
     assert.equal(JSON.stringify(detail).includes(dataRoot), false);
@@ -586,4 +586,56 @@ test('run-asx-screener-hydration.sh uses canonical non-fixture file-first public
   assert.match(script, /publish-investment-screener-run\.mjs/);
   assert.match(script, /preflight-investment-screener-artifacts\.mjs/);
   assert.doesNotMatch(script, /--fixture/);
+});
+
+
+test('publishInvestmentScreenerRun round-trips sector and industry through ranked candidates and DuckDB summary', async () => {
+  const dataRoot = await mkdtemp(join(tmpdir(), 'screener-sector-roundtrip-'));
+  try {
+    const classifiedRun = {
+      ...nonFixtureRun,
+      companies: nonFixtureRun.companies.map((company) => ({
+        ...company,
+        sector: company.ticker === 'BHP.AX' ? 'Materials' : company.ticker === 'CSL.AX' ? 'Health Care' : 'Financials',
+        industry: company.ticker === 'BHP.AX' ? 'Metals & Mining' : company.ticker === 'CSL.AX' ? 'Biotechnology' : 'Banks'
+      })),
+      scores: nonFixtureRun.scores.map((score) => ({
+        ...score,
+        sector: score.ticker === 'BHP.AX' ? 'Materials' : score.ticker === 'CSL.AX' ? 'Health Care' : 'Financials',
+        industry: score.ticker === 'BHP.AX' ? 'Metals & Mining' : score.ticker === 'CSL.AX' ? 'Biotechnology' : 'Banks'
+      }))
+    };
+    const published = await publishInvestmentScreenerRun({ dataRoot, run: classifiedRun, now: new Date('2026-08-23T10:02:00.000Z') });
+
+    const ranked = (await readFile(join(published.run_dir, 'ranked_candidates.jsonl'), 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+    const bhp = ranked.find((candidate) => candidate.ticker === 'BHP.AX');
+    assert.equal(bhp.sector, 'Materials');
+    assert.equal(bhp.industry, 'Metals & Mining');
+    assert.equal(JSON.stringify(ranked).includes(dataRoot), false, 'ranked candidates must not leak NAS path');
+
+    const summary = await buildInvestmentScreenerDuckDbSummary({ dataRoot, market: 'ASX', source: 'yahoo-finance' });
+    const bhpSummary = summary.ranked_candidates.find((candidate) => candidate.ticker === 'BHP.AX');
+    assert.equal(bhpSummary.sector, 'Materials');
+    assert.equal(bhpSummary.industry, 'Metals & Mining');
+    assert.equal(JSON.stringify(summary).includes(dataRoot), false, 'duckdb summary must not leak NAS path');
+  } finally {
+    await rm(dataRoot, { recursive: true, force: true });
+  }
+});
+
+
+test('publishInvestmentScreenerRun never invents sector/industry for a name missing classification', async () => {
+  const dataRoot = await mkdtemp(join(tmpdir(), 'screener-sector-missing-'));
+  try {
+    // baseRun company/score rows carry no sector/industry keys.
+    const published = await publishInvestmentScreenerRun({ dataRoot, run: nonFixtureRun, now: new Date('2026-08-23T10:02:00.000Z') });
+
+    const ranked = (await readFile(join(published.run_dir, 'ranked_candidates.jsonl'), 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+    for (const candidate of ranked) {
+      assert.equal(candidate.sector, null);
+      assert.equal(candidate.industry, null);
+    }
+  } finally {
+    await rm(dataRoot, { recursive: true, force: true });
+  }
 });
