@@ -262,6 +262,8 @@ IconData _sourceIcon(String source) {
       return Icons.tag;
     case 'webhook':
       return Icons.webhook_outlined;
+    case 'android-sms-mms':
+      return Icons.sms_outlined;
     default:
       return Icons.inbox_outlined;
   }

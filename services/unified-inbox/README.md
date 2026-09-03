@@ -25,13 +25,15 @@ Useful endpoints:
 - `GET /api/unified-inbox/status` — sanitized read-only status, connector health, snapshot metadata, and exclusions.
 - `GET /api/unified-inbox/messages` — paginated normalized envelope projection.
 - `GET /api/unified-inbox/conversations` — conversation summaries and counts.
-- Android SMS/MMS is still gated behind the reviewed default-handler design in
-  `../../docs/architecture/unified-inbox-android-sms-mms-default-handler-design.md`.
-  A later implementation must add a separate authenticated device upload endpoint;
-  the existing query endpoints remain read-only.
+- `POST /api/unified-inbox/connectors/android-sms-mms/batches` — authenticated
+  device upload for the Android default-SMS-handler connector. Requires
+  `Authorization: Bearer <UNIFIED_INBOX_ANDROID_SMS_MMS_UPLOAD_TOKEN>`, schema
+  `android-sms-mms.v1`, synthetic/normalized envelopes only, and dedupes on
+  `source + account_ref + message_id`. This is an ingestion path, not a
+  reply/send/delete/mark-read action surface.
 - `GET /` — minimal local inspection page linking to the status API.
 
-There are no write/action endpoints. A `POST` to reply-like paths returns `404`; the service is not being handed a keyboard in phase 1.
+There are no reply/action endpoints. A `POST` to reply-like paths returns `404`; the service is not being handed a keyboard in phase 1.
 
 ## Storage model
 
@@ -75,6 +77,8 @@ Phase 2 adds four sanctioned chat/workspace connectors, all read-only behind `Re
 | Telegram | `telegram` | Poll `getUpdates` (bounded, rate-limited) | `getUpdates`/read only; NO `sendMessage`/`deleteMessage`/`editMessage*`/`forwardMessage` | `unified-inbox/telegram/<account-or-bot>` | non-secret: `min_interval_ms`, `webhook_secret_ref`; secret: `bot_token` |
 | Matrix | `matrix` | `GET /sync` incremental (bounded, rate-limited) | Read `/sync` only; NO send/redact/delete/join; encrypted events surfaced explicitly, not decrypted | `unified-inbox/matrix/<account>` | non-secret: `homeserver_url`, `user_id`, `device_id`, `min_interval_ms`; secret: `access_token` |
 | Slack | `slack` | `conversations.history` read (bounded, rate-limited) | Read history only; NO `chat.postMessage`/`chat.delete`/`reactions.add`/archive; read scopes only, no `chat:write` | `unified-inbox/slack/<workspace>` | non-secret: `app_id`, `workspace_id`, `channel_id_allowlist`, `min_interval_ms`; secret: `bot_token`, `signing_secret` |
+
+| Android SMS/MMS | `android-sms-mms` | Device push batch from default SMS handler app | Android default SMS role + explicit local consent required; authenticated upload only; no send/reply/delete/archive/mark-read; MMS binary upload excluded, metadata refs only | `unified-inbox/android-sms-mms/<device>` | non-secret: `device_label`; secret: `upload_api_token`, `device_pairing_secret` |
 
 Notes:
 

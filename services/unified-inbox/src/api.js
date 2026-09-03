@@ -1,4 +1,5 @@
 import { sanitizeForLog, assertNoSecretLeak } from './redaction.js';
+import { AndroidSmsMmsIngestEndpoint } from './android-sms-mms-ingest.js';
 
 const EXCLUSIONS = [
   { source: 'whatsapp-personal-dm', state: 'excluded', reason: 'unsanctioned personal DM access is out of scope' },
@@ -43,10 +44,21 @@ function snapshotStatus(snapshot) {
   };
 }
 
-export function createApp({ store, connectors = [], webhookIngest = null }) {
+export function createApp({ store, connectors = [], webhookIngest = null, androidSmsMmsIngest = null }) {
+  const androidSmsMmsEndpoint = androidSmsMmsIngest?.handle
+    ? androidSmsMmsIngest
+    : androidSmsMmsIngest
+      ? new AndroidSmsMmsIngestEndpoint({ store, uploadToken: androidSmsMmsIngest.uploadToken })
+      : null;
   return {
     async handle(request) {
       const url = new URL(request.url);
+
+      if (request.method === 'POST' && url.pathname === '/api/unified-inbox/connectors/android-sms-mms/batches') {
+        if (!androidSmsMmsEndpoint) return json({ error: 'not_found' }, { status: 404 });
+        const result = await androidSmsMmsEndpoint.handle(request);
+        return json(result.body, { status: result.status });
+      }
 
       // Inbound webhook ingestion is opt-in and never reachable unless a
       // webhookIngest router is explicitly supplied. Signature verification is
@@ -74,7 +86,9 @@ export function createApp({ store, connectors = [], webhookIngest = null }) {
       }
       if (url.pathname === '/api/unified-inbox/status') {
         const status = await store.status();
-        return json({ service: { name: 'unified-inbox', mode: 'read_only', status: 'ok' }, connectors: await connectorStatuses(connectors), message_count: status.message_count, snapshots: snapshotStatus(status.snapshots), exclusions: EXCLUSIONS });
+        const connectorHealth = await connectorStatuses(connectors);
+        if (androidSmsMmsEndpoint) connectorHealth.push(await androidSmsMmsEndpoint.health());
+        return json({ service: { name: 'unified-inbox', mode: 'read_only', status: 'ok' }, connectors: connectorHealth, message_count: status.message_count, snapshots: snapshotStatus(status.snapshots), exclusions: EXCLUSIONS });
       }
       if (url.pathname === '/api/unified-inbox/messages') {
         const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit') ?? 50)));

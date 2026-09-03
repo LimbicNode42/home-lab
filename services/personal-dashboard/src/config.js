@@ -50,7 +50,8 @@ const DEFAULT_CONFIG = {
       { id: 'discord', label: 'Discord', state: 'planned', detail: 'Phase 2 connector implemented; not yet deployed or authorized.' },
       { id: 'telegram', label: 'Telegram', state: 'planned', detail: 'Phase 2 connector implemented; not yet deployed or authorized.' },
       { id: 'matrix', label: 'Matrix', state: 'planned', detail: 'Phase 2 connector implemented; not yet deployed or authorized.' },
-      { id: 'slack', label: 'Slack', state: 'planned', detail: 'Phase 2 connector implemented; not yet deployed or authorized.' }
+      { id: 'slack', label: 'Slack', state: 'planned', detail: 'Phase 2 connector implemented; not yet deployed or authorized.' },
+      { id: 'android-sms-mms', label: 'Android SMS/MMS', state: 'not_configured', detail: 'Read-only default-SMS-handler capture. Requires explicit device/default-role consent and a Vaultwarden credential.' }
     ]
   },
   metaMcp: {
