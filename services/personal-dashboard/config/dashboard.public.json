@@ -197,26 +197,26 @@
       {
         "id": "discord",
         "label": "Discord",
-        "state": "planned",
-        "detail": "Phase 2 connector implemented; not yet deployed or authorized."
+        "state": "pending_credentials",
+        "detail": "Phase 2 connector deployed; awaiting Vaultwarden-rendered credentials."
       },
       {
         "id": "telegram",
         "label": "Telegram",
-        "state": "planned",
-        "detail": "Phase 2 connector implemented; not yet deployed or authorized."
+        "state": "pending_credentials",
+        "detail": "Phase 2 connector deployed; awaiting Vaultwarden-rendered credentials."
       },
       {
         "id": "matrix",
         "label": "Matrix",
-        "state": "planned",
-        "detail": "Phase 2 connector implemented; not yet deployed or authorized."
+        "state": "pending_credentials",
+        "detail": "Phase 2 connector deployed; awaiting Vaultwarden-rendered credentials."
       },
       {
         "id": "slack",
         "label": "Slack",
-        "state": "planned",
-        "detail": "Phase 2 connector implemented; not yet deployed or authorized."
+        "state": "pending_credentials",
+        "detail": "Phase 2 connector deployed; awaiting Vaultwarden-rendered credentials."
       }
     ],
     "timeoutMs": 1000
