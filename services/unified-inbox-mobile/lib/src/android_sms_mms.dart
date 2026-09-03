@@ -70,6 +70,11 @@ class AndroidSmsMmsGate {
 
   bool get canRequestSmsPermissions => roleAvailable && roleHeld;
 
+  /// True when ingestion may run: the default SMS role is held, permissions are
+  /// granted, and the connector is not disabled by an error condition.
+  bool get isReadyForIngest =>
+      roleAvailable && roleHeld && permissionState == AndroidSmsMmsPermissionState.granted;
+
   AndroidSmsMmsIngestionState get ingestionState {
     if (!roleAvailable) return AndroidSmsMmsIngestionState.disabled;
     if (!roleHeld) return AndroidSmsMmsIngestionState.roleRequired;
@@ -113,6 +118,27 @@ class AndroidSmsMmsPlatform {
 
   Future<bool> requestSmsPermissions() async {
     return await channel.invokeMethod<bool>('requestSmsPermissions') ?? false;
+  }
+
+  /// Reads all staged messages without consuming them.
+  Future<List<String>> peekStagedMessages() async {
+    final raw = await channel.invokeMethod<List<Object?>>('peekStagedMessages');
+    return raw?.whereType<String>().toList() ?? const [];
+  }
+
+  /// Acknowledges `count` staged messages after a successful backend commit.
+  Future<void> ackStagedMessages(int count) async {
+    await channel.invokeMethod<void>('ackStagedMessages', {'count': count});
+  }
+
+  /// Reads the last backend-cursor value (raw JSON string), if any.
+  Future<String?> readCursor() async {
+    return await channel.invokeMethod<String>('readCursor');
+  }
+
+  /// Persists the backend-committed cursor (raw JSON string) locally.
+  Future<void> writeCursor(String cursor) async {
+    await channel.invokeMethod<void>('writeCursor', {'cursor': cursor});
   }
 }
 
@@ -222,6 +248,53 @@ class AndroidSmsMmsMapper {
       batchId: batchId,
       senderId: addressHash,
     );
+  }
+
+  /// Maps an encrypted-queue staged message (the exact JSON the Kotlin receivers
+  /// enqueue) to a normalized envelope. Returns null when the payload is not a
+  /// recognized SMS/MMS staged record, so the sync loop can skip malformed rows
+  /// without failing the batch.
+  Map<String, dynamic>? stagedJsonToEnvelope(Map<String, dynamic> json, {required String batchId}) {
+    final provider = json['local_provider'] as String?;
+    final providerRowId = json['provider_row_id'] as String? ?? '';
+    if (providerRowId.isEmpty) return null;
+
+    switch (provider) {
+      case 'sms':
+        final address = json['address'] as String? ?? 'unknown';
+        final dateMillis = json['date_millis'] as int? ?? 0;
+        return smsRowToEnvelope(
+          AndroidSmsRow(
+            providerRowId: providerRowId,
+            threadId: null,
+            address: address,
+            body: json['body'] as String?,
+            dateMillis: dateMillis,
+            type: AndroidSmsDirection.inbound,
+          ),
+          batchId: batchId,
+        );
+      case 'mms':
+        // Metadata-only WAP_PUSH capture carries no address or extracted text;
+        // the raw PDU reference is the only stable identity available. Use the
+        // staged receive time as a sent_at approximation when no provider
+        // timestamp is present.
+        final address = json['address'] as String? ?? 'unknown';
+        final dateMillis = json['date_millis'] as int? ?? _millisFromIso(json['received_at'] as String?);
+        return mmsRowToEnvelope(
+          AndroidMmsRow(
+            providerRowId: providerRowId,
+            threadId: null,
+            address: address,
+            text: null,
+            dateMillis: dateMillis,
+            parts: const [],
+          ),
+          batchId: batchId,
+        );
+      default:
+        return null;
+    }
   }
 
   Map<String, dynamic> _baseEnvelope({
@@ -371,6 +444,11 @@ class AndroidSmsMmsSyncClient {
 }
 
 String _isoFromMillis(int millis) => DateTime.fromMillisecondsSinceEpoch(millis, isUtc: true).toIso8601String();
+
+int _millisFromIso(String? iso) {
+  final parsed = iso == null ? null : DateTime.tryParse(iso);
+  return parsed?.millisecondsSinceEpoch ?? 0;
+}
 
 String _normalizeAddress(String address) => address.replaceAll(RegExp(r'[^0-9A-Za-z+]'), '').toLowerCase();
 

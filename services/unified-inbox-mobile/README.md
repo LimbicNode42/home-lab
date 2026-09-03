@@ -43,6 +43,14 @@ auto-promote the default role or request permissions on first launch:
 - Local staging is encrypted at rest via Android Keystore-backed
   `EncryptedSharedPreferences` (AndroidX Security Crypto), bounded and drained on
   sync. Upload credentials live in Vaultwarden, referenced but never committed.
+  - The `AndroidSmsMmsSyncWorker` (`lib/src/sync_worker.dart`) drives the ingestion
+  loop: it peeks staged messages, maps them to normalized envelopes, POSTs an
+  authenticated batch, and only then acks the staged window and persists the
+  backend `cursor_commit`. A failed upload retains staged messages and does not
+  advance the cursor (commit-after-ack), so retry is lossless.
+  - Worker config is supplied at build time via `--dart-define`
+  (`ANDROID_UPLOAD_TOKEN`, `ANDROID_DEVICE_REF`, `ANDROID_DEVICE_SALT`). With no
+  token, ingestion is disabled and the client stays strictly read-only.
 
 Emulator verification covers manifest shape, role-gate logic, envelope mapping,
 dedupe, and authenticated upload. Real default-role switching UX, carrier MMS

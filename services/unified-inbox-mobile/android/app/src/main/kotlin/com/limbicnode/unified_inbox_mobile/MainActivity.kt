@@ -46,7 +46,18 @@ class MainActivity : FlutterActivity() {
                 "requestDefaultSmsRole" -> requestDefaultSmsRole(result)
                 "requestSmsPermissions" -> requestSmsPermissions(result)
                 "queuedCount" -> result.success(AndroidSmsMmsEncryptedQueue(this).count())
-                "drainStagedMessages" -> result.success(AndroidSmsMmsEncryptedQueue(this).drain())
+                "peekStagedMessages" -> result.success(AndroidSmsMmsEncryptedQueue(this).peek())
+                "ackStagedMessages" -> {
+                    val count = call.argument<Int>("count") ?: 0
+                    AndroidSmsMmsEncryptedQueue(this).ack(count)
+                    result.success(null)
+                }
+                "readCursor" -> result.success(AndroidSmsMmsEncryptedQueue(this).readCursor())
+                "writeCursor" -> {
+                    val cursor = call.argument<String>("cursor")
+                    AndroidSmsMmsEncryptedQueue(this).writeCursor(cursor)
+                    result.success(null)
+                }
                 else -> result.notImplemented()
             }
         }
@@ -151,7 +162,12 @@ class MmsWapPushReceiver : BroadcastReceiver() {
         AndroidSmsMmsEncryptedQueue(context).enqueue(
             JSONObject()
                 .put("local_provider", "mms")
-                .put("provider_row_id", stableId(intent.type ?: "mms", System.currentTimeMillis().toString(), "metadata-only"))
+                // Content-derived stable id: the PDU data URI identifies the specific
+                // message content, so a re-delivered WAP_PUSH_DELIVER maps to the same
+                // id (unlike wall-clock time). Falls back to the mime type when the
+                // carrier does not attach a data URI. (Full content hashing would
+                // require parsing the WAP PDU binary; tracked as follow-up.)
+                .put("provider_row_id", stableId("mms", intent.data?.toString() ?: intent.type ?: "mms"))
                 .put("content_type", intent.type ?: "application/vnd.wap.mms-message")
                 .put("metadata_only", true)
                 .put("received_at", Instant.now().toString())
@@ -200,15 +216,36 @@ class AndroidSmsMmsEncryptedQueue(context: Context) {
 
     fun count(): Int = JSONArray(prefs.getString("queue", "[]")).length()
 
-    fun drain(): List<String> {
+    // Read all staged messages without mutating the queue. Retains the previous
+    // `drain()` read shape so upload failures never lose staged data: the caller
+    // holds the messages, uploads them, and only on backend acknowledgment calls
+    // ack(n) to remove exactly the acked prefix.
+    fun peek(): List<String> {
         val queued = JSONArray(prefs.getString("queue", "[]"))
-        val result = mutableListOf<String>()
-        for (i in 0 until queued.length()) result.add(queued.getString(i))
-        prefs.edit().putString("queue", "[]").putString("lastSyncAt", Instant.now().toString()).apply()
-        return result
+        return (0 until queued.length()).map { queued.getString(it) }
+    }
+
+    // Remove the first `count` staged messages. Called only after the backend has
+    // acknowledged the corresponding batch (commit-after-ack). lastSyncAt is
+    // updated to the acknowledgment time, not the drain time.
+    fun ack(count: Int) {
+        if (count <= 0) return
+        val queued = JSONArray(prefs.getString("queue", "[]"))
+        val remaining = JSONArray()
+        for (i in count until queued.length()) remaining.put(queued.getString(i))
+        prefs.edit()
+            .putString("queue", remaining.toString())
+            .putString("lastSyncAt", Instant.now().toString())
+            .apply()
     }
 
     fun lastSyncAt(): String? = prefs.getString("lastSyncAt", null)
+
+    fun readCursor(): String? = prefs.getString("cursor", null)
+
+    fun writeCursor(cursor: String?) {
+        prefs.edit().putString("cursor", cursor).apply()
+    }
 }
 
 private fun stableId(vararg parts: String?): String {
