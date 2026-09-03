@@ -62,7 +62,9 @@ Bazarr indexes nothing until it can reach Sonarr (TV) and Radarr (movies):
 
 - **Sonarr:** host `192.168.0.8`, port `8989`. API key in `<ApiKey>` of
   `/mnt/pve/NAS/services/sonarr/config/config.xml`.
-- **Radarr:** host `192.168.0.8`, port `8989` (app port). API key in `<ApiKey>` of
+- **Radarr:** host `192.168.0.8`, **host port `8990`** (container app port `8989`). The
+  archive `arr/init.sh` publishes Radarr at host `8990:8989`, so Bazarr connects to
+  host `8990` — not the container's internal `8989`. API key in `<ApiKey>` of
   `/mnt/pve/NAS/services/radarr/config/config.xml`.
 
 Both API keys are secrets. Bazarr stores them in its config DB (not as Docker env vars);
@@ -71,7 +73,8 @@ must render from. **Never commit the key values.**
 
 > Dependency flag: Sonarr and Radarr are **not currently running**. The deploy card must
 > sequence their bring-up (or record it as a known blocker) before Bazarr provisioning is
-> marked complete.
+> marked complete, and **reconfirm the actual host port at bring-up** — the `8990` above is
+> the archive convention, not live-verified.
 
 ## Providers
 
