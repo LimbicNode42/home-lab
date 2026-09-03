@@ -2,6 +2,9 @@
 
 Status: live service observed on `jester` (`192.168.0.8`), with candidate desired-state seed still not fully reconciled
 
+Subtitle download plugin (secondary path — Bazarr remains primary): see
+[`opensubtitles-plugin.md`](opensubtitles-plugin.md).
+
 Source evidence:
 - archive `jellyfin.sh` plus `/mnt/nas/services/jellyfin` metadata
 - Sanitized discovery artifact: `inventory/discovery/emperor-remaining-services-discovery-2026-05-23.json`
