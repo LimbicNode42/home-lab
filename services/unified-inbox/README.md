@@ -25,6 +25,10 @@ Useful endpoints:
 - `GET /api/unified-inbox/status` — sanitized read-only status, connector health, snapshot metadata, and exclusions.
 - `GET /api/unified-inbox/messages` — paginated normalized envelope projection.
 - `GET /api/unified-inbox/conversations` — conversation summaries and counts.
+- Android SMS/MMS is still gated behind the reviewed default-handler design in
+  `../../docs/architecture/unified-inbox-android-sms-mms-default-handler-design.md`.
+  A later implementation must add a separate authenticated device upload endpoint;
+  the existing query endpoints remain read-only.
 - `GET /` — minimal local inspection page linking to the status API.
 
 There are no write/action endpoints. A `POST` to reply-like paths returns `404`; the service is not being handed a keyboard in phase 1.
