@@ -11,14 +11,43 @@ connectors with zero write capability.
 
 ## Read-only guarantees
 
-- Only `GET` requests are issued: `/api/unified-inbox/status`,
+- Only `GET` requests are issued by the inbox UI: `/api/unified-inbox/status`,
   `/api/unified-inbox/messages`, and `/api/unified-inbox/conversations`.
 - There are **no** reply/send/delete/archive/mark-read controls anywhere in the UI.
   The backend has no such endpoints (non-GET returns `404`), and the client never
   constructs them.
-- SMS/MMS and two-way messaging are explicitly out of scope for this task. The
-  bounded Android SMS/MMS design for a later default-handler implementation lives
-  at `../../docs/architecture/unified-inbox-android-sms-mms-default-handler-design.md`.
+- The Android SMS/MMS default-handler ingestion layer is **read-only capture**.
+  Its only write is an authenticated `POST` to the backend's
+  `/api/unified-inbox/connectors/android-sms-mms/batches` ingestion endpoint; it
+  never sends, replies, deletes, archives, or marks anything read upstream.
+
+## Android SMS/MMS default-handler ingestion
+
+The app carries a native Android layer (Kotlin) that implements the sanctioned
+default-SMS-handler capture path. It is explicitly consent-gated and does not
+auto-promote the default role or request permissions on first launch:
+
+- Role flow: `RoleManager.ROLE_SMS` via `RoleManager.createRequestRoleIntent(...)`
+  on Android Q+ (legacy `ACTION_CHANGE_DEFAULT` fallback for older APIs), invoked
+  only after a user taps an explicit "default SMS app" action.
+- Permissions (`READ_SMS`, `RECEIVE_SMS`, `RECEIVE_MMS`) are requested only after
+  the default SMS role is held.
+- Receivers: `SMS_DELIVER` and `WAP_PUSH_DELIVER` are declared and protected with
+  `BROADCAST_SMS` / `BROADCAST_WAP_PUSH`, matching Android's default-handler rules.
+- Eligibility stubs: a `SENDTO` activity and a `RESPOND_VIA_MESSAGE` service exist
+  for default-SMS eligibility and **safely decline** with a read-only notice.
+  There is no `SEND_SMS` permission and no send code path.
+- Capture is mapped to the canonical envelope with `source = "android-sms-mms"`,
+  phone numbers redacted to a tail (`redacted:0123`), addresses hashed for identity,
+  and MMS captured metadata-only (no binary upload).
+- Local staging is encrypted at rest via Android Keystore-backed
+  `EncryptedSharedPreferences` (AndroidX Security Crypto), bounded and drained on
+  sync. Upload credentials live in Vaultwarden, referenced but never committed.
+
+Emulator verification covers manifest shape, role-gate logic, envelope mapping,
+dedupe, and authenticated upload. Real default-role switching UX, carrier MMS
+delivery, and personal-device install are **physical-device gates** that require
+Ben's explicit approval; an emulator run is not personal-device approval.
 
 ## Screens
 
