@@ -23,6 +23,10 @@
         {
           "label": "Unified Inbox",
           "href": "http://192.168.0.50:8766"
+        },
+        {
+          "label": "Bazarr",
+          "href": "http://192.168.0.8:6767"
         }
       ]
     }
@@ -59,6 +63,16 @@
         200
       ],
       "timeoutMs": 1000
+    },
+    {
+      "id": "bazarr",
+      "label": "Bazarr",
+      "targetUrl": "http://192.168.0.8:6767/",
+      "displayUrl": "http://192.168.0.8:6767",
+      "acceptableStatuses": [
+        200
+      ],
+      "timeoutMs": 1500
     }
   ],
   "metaMcp": {
