@@ -1,0 +1,27 @@
+# Candidate desired-state seed for bazarr (subtitle management).
+# Generated from read-only live reconciliation (2026-09-03) plus the archived
+# arr/init.sh bazarr run block. NOT applied live — import/scaffold only.
+#
+# Reconcile before apply:
+#   - Pin image to a digest at deploy time (tag `latest` is per archived script).
+#   - Confirm the host media path: live Jellyfin on jester binds the NAS share at
+#     /mnt/pve/NAS/media/... (README documents the /mnt/nas vs /mnt/pve/NAS split).
+#   - Confirm config path and its PUID/PGID ownership on disk.
+#   - Bazarr runs as a normal container (published port); it does NOT need the
+#     privileged/host-network settings shown in the archived Jellyfin seed.
+services:
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    user: "1001:1003"
+    restart: unless-stopped
+    environment:
+      PUID: "1001"
+      PGID: "1003"
+      TZ: Australia/Hobart
+    ports:
+      - "6767:6767"
+    volumes:
+      - /mnt/nas/services/bazarr/config:/config
+      - /mnt/nas/media/movies:/movies
+      - /mnt/nas/media/tv:/tv
