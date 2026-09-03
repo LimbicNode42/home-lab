@@ -1,0 +1,29 @@
+# Bazarr desired-state seed (subtitle engine).
+# Task t_aabb8d6a — implementation seed only; NOT applied to any live host.
+# Deployment (container creation, provider wiring, credential rendering) is the
+# deploy card's job and is credential-gated.
+#
+# Mount notes:
+#   - /movies and /tv point at the SAME media roots the live Jellyfin container
+#     indexes (verified 2026-09-03 on jester@192.168.0.8): /mnt/pve/NAS/media/{movies,tv}.
+#     Bazarr writes .srt files alongside media so Jellyfin picks them up natively.
+#   - /config is stateful (DB + provider settings + Sonarr/Radarr API keys).
+#   - PUID/PGID 1001:1003 match the other *arr containers and the media ownership
+#     (uid=1001 gid=1003, mode 2777), so subtitle writes land with correct ownership.
+#   - Port 6767 matches the archival arr/init.sh convention; no listener occupies
+#     it on jester as of the design recon.
+services:
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    restart: unless-stopped
+    environment:
+      PUID: "1001"
+      PGID: "1003"
+      TZ: Australia/Hobart
+    ports:
+      - "6767:6767"
+    volumes:
+      - /mnt/pve/NAS/services/bazarr/config:/config
+      - /mnt/pve/NAS/media/movies:/movies
+      - /mnt/pve/NAS/media/tv:/tv
