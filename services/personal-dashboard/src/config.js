@@ -47,10 +47,10 @@ const DEFAULT_CONFIG = {
       { id: 'email-imap', label: 'Email (IMAP)', state: 'not_configured', detail: 'Phase 1 read-only IMAP connector. Awaiting Vaultwarden-rendered account credentials.' },
       { id: 'rss', label: 'RSS', state: 'not_configured', detail: 'Phase 1 bounded, rate-limited RSS/Atom polling. Awaiting a feed URL reference.' },
       { id: 'webhook', label: 'Webhook', state: 'not_configured', detail: 'Phase 1 opt-in HMAC-verified webhook ingestion. Not enabled until public-exposure review.' },
-      { id: 'discord', label: 'Discord', state: 'planned', detail: 'Phase 2 connector implemented; not yet deployed or authorized.' },
-      { id: 'telegram', label: 'Telegram', state: 'planned', detail: 'Phase 2 connector implemented; not yet deployed or authorized.' },
-      { id: 'matrix', label: 'Matrix', state: 'planned', detail: 'Phase 2 connector implemented; not yet deployed or authorized.' },
-      { id: 'slack', label: 'Slack', state: 'planned', detail: 'Phase 2 connector implemented; not yet deployed or authorized.' },
+      { id: 'discord', label: 'Discord', state: 'pending_credentials', detail: 'Phase 2 connector deployed; awaiting Vaultwarden-rendered credentials.' },
+      { id: 'telegram', label: 'Telegram', state: 'pending_credentials', detail: 'Phase 2 connector deployed; awaiting Vaultwarden-rendered credentials.' },
+      { id: 'matrix', label: 'Matrix', state: 'pending_credentials', detail: 'Phase 2 connector deployed; awaiting Vaultwarden-rendered credentials.' },
+      { id: 'slack', label: 'Slack', state: 'pending_credentials', detail: 'Phase 2 connector deployed; awaiting Vaultwarden-rendered credentials.' },
       { id: 'android-sms-mms', label: 'Android SMS/MMS', state: 'not_configured', detail: 'Read-only default-SMS-handler capture. Requires explicit device/default-role consent and a Vaultwarden credential.' }
     ]
   },
