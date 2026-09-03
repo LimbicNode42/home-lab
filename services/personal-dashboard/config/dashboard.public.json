@@ -217,6 +217,12 @@
         "label": "Slack",
         "state": "pending_credentials",
         "detail": "Phase 2 connector deployed; awaiting Vaultwarden-rendered credentials."
+      },
+      {
+        "id": "android-sms-mms",
+        "label": "Android SMS/MMS",
+        "state": "not_configured",
+        "detail": "Read-only default-SMS-handler capture. Requires explicit device/default-role consent and a Vaultwarden credential."
       }
     ],
     "timeoutMs": 1000
