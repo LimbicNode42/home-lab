@@ -16,7 +16,9 @@ connectors with zero write capability.
 - There are **no** reply/send/delete/archive/mark-read controls anywhere in the UI.
   The backend has no such endpoints (non-GET returns `404`), and the client never
   constructs them.
-- SMS/MMS and two-way messaging are explicitly out of scope for this task.
+- SMS/MMS and two-way messaging are explicitly out of scope for this task. The
+  bounded Android SMS/MMS design for a later default-handler implementation lives
+  at `../../docs/architecture/unified-inbox-android-sms-mms-default-handler-design.md`.
 
 ## Screens
 
