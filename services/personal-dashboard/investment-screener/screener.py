@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 import urllib.parse
 import urllib.request
+import urllib.error
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +75,36 @@ YAHOO_FIELD_TYPES = {
 }
 
 FILTER_FIELDS = ("market", "exchange", "region", "sector", "industry")
+
+# --- Partial hydration (three-tier coverage) -------------------------------------------------
+# A "partially hydrated" name has fresh income/valuation inputs (price, shares,
+# revenue, prior_revenue, net_income) but is missing >=1 cash-flow/balance-sheet
+# field. It is scored on a capped, renormalized composite and surfaced in its own
+# bucket, never interleaved with fully-scored candidates. Missing values are never
+# imputed. See docs: asx-partial-scoring-policy-2026-09-01.md
+
+CORE_INCOME_FIELDS = ("price", "shares_outstanding", "revenue", "prior_revenue", "net_income")
+BALANCE_CASHFLOW_FIELDS = (
+    "operating_cash_flow", "capital_expenditures", "total_assets",
+    "total_liabilities", "current_assets", "current_liabilities",
+)
+
+# Each composite sub-score category's primary derived-metric inputs. A category is
+# "live" (included in the partial denominator) when >=1 of these is present; it is
+# suppressed only when ALL of them are missing.
+SUBSCORE_METRIC_INPUTS = {
+    "quality": ("net_margin", "roe", "fcf"),
+    "valuation": ("pe_ratio", "price_to_sales"),
+    "growth": ("revenue_growth",),
+    "graham_safety": ("current_ratio", "debt_to_assets"),
+    "durability": ("net_margin", "fcf"),
+    "risk_adjustments": ("debt_to_assets",),
+}
+
+PARTIAL_BUCKET_CAVEAT = (
+    "Partial score is capped and not comparable to a full candidate score; "
+    "verify against ASX announcements and company reports."
+)
 
 DASHBOARD_EXPORT_LIMITATIONS = [
     "Candidates are for human investigation only; not recommendations, ratings, trading signals, or financial advice.",
@@ -154,6 +185,15 @@ ASX_DIRECTORY_SOURCE_URL = "https://asx.api.markitdigital.com/asx-research/1.0/c
 ASX_CODE_RE = re.compile(r"^[A-Z0-9]{2,6}$")
 ASX_UNIVERSE_SEED_SCHEMA_VERSION = "investment-screener-asx-universe-seed/v2"
 ASX_IDENTITY_RULE = "company_id=asx:{asx_code}; yahoo_ticker={asx_code}.AX"
+
+# --- US (first non-ASX market) identity constants -------------------------------------------
+# Ticker suffix is `.US` for EODHD (unlike Yahoo's bare NASDAQ/NYSE symbols). A
+# bounded curated universe (S&P 500 constituents) is the honest denominator for
+# the first US backfill — NOT the full NYSE/NASDAQ ordinary-share list (~7000).
+US_UNIVERSE_SEED_SCHEMA_VERSION = "investment-screener-us-universe-seed/v1"
+US_IDENTITY_RULE = "company_id=us:{us_code}; eodhd_ticker={us_code}.US"
+US_DEFAULT_SECURITY_TYPE = "unknown_from_eodhd_general"
+US_DENOMINATOR_LABEL = "S&P 500 constituents (reviewed static seed)"
 
 
 def _parse_market_cap(value: Any) -> Optional[int]:
@@ -399,6 +439,220 @@ def normalise_asx_ticker(ticker: str) -> str:
     if upper.endswith(".AX"):
         return upper
     return upper + ".AX"
+
+
+def normalise_us_ticker(ticker: str) -> str:
+    """Append .US to bare US symbols; normalise existing .US tickers to uppercase.
+
+    Accepts bare symbols (``AAPL``), a Yahoo-style suffix (``AAPL``), or an
+    explicit EODHD suffix (``AAPL.US``). Unlike ASX, the normalized form always
+    ends in ``.US`` because that is the EODHD fundamentals symbol contract.
+    """
+    upper = str(ticker or "").strip().upper().split(".")[0]
+    return upper + ".US" if upper else ""
+
+
+def _us_code_from_ticker(ticker: str) -> str:
+    return str(ticker or "").strip().upper().split(".")[0]
+
+
+def _us_company_id(code: str) -> str:
+    return f"us:{code}"
+
+
+def _normalise_us_company_name(value: Any) -> str:
+    """Return a stable display/match form for US company names (mirrors ASX rule)."""
+    text = str(value or "").strip()
+    text = re.sub(r"\s+", " ", text)
+    return text.upper()
+
+
+def _titlecase_us_classification(value: Any) -> Optional[str]:
+    """Title-case a sector/industry label, preserving embedded commas/punctuation.
+
+    EODHD ``General`` can return names with commas (e.g. ``Technology Hardware,
+    Storage & Peripherals``) which must round-trip intact through JSON. We only
+    normalize surrounding whitespace and word casing, never split on commas.
+    """
+    text = str(value or "").strip()
+    if not text:
+        return None
+    text = re.sub(r"\s+", " ", text)
+    return re.sub(r"[A-Za-z]+", lambda m: m.group(0).capitalize(), text)
+
+
+# ---------------------------------------------------------------------------
+# US universe seed (first non-ASX market)
+# ---------------------------------------------------------------------------
+
+US_CODE_RE = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,9}$")
+
+
+def normalise_us_universe_rows(
+    rows: list[dict],
+    source_url: str,
+    retrieved_at: str,
+    source_sha256: str,
+) -> tuple[list[dict], dict]:
+    """Normalize a curated US universe source (e.g. S&P 500 constituents) into v1 seed entries.
+
+    Accepts rows carrying ``Code``/``Symbol`` (the bare ticker), optional
+    ``Name``/``Company``, ``Sector``, ``Industry``, ``Exchange``, ``CurrencyCode``/
+    ``Currency`` and ``CountryISO``/``Market``. Every normalized entry is active
+    and typed ``unknown_from_eodhd_general`` until EODHD ``General`` supplies the
+    authoritative sector/industry/name. Derives the EODHD symbol as ``{Code}.US``.
+    """
+    entries: list[dict] = []
+    excluded: list[dict] = []
+    seen_codes: set[str] = set()
+    seen_tickers: set[str] = set()
+    row_count = len(rows)
+    public_source_url = redact_url_secrets(source_url)
+    source = {
+        "name": "US curated universe (S&P 500 constituents)",
+        "url": public_source_url,
+        "retrieved_at": retrieved_at,
+        "sha256": source_sha256,
+        "row_count": row_count,
+    }
+    for row in rows:
+        if not isinstance(row, dict):
+            excluded.append({"reason": "row is not an object"})
+            continue
+        code = str(row.get("Code") or row.get("Symbol") or row.get("code") or "").strip().upper()
+        if not code or not US_CODE_RE.match(code):
+            excluded.append({"code": code, "reason": "missing or invalid US symbol"})
+            continue
+        ticker = f"{code}.US"
+        if code in seen_codes:
+            raise ValueError(f"Duplicate US symbol in universe source: {code}")
+        if ticker in seen_tickers:
+            raise ValueError(f"Duplicate EODHD ticker in universe source: {ticker}")
+        seen_codes.add(code)
+        seen_tickers.add(ticker)
+        name_raw = str(row.get("Name") or row.get("Company") or code).strip() or code
+        sector = _titlecase_us_classification(row.get("Sector")) or _titlecase_us_classification(row.get("GicSector"))
+        industry = _titlecase_us_classification(row.get("Industry")) or _titlecase_us_classification(row.get("GicIndustry"))
+        currency = str(row.get("CurrencyCode") or row.get("Currency") or "USD").strip().upper()
+        exchange = str(row.get("Exchange") or "").strip().upper() or None
+        entry = {
+            "company_id": _us_company_id(code),
+            "ticker": ticker,
+            "us_code": code,
+            "name": name_raw,
+            "name_raw": name_raw,
+            "name_normalized": _normalise_us_company_name(name_raw),
+            "market": "US",
+            "exchange": exchange,
+            "region": "US",
+            "sector": sector,
+            "industry": industry,
+            "currency": currency,
+            "security_type": US_DEFAULT_SECURITY_TYPE,
+            "active": True,
+            "suspended": False,
+            "delisted": False,
+            "source": source,
+        }
+        entries.append(entry)
+    source_market_cap_note = "US seed does not carry market-cap ranking; entries sort by symbol"
+    entries.sort(key=lambda entry: str(entry["us_code"]))
+    for index, entry in enumerate(entries, start=1):
+        entry["universe_rank"] = index
+    metadata = {
+        "schema_version": US_UNIVERSE_SEED_SCHEMA_VERSION,
+        "source_name": source["name"],
+        "source_url": public_source_url,
+        "retrieved_at": retrieved_at,
+        "source_sha256": source_sha256,
+        "sha256": source_sha256,
+        "source_row_count": row_count,
+        "row_count": row_count,
+        "normalized_active_count": len(entries),
+        "excluded_count": len(excluded),
+        "excluded": excluded,
+        "sort_rule": "symbol_asc",
+        "identity_rule": US_IDENTITY_RULE,
+        "denominator_label": US_DENOMINATOR_LABEL,
+        "security_type_source": source_market_cap_note,
+        "generated_by": "investment-screener/screener.py normalise_us_universe_rows",
+    }
+    return entries, metadata
+
+
+def load_us_universe_seed(path: Path) -> dict:
+    """Load a wrapped reviewed US universe seed, with legacy array support."""
+    with open(path, encoding="utf8") as fh:
+        data = json.load(fh)
+    if isinstance(data, list):
+        return {"metadata": {"seed_path": str(path)}, "entries": data}
+    if not isinstance(data, dict) or not isinstance(data.get("entries"), list):
+        raise ValueError(f"US universe seed at {path} must contain an entries array")
+    metadata = dict(data.get("metadata") or {})
+    metadata.setdefault("seed_path", str(path))
+    return {"metadata": metadata, "entries": data["entries"]}
+
+
+def select_us_universe_batch(
+    entries: list[dict],
+    batch_offset: int = 0,
+    max_tickers: Optional[int] = None,
+    denominator_label: Optional[str] = None,
+) -> dict:
+    """Select a deterministic active US universe slice and return accounting metadata."""
+    if batch_offset < 0:
+        raise ValueError("batch_offset must be non-negative")
+    if max_tickers is not None and max_tickers < 1:
+        raise ValueError("max_tickers must be at least 1")
+    active = sorted(
+        [entry for entry in entries if entry.get("active") and entry.get("ticker")],
+        key=lambda entry: (int(entry.get("universe_rank") or 999999), str(entry.get("ticker"))),
+    )
+    full_count = len(active)
+    end = full_count if max_tickers is None else min(full_count, batch_offset + max_tickers)
+    selected = active[batch_offset:end]
+    complete = batch_offset == 0 and end >= full_count
+    status = "complete_exchange_listing" if complete else "ranked_market_cap_batch"
+    return {
+        "entries": selected,
+        "tickers": [str(entry["ticker"]) for entry in selected],
+        "full_count": full_count,
+        "eligible_count": full_count,
+        "selected_count": len(selected),
+        "batch_offset": batch_offset,
+        "batch_end_exclusive": end,
+        "complete_exchange_listing": complete,
+        "complete_security_type_filtered_listing": False,
+        "denominator_status": status,
+        "denominator_label": denominator_label or US_DENOMINATOR_LABEL,
+        "security_type_filter": None,
+        "exclude_security_types": None,
+        "excluded_security_type_count": 0,
+    }
+
+
+def apply_us_seed_identity(companies: list[dict], seed_entries: list[dict]) -> list[dict]:
+    """Overlay reviewed US seed identity fields onto hydrated provider rows.
+
+    Only seed-authoritative fields are overlaid: ``company_id``, ``us_code``,
+    ``region``, ``security_type``, and lifecycle flags. Name/sector/industry/
+    exchange/currency come from EODHD ``General`` at hydration time and are NOT
+    clobbered by a curated list that typically lacks them.
+    """
+    by_ticker = {normalise_us_ticker(str(entry.get("ticker"))): entry for entry in seed_entries if entry.get("ticker")}
+    identity_fields = (
+        "company_id", "us_code", "region", "security_type", "active", "suspended", "delisted",
+    )
+    enriched: list[dict] = []
+    for company in companies:
+        merged = dict(company)
+        seed = by_ticker.get(normalise_us_ticker(str(company.get("ticker") or "")))
+        if seed:
+            for field in identity_fields:
+                if seed.get(field) is not None:
+                    merged[field] = seed[field]
+        enriched.append(merged)
+    return enriched
 
 
 # ---------------------------------------------------------------------------
@@ -778,6 +1032,77 @@ _SUBSCORERS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Hydration tier classification (partial scoring policy)
+# ---------------------------------------------------------------------------
+
+def _present_raw_fields(company: dict) -> set[str]:
+    """Return the set of RAW_FIELDS with a non-None value on the company dict."""
+    present: set[str] = set()
+    for name in RAW_FIELDS:
+        fv: Optional[FieldValue] = company.get(name)
+        if fv is not None and fv.value is not None:
+            present.add(name)
+    return present
+
+
+def classify_hydration_tier(company: dict, cfg: dict) -> str:
+    """Classify a company as 'full', 'partial', or 'excluded'.
+
+    - 'full': all RAW_FIELDS present.
+    - 'partial': all CORE_INCOME_FIELDS present AND >=1 BALANCE_CASHFLOW_FIELD missing.
+    - 'excluded': missing a core income field (price/shares/revenue/prior_revenue/net_income)
+      or missing everything. Hard-exclusion/freshness gating is a separate concern
+      (apply_hard_exclusions); this classifier only decides hydration completeness.
+
+    Never imputes: absence is measured directly against the field set.
+    """
+    if not cfg.get("partial_scoring", {}).get("enabled", True):
+        present = _present_raw_fields(company)
+        return "full" if len(present) == len(RAW_FIELDS) else "excluded"
+
+    present = _present_raw_fields(company)
+    core_present = present & set(CORE_INCOME_FIELDS)
+    if len(core_present) == len(CORE_INCOME_FIELDS):
+        missing_bs_cf = [f for f in BALANCE_CASHFLOW_FIELDS if f not in present]
+        if not missing_bs_cf:
+            return "full"
+        return "partial"
+    if len(present) == len(RAW_FIELDS):
+        return "full"
+    return "excluded"
+
+
+def hydration_completeness(company: dict, cfg: dict) -> dict:
+    """Return n/m completeness plus the missing-field and suppressed-sub-score lists."""
+    present = _present_raw_fields(company)
+    denominator = int(cfg.get("partial_scoring", {}).get("hydration_completeness_denominator", len(RAW_FIELDS)) or len(RAW_FIELDS))
+    present_count = len(present)
+    missing_fields = sorted(f for f in RAW_FIELDS if f not in present)
+    metrics = _derive_metrics(company)
+    suppressed = [
+        cat for cat, inputs in SUBSCORE_METRIC_INPUTS.items()
+        if all(metrics.get(m) is None for m in inputs)
+    ]
+    return {
+        "present": present_count,
+        "denominator": denominator,
+        "missing_raw_fields": missing_fields,
+        "suppressed_sub_scores": sorted(suppressed),
+    }
+
+
+def _live_subscore_weights(weights: dict, metrics: dict) -> dict:
+    """Return {category: weight} for categories whose primary inputs are live."""
+    live: dict = {}
+    for cat, inputs in SUBSCORE_METRIC_INPUTS.items():
+        if cat not in weights:
+            continue
+        if any(metrics.get(m) is not None for m in inputs):
+            live[cat] = weights.get(cat, 0)
+    return live
+
+
 def score_company(company: dict, cfg: dict) -> dict:
     """Full scoring of one company. Does NOT call apply_hard_exclusions."""
     weights: dict = cfg["composite_weights"]
@@ -802,16 +1127,43 @@ def score_company(company: dict, cfg: dict) -> dict:
         sub_scores["valuation"] = 0
         all_caveats.append("valuation score suppressed for distress/negative-earnings balance-sheet pathology")
 
-    total_weight = sum(weights.values())
-    composite = sum(weights.get(cat, 0) * sub_scores.get(cat, 0) / 100 for cat in weights)
-    if total_weight != 0:
-        composite = composite / total_weight * 100
-
+    tier = classify_hydration_tier(company, cfg)
+    comp_detail = hydration_completeness(company, cfg)
     unique_missing = list(dict.fromkeys(all_missing))
-    missing_penalty = min(len(unique_missing) * per_penalty, max_penalty)
-    composite = max(0, composite - missing_penalty)
-    if score_caps:
-        composite = min(composite, min(score_caps.values()))
+
+    partial = tier == "partial"
+    partial_cap = float(cfg.get("partial_scoring", {}).get("partial_cap", 60))
+
+    if partial:
+        # Renormalize only over live sub-score categories; dead categories
+        # (graham_safety, risk_adjustments for a revenue-only name) are excluded
+        # from the denominator rather than scored as zero-weights.
+        live_weights = _live_subscore_weights(weights, metrics)
+        live_total = sum(live_weights.values())
+        composite = 0.0
+        if live_total != 0:
+            composite = sum(live_weights.get(cat, 0) * sub_scores.get(cat, 0) / 100 for cat in live_weights)
+            composite = composite / live_total * 100
+        suppressed = comp_detail["suppressed_sub_scores"]
+        # Suppression already removes dead categories; do NOT additionally apply the
+        # blanket missing-data penalty on top. The explicit completeness label + cap
+        # replace the hidden penalty.
+        missing_penalty = 0.0
+        if score_caps:
+            composite = min(composite, min(score_caps.values()))
+        composite = min(composite, partial_cap)
+        composite = max(0.0, composite)
+        all_caveats.append(PARTIAL_BUCKET_CAVEAT)
+        all_caveats.append("suppressed sub-scores: " + ", ".join(suppressed) if suppressed else "suppressed sub-scores: none")
+    else:
+        total_weight = sum(weights.values())
+        composite = sum(weights.get(cat, 0) * sub_scores.get(cat, 0) / 100 for cat in weights)
+        if total_weight != 0:
+            composite = composite / total_weight * 100
+        missing_penalty = min(len(unique_missing) * per_penalty, max_penalty)
+        composite = max(0, composite - missing_penalty)
+        if score_caps:
+            composite = min(composite, min(score_caps.values()))
 
     fields = {}
     for f in RAW_FIELDS:
@@ -834,7 +1186,8 @@ def score_company(company: dict, cfg: dict) -> dict:
         "name": company.get("name"),
         "market": company.get("market"),
         "currency": company.get("currency"),
-        **{k: company.get(k) for k in ("company_id", "asx_code", "name_raw", "name_normalized", "exchange", "region", "sector", "industry", "security_type", "active", "suspended", "delisted") if company.get(k) is not None},
+        **{k: company.get(k) for k in ("company_id", "asx_code", "us_code", "name_raw", "name_normalized", "exchange", "region", "sector", "industry", "security_type", "active", "suspended", "delisted") if company.get(k) is not None},
+        "_eodhd_depth": company.get("_eodhd_depth"),
         "excluded": False,
         "exclusion_reasons": [],
         "sub_scores": sub_scores,
@@ -844,6 +1197,13 @@ def score_company(company: dict, cfg: dict) -> dict:
         "missing_penalty_points": missing_penalty,
         "caveats": list(dict.fromkeys(all_caveats)),
         "missing_fields": unique_missing,
+        "hydration_tier": tier,
+        "hydration_completeness": {
+            "present": comp_detail["present"],
+            "denominator": comp_detail["denominator"],
+        },
+        "missing_raw_fields": comp_detail["missing_raw_fields"],
+        "suppressed_sub_scores": comp_detail["suppressed_sub_scores"],
         "provenance_summary": _provenance_summary(company),
         "fields": fields,
         "multi_source_fields": company.get("multi_source_fields") or {},
@@ -888,20 +1248,25 @@ def rank_companies(companies: list[dict], cfg: dict) -> list[dict]:
         else:
             scored.append(score_company(company, cfg))
 
-    # Sort: non-excluded by composite_score desc, excluded at end
-    non_excluded = sorted(
-        [r for r in scored if not r.get("excluded")],
-        key=lambda r: r.get("composite_score") or 0,
-        reverse=True,
-    )
+    fully_scored = [r for r in scored if not r.get("excluded") and r.get("hydration_tier") == "full"]
+    partial = [r for r in scored if not r.get("excluded") and r.get("hydration_tier") == "partial"]
     excluded = [r for r in scored if r.get("excluded")]
 
+    fully_scored = sorted(fully_scored, key=lambda r: r.get("composite_score") or 0, reverse=True)
+    partial = sorted(partial, key=lambda r: r.get("composite_score") or 0, reverse=True)
+
     ranked = []
-    for i, row in enumerate(non_excluded, start=1):
+    for i, row in enumerate(fully_scored, start=1):
         row["rank"] = i
+        row["partial_rank"] = None
+        ranked.append(row)
+    for i, row in enumerate(partial, start=1):
+        row["rank"] = None
+        row["partial_rank"] = i
         ranked.append(row)
     for row in excluded:
         row["rank"] = None
+        row["partial_rank"] = None
         ranked.append(row)
 
     return ranked
@@ -943,7 +1308,9 @@ def apply_top_n(ranked: list[dict], top_n: Optional[int]) -> list[dict]:
     kept: list[dict] = []
     candidates_seen = 0
     for row in ranked:
-        if row.get("excluded"):
+        # Partial candidates are bucket-separated, never counted against top_n
+        # (which applies to fully-scored names only).
+        if row.get("excluded") or row.get("hydration_tier") == "partial":
             kept.append(row)
         elif candidates_seen < top_n:
             kept.append(row)
@@ -1003,7 +1370,7 @@ def _dashboard_provenance_summary(row: dict) -> Optional[str]:
 
 
 def _dashboard_ranked_row(row: dict) -> dict:
-    return {
+    row_dict = {
         "rank": row.get("rank"),
         "ticker": row.get("ticker"),
         "name": row.get("name"),
@@ -1027,6 +1394,16 @@ def _dashboard_ranked_row(row: dict) -> dict:
             "conflict_count": int((row.get("field_quality") or {}).get("conflict_count") or 0),
         },
     }
+    if row.get("hydration_tier") == "partial":
+        row_dict["hydration_tier"] = "partial"
+        row_dict["hydration_completeness"] = {
+            "present": (row.get("hydration_completeness") or {}).get("present"),
+            "denominator": (row.get("hydration_completeness") or {}).get("denominator"),
+        }
+        row_dict["missing_raw_fields"] = list(row.get("missing_raw_fields") or [])
+        row_dict["suppressed_sub_scores"] = list(row.get("suppressed_sub_scores") or [])
+        row_dict["partial_rank"] = row.get("partial_rank")
+    return row_dict
 
 
 def build_dashboard_ranked_export(
@@ -1039,14 +1416,24 @@ def build_dashboard_ranked_export(
     limitations = list(DASHBOARD_EXPORT_LIMITATIONS)
     if top_n is not None:
         limitations.append(f"top_n={top_n}")
-    return {
+    candidates = [row for row in ranked if not row.get("excluded") and row.get("hydration_tier") != "partial"]
+    partial = [row for row in ranked if not row.get("excluded") and row.get("hydration_tier") == "partial"]
+    excluded = [row for row in ranked if row.get("excluded")]
+    result = {
         "mode": mode,
         "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
         "data_as_of": _ranked_data_as_of(ranked),
         "limitations": limitations,
-        "candidates": [_dashboard_ranked_row(row) for row in ranked if not row.get("excluded")],
-        "excluded": [_dashboard_ranked_row(row) for row in ranked if row.get("excluded")],
+        "candidates": [_dashboard_ranked_row(row) for row in candidates],
+        "excluded": [_dashboard_ranked_row(row) for row in excluded],
     }
+    if partial:
+        result["partial"] = [_dashboard_ranked_row(row) for row in partial]
+        result["limitations"].append(
+            "Some candidates have no cash-flow or balance-sheet data and are listed "
+            "separately under a partial bucket; they are not directly comparable to fully scored candidates."
+        )
+    return result
 
 
 def build_plain_text_report(
@@ -1094,6 +1481,15 @@ def build_plain_text_report(
         lines.append(f"\nEXCLUDED ({len(excl)}):")
         for e in excl:
             lines.append(f"  {e['ticker']} — {'; '.join(e.get('caveats') or [])[:80]}")
+
+    partial = export.get("partial") or []
+    if partial:
+        lines.append(f"\nPARTIALLY HYDRATED ({len(partial)}): income and valuation only; "
+                     "cash-flow and balance-sheet not assessed; not directly comparable to fully scored candidates.")
+        for p in partial:
+            missing = ", ".join(p.get("missing_raw_fields") or []) or "none"
+            lines.append(f"  {p['ticker']} — {p.get('name', '')} [{p.get('market', '')}]")
+            lines.append(f"     Partial score: {p['score']} (capped); missing: {missing}")
 
     lines.append("")
     lines.append("=" * 70)
@@ -1351,13 +1747,17 @@ def hydrate_companies_from_asx_tickers(
 PROVIDER_TRUST_RANK = {
     "fmp": 0,
     "alpha_vantage": 1,
+    "eodhd": 5,
+    "asx_markitdigital": 20,
 }
 
-# Env var names (research note t_a8b454bb). Values are never committed; they are
-# injected at runtime from Vaultwarden/local secret storage.
+# Env var/config flag names. Secret values are never committed; credentialed
+# providers are injected at runtime from Vaultwarden/local secret storage.
 PROVIDER_ENV_VARS = {
     "fmp": "FMP_API_KEY",
     "alpha_vantage": "ALPHA_VANTAGE_API_KEY",
+    "eodhd": "EODHD_API_KEY",
+    "asx_markitdigital": "ASX_MARKITDIGITAL_ENABLED",
 }
 
 
@@ -1377,8 +1777,223 @@ def missing_field_value(field_name: str, reason: str, source_family: str) -> Fie
     )
 
 
+def build_company_from_eodhd_fundamentals(ticker: str, payload: dict, quote: Optional[dict] = None) -> dict:
+    """Build a screener company dict from an EODHD fundamentals payload + a quote.
+
+    ``quote`` supplies the current price (EODHD fundamentals has no live price);
+    it is the Yahoo chart quote dict (``price``/``currency``/``exchange``) from
+    ``fetch_yahoo_chart_quote``. Identity (name/sector/industry/currency/exchange/
+    region) is taken from EODHD ``General`` via the adapter's extraction helpers;
+    price is the one field sourced from the quote. Nothing is imputed: missing
+    statement rows simply yield missing FieldValues.
+    """
+    adapter = EodhdAdapter(env={})
+    identity = adapter._extract_identity(payload)
+    depth = EodhdAdapter._statement_depth(payload)
+    financials = payload.get("Financials") if isinstance(payload.get("Financials"), dict) else {}
+    currency = identity.get("currency") or "USD"
+    fields = adapter._shared_row_fields(financials, "", currency)
+
+    # Price from the quote (chart), provenance yahoo-finance, currency = market.
+    now = _now_iso()
+    quote = quote or {}
+    price = _coerce_float(quote.get("price"))
+    price_fv = FieldValue(
+        value=price,
+        provenance={
+            "source_family": "yahoo-finance",
+            "provider": "yahoo-finance",
+            "source_url": "https://query1.finance.yahoo.com/v8/finance/chart/" + urllib.parse.quote(ticker),
+            "retrieved_at": now,
+            "retrieved_from_source_at": now,
+            "data_as_of": now[:10],
+            "field_name": "price",
+            "freshness": "Yahoo chart quote from unofficial public endpoint; verify before use",
+        },
+    ) if price is not None else None
+
+    # Shares outstanding from EODHD SharesStats / outstandingShares.
+    shares = adapter._extract_shares_outstanding(payload)
+    shares_fv = fields.get("shares_outstanding")
+    if shares_fv is None and shares is not None:
+        shares_fv = FieldValue(
+            value=shares,
+            provenance={
+                "source_family": "eodhd",
+                "provider": "eodhd",
+                "source_url": "",
+                "retrieved_at": now,
+                "retrieved_from_source_at": now,
+                "data_as_of": None,
+                "field_name": "shares_outstanding",
+                "unit": "shares",
+                "currency": None,
+                "scale": "ones",
+                "period_type": "latest_market",
+                "confidence": "medium",
+                "trust_level": "licensed_provider_normalized_statement",
+                "stale": False,
+                "method": "reported",
+            },
+        )
+
+    company = {
+        "ticker": ticker,
+        "name": identity.get("name") or quote.get("name") or ticker,
+        "market": "US",
+        "exchange": identity.get("exchange") or quote.get("exchange") or "UNKNOWN",
+        "region": identity.get("region") or "US",
+        "currency": currency,
+        "company_id": identity.get("company_id"),
+        "us_code": identity.get("us_code"),
+        "name_raw": identity.get("name_raw"),
+        "name_normalized": identity.get("name_normalized"),
+        "sector": identity.get("sector"),
+        "industry": identity.get("industry"),
+        "security_type": identity.get("security_type") or US_DEFAULT_SECURITY_TYPE,
+        "active": True,
+        "suspended": False,
+        "delisted": False,
+        "_eodhd_depth": depth,
+        "price": price_fv,
+        "shares_outstanding": shares_fv,
+        "revenue": fields.get("revenue"),
+        "prior_revenue": fields.get("prior_revenue"),
+        "net_income": fields.get("net_income"),
+        "operating_cash_flow": fields.get("operating_cash_flow"),
+        "capital_expenditures": fields.get("capital_expenditures"),
+        "total_assets": fields.get("total_assets"),
+        "total_liabilities": fields.get("total_liabilities"),
+        "current_assets": fields.get("current_assets"),
+        "current_liabilities": fields.get("current_liabilities"),
+    }
+    return company
+
+
+def hydrate_companies_from_us_eodhd(
+    payloads: list[dict],
+    tickers: Optional[list[str]] = None,
+    quote_fetcher: Optional[Callable[[str], dict]] = None,
+    sleep_seconds: float = 0.3,
+    cache_dir: Optional[Path] = None,
+    warning_sink: Optional[Callable[[str], None]] = None,
+    failure_sink: Optional[Callable[[dict], None]] = None,
+) -> list[dict]:
+    """Build company rows from a pre-fetched list of EODHD payloads + Yahoo quotes.
+
+    The EODHD fundamentals payload is fetched upstream (via ``EodhdAdapter.fetch``)
+    and passed in as ``payloads``; this function only builds rows and fetches the
+    Yahoo chart quote (for live price). ``tickers`` must be `.US`-normalized and
+    align positionally with ``payloads``; when omitted the ticker is read from the
+    payload's ``General.Code``.
+    """
+    warning_sink = warning_sink or (lambda message: print(message, file=sys.stderr))
+    if quote_fetcher is None:
+        quote_fetcher = lambda symbol: fetch_yahoo_chart_quote(symbol, cache_dir=cache_dir)
+    companies: list[dict] = []
+    for index, payload in enumerate(payloads):
+        ticker = normalise_us_ticker(tickers[index]) if tickers and index < len(tickers) else None
+        fallback_code = None
+        general = payload.get("General") if isinstance(payload, dict) and isinstance(payload.get("General"), dict) else {}
+        fallback_code = str(general.get("Code") or "").strip().upper() or None
+        if not ticker:
+            ticker = normalise_us_ticker(fallback_code) if fallback_code else normalise_us_ticker("UNKNOWN")
+        try:
+            quote = quote_fetcher(ticker)
+            companies.append(build_company_from_eodhd_fundamentals(ticker, payload, quote))
+        except Exception as exc:
+            if failure_sink:
+                failure_sink({
+                    "ticker": ticker,
+                    "reason": str(exc),
+                    "recoverable": True,
+                    "provider": "yahoo-finance",
+                    "source_family": "yahoo-finance",
+                    "failed_at": _now_iso(),
+                })
+            warning_sink(f"WARNING: failed to hydrate {ticker} US quote: {exc}")
+        if sleep_seconds and index != len(payloads) - 1:
+            time.sleep(sleep_seconds)
+    return companies
+
+
+def _fetch_us_eodhd_companies(
+    tickers: list[str],
+    eodhd: "EodhdAdapter",
+    cache_dir: Optional[Path] = None,
+    sleep_seconds: float = 0.3,
+    failure_sink: Optional[Callable[[dict], None]] = None,
+) -> list[dict]:
+    """Fetch raw EODHD fundamentals payloads + Yahoo quotes and build US company rows.
+
+    Bounded to the provided ``tickers``. Each ticker needs exactly one EODHD
+    fundamentals call plus one Yahoo chart quote (for live price). Failures are
+    recorded via ``failure_sink`` and skipped; nothing is imputed.
+    """
+    companies: list[dict] = []
+    for index, ticker in enumerate(tickers):
+        try:
+            payload = eodhd.fetch_payload(ticker)
+            if not payload:
+                if eodhd.last_error is not None:
+                    raise eodhd.last_error
+                if failure_sink:
+                    failure_sink({
+                        "ticker": ticker,
+                        "reason": "EODHD fundamentals returned no payload (0 statement rows)",
+                        "recoverable": True,
+                        "provider": "eodhd",
+                        "source_family": "eodhd",
+                        "failed_at": _now_iso(),
+                    })
+                continue
+            # Yahoo chart quote uses the bare NASDAQ/NYSE symbol (no .US suffix).
+            quote_symbol = _us_code_from_ticker(ticker)
+            quote = fetch_yahoo_chart_quote(quote_symbol, cache_dir=cache_dir)
+            companies.append(build_company_from_eodhd_fundamentals(ticker, payload, quote))
+        except Exception as exc:
+            if failure_sink:
+                failure_sink({
+                    "ticker": ticker,
+                    "reason": _redact_secrets_in_text(str(exc)),
+                    "recoverable": True,
+                    "provider": "eodhd",
+                    "source_family": "eodhd",
+                    "failed_at": _now_iso(),
+                })
+        if sleep_seconds and index != len(tickers) - 1:
+            time.sleep(sleep_seconds)
+    return companies
+
+
 def _now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _field_is_fallback_fillable(fv: Optional[FieldValue], max_age_days: int = 730) -> bool:
+    """Return True when a provider fallback may safely replace this field.
+
+    Fresh existing values are preserved. Missing values and values already marked
+    stale, or whose provenance timestamp is outside the hard freshness window,
+    can be replaced by a configured fallback provider. This is deliberately
+    conservative: it never overwrites a fresh Yahoo value just because another
+    public endpoint disagrees.
+    """
+    if fv is None or fv.value is None:
+        return True
+    prov = fv.provenance or {}
+    if prov.get("stale"):
+        return True
+    as_of = _parse_provenance_time(
+        prov.get("data_as_of") or prov.get("retrieved_from_source_at") or prov.get("retrieved_at")
+    )
+    if as_of is None:
+        return False
+    return (datetime.datetime.now(datetime.timezone.utc) - as_of).days > max_age_days
+
+
+def _company_needs_provider_fallback(company: dict) -> bool:
+    return any(_field_is_fallback_fillable(company.get(field_name)) for field_name in RAW_FIELDS)
 
 
 def _coerce_float(value: Any) -> Optional[float]:
@@ -1412,7 +2027,7 @@ def _first_dated(items: list[dict], date_keys: tuple[str, ...]) -> Optional[dict
     )
 
 
-_SECRET_QUERY_PARAMS = frozenset({"apikey", "api_key", "access_token", "key", "token", "signature", "sig", "session", "sessionid", "session_id", "sid"})
+_SECRET_QUERY_PARAMS = frozenset({"apikey", "api_key", "api_token", "access_token", "key", "token", "signature", "sig", "session", "sessionid", "session_id", "sid"})
 _SECRET_ASSIGNMENT_RE = re.compile(
     r"(?i)(?<![A-Za-z0-9_])"
     r"(" + "|".join(re.escape(param) for param in sorted(_SECRET_QUERY_PARAMS, key=len, reverse=True)) + r")"
@@ -1525,9 +2140,24 @@ class ProviderAdapter:
     def _fetch_fields(self, ticker: str) -> dict[str, FieldValue]:
         raise NotImplementedError
 
-    def _field(self, name: str, value: Any, source_url: str, data_as_of: Optional[str]) -> FieldValue:
+    def _field(
+        self,
+        name: str,
+        value: Any,
+        source_url: str,
+        data_as_of: Optional[str],
+        currency: Optional[str] = None,
+        filing_reference: str = "ASX filings / announcements",
+    ) -> FieldValue:
         if name == "capital_expenditures" and value is not None:
             value = -abs(float(value))
+        unit = _default_unit_for_field(name)
+        is_currency_unit = unit == "currency"
+        # Default currency for currency-unit fields is AUD (preserving existing
+        # FMP/AlphaVantage semantics); multi-market adapters pass ``currency``
+        # explicitly. Non-currency fields (shares, ratios) carry no currency.
+        if currency is None:
+            currency = "AUD"
         return FieldValue(
             value=_coerce_float(value),
             provenance={
@@ -1540,20 +2170,20 @@ class ProviderAdapter:
                 "data_as_of": data_as_of,
                 "period_end": data_as_of,
                 "field_name": name,
-                "unit": _default_unit_for_field(name),
-                "currency": "AUD" if _default_unit_for_field(name) == "currency" else None,
-                "scale": "ones" if _default_unit_for_field(name) in {"currency", "shares"} else "ratio",
+                "unit": unit,
+                "currency": currency if is_currency_unit else None,
+                "scale": "ones" if unit in {"currency", "shares"} else "ratio",
                 "period_type": "annual",
                 "confidence": "medium",
                 "trust_level": "licensed_provider_normalized_statement",
                 "stale": False,
                 "method": "reported",
                 "caveats": [
-                    f"{self.name} provider-normalized statement; verify against ASX filings before investment action."
+                    f"{self.name} provider-normalized statement; verify against {filing_reference} before investment action."
                 ],
                 "freshness": (
-                    f"{self.name} licensed fundamentals; verify against ASX "
-                    "announcements/company reports before acting"
+                    f"{self.name} licensed fundamentals; verify against {filing_reference} "
+                    "before acting"
                 ),
             },
         )
@@ -1613,6 +2243,302 @@ class FmpAdapter(ProviderAdapter):
         return fields
 
 
+class EodhdAdapter(ProviderAdapter):
+    """EODHD fundamentals adapter — multi-market (``.US`` and ``.AU``) annual fills.
+
+    One call to ``/fundamentals/{SYMBOL}?api_token=...&fmt=json`` returns the
+    balance sheet, income statement, cash flow, plus ``General`` identity and
+    ``SharesStats``/``outstandingShares``. ``_fetch_fields`` maps the most recent
+    annual rows into the screener's normalized ``FieldValue`` names. Identity
+    fields (sector/industry/name/currency/exchange) are returned alongside raw
+    financials so a multi-market hydration path can build a full company row.
+
+    Fail-closed: no credential -> no network, empty result. Never fabricates
+    current assets/liabilities from totals.
+    """
+
+    name = "eodhd"
+    env_var = "EODHD_API_KEY"
+    base_url = "https://eodhd.com/api/fundamentals"
+
+    # EODHD fundamentals returns string-formatted numbers ("416161000000.00").
+    # _coerce_float already handles comma/whitespace stripping; we additionally
+    # drop the trailing ".00" formatting by passing through _coerce_float.
+
+    @staticmethod
+    def _yearly_rows(section: Any) -> list[dict]:
+        """Return annual rows (dict or list keyed by index/date), newest-first."""
+        if not isinstance(section, dict):
+            return []
+        yearly = section.get("yearly") or section.get("Yearly") or section.get("annual")
+        if isinstance(yearly, dict):
+            raw = [row for row in yearly.values() if isinstance(row, dict)]
+        elif isinstance(yearly, list):
+            raw = [row for row in yearly if isinstance(row, dict)]
+        else:
+            raw = []
+        # If rows carry no date, preserve provider ordering (already newest-first
+        # in practice) rather than silently reordering on a missing key.
+        dated = [row for row in raw if EodhdAdapter._row_date(row)]
+        undated = [row for row in raw if not EodhdAdapter._row_date(row)]
+        ordered = sorted(dated, key=lambda row: EodhdAdapter._row_date(row), reverse=True) + undated
+        return ordered
+
+    @staticmethod
+    def _first_present(row: dict, *names: str) -> Any:
+        for name in names:
+            value = row.get(name)
+            if value is not None:
+                return value
+        return None
+
+    @staticmethod
+    def _row_date(row: dict) -> str:
+        return str(row.get("date") or row.get("filing_date") or row.get("period") or "")
+
+    def _fetch_fields(self, ticker: str) -> dict[str, FieldValue]:
+        key = self.credential()
+        symbol = self._normalise_symbol(ticker)
+        url = f"{self.base_url}/{urllib.parse.quote(symbol)}?api_token={urllib.parse.quote(key or '')}&fmt=json"
+        fetcher = self._fetcher or self._get_json
+
+        if self._fetcher is None:
+            # Paid endpoint, but still external infrastructure. Keep live backfills gentle.
+            try:
+                sleep_seconds = float(os.environ.get("EODHD_PROVIDER_FALLBACK_SLEEP_SECONDS", "0.75") or 0.75)
+            except ValueError:
+                sleep_seconds = 0.75
+            time.sleep(max(sleep_seconds, 0.75))
+
+        try:
+            payload = fetcher(url)
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(
+                f"recoverable EODHD fundamentals failure: status {exc.code} "
+                f"{getattr(exc, 'reason', '')}: {redact_url_secrets(exc.url or url)}"
+            ) from exc
+
+        if not isinstance(payload, dict):
+            return {}
+        return self._parse_payload(payload, url)
+
+    def _normalise_symbol(self, ticker: str) -> str:
+        upper = str(ticker or "").strip().upper()
+        if upper.endswith(".US"):
+            return upper
+        if upper.endswith(".AX"):
+            return upper.replace(".AX", ".AU")
+        if upper.endswith(".AU"):
+            return upper
+        # Bare symbol: treat as the EODHD fundamentals US contract by default.
+        return upper + ".US"
+
+    def fetch_payload(self, ticker: str) -> Optional[dict]:
+        """Fetch the raw EODHD fundamentals JSON payload for ``ticker``.
+
+        Returns the parsed JSON dict, or ``None`` on any failure/empty response.
+        ``last_error`` carries a redacted error message for recoverable failures.
+        This is the multi-market hydration path's raw-payload accessor (the
+        normalized ``fetch`` path returns FieldValue mappings instead).
+        """
+        self.last_error = None
+        if not self.enabled():
+            return None
+        key = self.credential()
+        symbol = self._normalise_symbol(ticker)
+        url = f"{self.base_url}/{urllib.parse.quote(symbol)}?api_token={urllib.parse.quote(key or '')}&fmt=json"
+        fetcher = self._fetcher or self._get_json
+        if self._fetcher is None:
+            try:
+                sleep_seconds = float(os.environ.get("EODHD_PROVIDER_FALLBACK_SLEEP_SECONDS", "0.75") or 0.75)
+            except ValueError:
+                sleep_seconds = 0.75
+            time.sleep(max(sleep_seconds, 0.75))
+        try:
+            payload = fetcher(url)
+        except urllib.error.HTTPError as exc:
+            self.last_error = RuntimeError(
+                f"recoverable EODHD fundamentals failure: status {exc.code} "
+                f"{getattr(exc, 'reason', '')}: {redact_url_secrets(exc.url or url)}"
+            )
+            return None
+        except Exception as exc:
+            self.last_error = RuntimeError(_redact_secrets_in_text(str(exc)))
+            return None
+        if not isinstance(payload, dict):
+            self.last_error = RuntimeError("EODHD fundamentals returned non-JSON payload")
+            return None
+        return payload
+
+    @staticmethod
+    def _coerce_raw(value: Any) -> Optional[float]:
+        return _coerce_float(value)
+
+    def _extract_identity(self, payload: dict) -> dict:
+        general = payload.get("General") if isinstance(payload.get("General"), dict) else {}
+        code = str(general.get("Code") or "").strip().upper() or None
+        name = str(general.get("Name") or "").strip() or None
+        return {
+            "company_id": _us_company_id(code) if code else None,
+            "us_code": code,
+            "name": name,
+            "name_raw": name,
+            "name_normalized": _normalise_us_company_name(name) if name else None,
+            "currency": str(general.get("CurrencyCode") or "USD").strip().upper(),
+            "exchange": str(general.get("Exchange") or "").strip().upper() or None,
+            "region": str(general.get("CountryISO") or "US").strip().upper(),
+            "sector": _titlecase_us_classification(general.get("Sector") or general.get("GicSector")),
+            "industry": _titlecase_us_classification(general.get("Industry") or general.get("GicIndustry")),
+            "security_type": US_DEFAULT_SECURITY_TYPE,
+            "market": "US",
+        }
+
+    @staticmethod
+    def _statement_depth(payload: dict) -> dict:
+        financials = payload.get("Financials") if isinstance(payload.get("Financials"), dict) else {}
+        return {
+            "income": len(EodhdAdapter._yearly_rows(financials.get("Income_Statement"))),
+            "balance_sheet": len(EodhdAdapter._yearly_rows(financials.get("Balance_Sheet"))),
+            "cash_flow": len(EodhdAdapter._yearly_rows(financials.get("Cash_Flow"))),
+        }
+
+    def _shared_row_fields(self, financials: dict, url: str, currency: str) -> dict[str, FieldValue]:
+        income_rows = self._yearly_rows(financials.get("Income_Statement"))
+        balance_rows = self._yearly_rows(financials.get("Balance_Sheet"))
+        cash_rows = self._yearly_rows(financials.get("Cash_Flow"))
+        income = income_rows[0] if income_rows else {}
+        prior_income = income_rows[1] if len(income_rows) > 1 else {}
+        balance = balance_rows[0] if balance_rows else {}
+        cash = cash_rows[0] if cash_rows else {}
+
+        fields: dict[str, FieldValue] = {}
+        if income:
+            fields["revenue"] = self._field(
+                "revenue", self._first_present(income, "totalRevenue", "revenue"), url, self._row_date(income), currency=currency
+            )
+            fields["net_income"] = self._field(
+                "net_income",
+                self._first_present(income, "netIncome", "netIncomeApplicableToCommonShares"),
+                url, self._row_date(income), currency=currency,
+            )
+            fields["shares_outstanding_proxy"] = self._field(
+                "shares_outstanding",
+                self._first_present(income, "dilutedWeightedAverageShares", "weightedAverageDilutedShares"),
+                url, self._row_date(income),
+            )
+        if prior_income:
+            fields["prior_revenue"] = self._field(
+                "prior_revenue",
+                self._first_present(prior_income, "totalRevenue", "revenue"),
+                url, self._row_date(prior_income), currency=currency,
+            )
+        if balance:
+            fields["total_assets"] = self._field(
+                "total_assets", self._first_present(balance, "totalAssets"), url, self._row_date(balance), currency=currency
+            )
+            fields["total_liabilities"] = self._field(
+                "total_liabilities",
+                self._first_present(balance, "totalLiab", "totalLiabilities", "totalLiabilitiesNetMinorityInterest"),
+                url, self._row_date(balance), currency=currency,
+            )
+            fields["current_assets"] = self._field(
+                "current_assets", self._first_present(balance, "totalCurrentAssets"), url, self._row_date(balance), currency=currency
+            )
+            fields["current_liabilities"] = self._field(
+                "current_liabilities", self._first_present(balance, "totalCurrentLiabilities"), url, self._row_date(balance), currency=currency
+            )
+        if cash:
+            fields["operating_cash_flow"] = self._field(
+                "operating_cash_flow",
+                self._first_present(cash, "totalCashFromOperatingActivities", "operatingCashFlow", "operatingCashflow"),
+                url, self._row_date(cash), currency=currency,
+            )
+            fields["capital_expenditures"] = self._field(
+                "capital_expenditures",
+                self._first_present(cash, "capitalExpenditures", "capitalExpenditure"),
+                url, self._row_date(cash), currency=currency,
+            )
+        # No-imputation policy: never emit a FieldValue whose value is None from a
+        # mapped statement line. Missing lines simply yield no key, so the merge
+        # layer marks them "unavailable" rather than treating a fabricated None as
+        # reported data. The shares_outstanding proxy is a placeholder dropped
+        # later; filter it on value presence here too.
+        return {name: fv for name, fv in fields.items() if fv.value is not None}
+
+    def _parse_payload(self, payload: dict, url: str) -> dict[str, FieldValue]:
+        """Map a fundamentals payload to normalized FieldValues, plus identity/depth.
+
+        Returns a dict that includes the raw financial fields PLUS special keys:
+          - ``_identity``   (dict): General identity for building a company row
+          - ``_financials_depth`` (dict): annual row depth per statement
+          - ``_shares_outstanding`` (float): SharesStats/outstandingShares value
+        """
+        general = payload.get("General") if isinstance(payload.get("General"), dict) else {}
+        currency = str(general.get("CurrencyCode") or "USD").strip().upper()
+        financials = payload.get("Financials") if isinstance(payload.get("Financials"), dict) else {}
+
+        result = self._shared_row_fields(financials, url, currency)
+
+        # shares_outstanding: prefer SharesStats.SharesOutstanding, fall back to
+        # the top-level outstandingShares annual series (dict keyed by index).
+        shares = self._extract_shares_outstanding(payload)
+        if shares is not None:
+            result["shares_outstanding"] = FieldValue(
+                value=shares,
+                provenance={
+                    "source_family": self.name,
+                    "provider": self.name,
+                    "source_url": redact_url_secrets(url),
+                    "source_url_sanitized": True,
+                    "retrieved_at": _now_iso(),
+                    "retrieved_from_source_at": _now_iso(),
+                    "data_as_of": None,
+                    "field_name": "shares_outstanding",
+                    "unit": "shares",
+                    "currency": None,
+                    "scale": "ones",
+                    "period_type": "latest_market",
+                    "confidence": "medium",
+                    "trust_level": "licensed_provider_normalized_statement",
+                    "stale": False,
+                    "method": "reported",
+                    "caveats": [
+                        f"{self.name} provider SharesStats; verify against SEC/company filings before investment action."
+                    ],
+                    "freshness": f"{self.name} licensed shares outstanding; verify against company filings",
+                },
+            )
+        # Drop the proxy placeholder (only populated when income has a diluted
+        # share count, which we do not currently prefer over SharesStats).
+        result.pop("shares_outstanding_proxy", None)
+
+        result["_identity"] = self._extract_identity(payload)
+        result["_financials_depth"] = self._statement_depth(payload)
+        result["_shares_outstanding"] = shares
+        return result
+
+    @staticmethod
+    def _extract_shares_outstanding(payload: dict) -> Optional[float]:
+        stats = payload.get("SharesStats")
+        if isinstance(stats, dict):
+            value = _coerce_float(stats.get("SharesOutstanding"))
+            if value is not None:
+                return value
+        series = payload.get("outstandingShares")
+        if isinstance(series, dict):
+            annual = series.get("annual")
+            if isinstance(annual, dict):
+                # Keyed by index string; pick the largest numeric key (most recent).
+                keys = sorted((k for k in annual if str(k).isdigit()), key=int, reverse=True)
+                for k in keys:
+                    row = annual[k]
+                    if isinstance(row, dict):
+                        value = _coerce_float(row.get("shares"))
+                        if value is not None:
+                            return value
+        return None
+
+
 class AlphaVantageAdapter(ProviderAdapter):
     """Alpha Vantage fundamentals adapter (spot-fill only; 25 req/day free tier)."""
 
@@ -1659,9 +2585,160 @@ class AlphaVantageAdapter(ProviderAdapter):
         return fields
 
 
+class AsxMarkitDigitalAdapter(ProviderAdapter):
+    """Public ASX-site MarkitDigital fallback adapter, disabled by default."""
+
+    name = "asx_markitdigital"
+    env_var = "ASX_MARKITDIGITAL_ENABLED"
+    trust_level = "exchange_site_public"
+    base_url = "https://asx.api.markitdigital.com/asx-research/1.0/companies"
+
+    def enabled(self) -> bool:
+        value = self._env.get(self.env_var)
+        if value is None:
+            value = os.environ.get(self.env_var)
+        return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+    def status(self) -> dict:
+        if self.enabled():
+            return {"name": self.name, "enabled": True, "reason": None}
+        return {
+            "name": self.name,
+            "enabled": False,
+            "reason": f"missing/false {self.env_var} config flag; adapter disabled (fail-closed)",
+        }
+
+    def _endpoint_url(self, symbol: str, endpoint: str) -> str:
+        return f"{self.base_url}/{urllib.parse.quote(symbol)}/{endpoint}"
+
+    @staticmethod
+    def _excel_serial_date(value: Any) -> Optional[str]:
+        """Convert MarkitDigital/Excel serial dates to ISO dates when present."""
+        serial = _coerce_float(value)
+        if serial is None:
+            return None
+        try:
+            # Excel's 1900 leap-year bug means day 1 is 1899-12-31 for serials
+            # before 60 and 1899-12-30 for modern serial dates. ASX statement
+            # period-end serials are modern; keep the normal Excel convention.
+            return (datetime.date(1899, 12, 30) + datetime.timedelta(days=int(serial))).isoformat()
+        except (OverflowError, ValueError):
+            return None
+
+    @staticmethod
+    def _fiscal_year(period: Optional[str]) -> Optional[str]:
+        if not period:
+            return None
+        match = re.match(r"^(\d{4})", str(period).strip())
+        return match.group(1) if match else None
+
+    @staticmethod
+    def _first_present(*values: Any) -> Any:
+        for value in values:
+            if value is not None:
+                return value
+        return None
+
+    def _fetch_fields(self, ticker: str) -> dict[str, FieldValue]:
+        symbol = normalise_asx_ticker(ticker).replace(".AX", "")
+        fetcher = self._fetcher or self._get_json
+        key_url = self._endpoint_url(symbol, "key-statistics")
+        header_url = self._endpoint_url(symbol, "header")
+        key_stats = fetcher(key_url, timeout=30)
+        if self._fetcher is None:
+            # This public ASX endpoint is undocumented. Be boring and gentle.
+            try:
+                sleep_seconds = float(os.environ.get("ASX_PROVIDER_FALLBACK_SLEEP_SECONDS", "0.75") or 0.75)
+            except ValueError:
+                sleep_seconds = 0.75
+            time.sleep(max(sleep_seconds, 0.75))
+        header = fetcher(header_url, timeout=30)
+
+        key_data = key_stats.get("data") if isinstance(key_stats, dict) else None
+        header_data = header.get("data") if isinstance(header, dict) else None
+        if not isinstance(key_data, dict):
+            key_data = {}
+        if not isinstance(header_data, dict):
+            header_data = {}
+
+        fields: dict[str, FieldValue] = {}
+        income_rows = key_data.get("incomeStatement") if isinstance(key_data, dict) else []
+        if not isinstance(income_rows, list):
+            income_rows = []
+        income = income_rows[0] if income_rows and isinstance(income_rows[0], dict) else {}
+        prior_income = income_rows[1] if len(income_rows) > 1 and isinstance(income_rows[1], dict) else {}
+        period = str(income.get("period") or "") if income else None
+        prior_period = str(prior_income.get("period") or "") if prior_income else None
+        period_end = self._excel_serial_date(income.get("fPeriodEndDate")) if income else None
+        prior_period_end = self._excel_serial_date(prior_income.get("fPeriodEndDate")) if prior_income else None
+
+        def add_field(
+            name: str,
+            value: Any,
+            url: str,
+            data_as_of: Optional[str],
+            path: str,
+            period_type: str,
+            source_period: Optional[str] = None,
+        ) -> None:
+            coerced = _coerce_float(value)
+            if coerced is None:
+                return
+            fields[name] = FieldValue(
+                value=coerced,
+                provenance={
+                    "source_family": self.name,
+                    "provider": self.name,
+                    "source_url": redact_url_secrets(url),
+                    "source_url_family": "https://asx.api.markitdigital.com/asx-research/1.0/companies/{symbol}/{endpoint}",
+                    "source_url_sanitized": True,
+                    "retrieved_at": _now_iso(),
+                    "retrieved_from_source_at": _now_iso(),
+                    "data_as_of": data_as_of,
+                    "period_end": data_as_of,
+                    "fiscal_year": self._fiscal_year(source_period),
+                    "source_reported_period": source_period,
+                    "field_name": name,
+                    "source_path": path,
+                    "unit": _default_unit_for_field(name),
+                    "currency": "AUD" if _default_unit_for_field(name) == "currency" else None,
+                    "scale": "ones" if _default_unit_for_field(name) in {"currency", "shares"} else "ratio",
+                    "period_type": period_type,
+                    "confidence": "low",
+                    "trust_level": self.trust_level,
+                    "stale": False,
+                    "method": "reported_public_endpoint",
+                    "notes": "undocumented public ASX-site endpoint; verify against ASX announcements/company reports before acting",
+                    "caveats": [
+                        "ASX MarkitDigital is an undocumented public ASX-site endpoint; use only as fail-closed missing-field fallback."
+                    ],
+                    "freshness": "ASX MarkitDigital public endpoint fallback; verify before use",
+                },
+            )
+
+        price_value = self._first_present(
+            key_data.get("priceAsk"),
+            header_data.get("priceLast"),
+            header_data.get("priceAsk"),
+            key_data.get("priceClose"),
+        )
+        price_path = "data.priceAsk" if key_data.get("priceAsk") is not None else "data.priceLast"
+        add_field("price", price_value, key_url if key_data.get("priceAsk") is not None else header_url, None, price_path, "latest_market")
+        add_field("shares_outstanding", key_data.get("numOfShares"), key_url, None, "data.numOfShares", "latest_market")
+        add_field("revenue", income.get("revenue"), key_url, period_end, "data.incomeStatement[0].revenue", "annual", period)
+        add_field("prior_revenue", prior_income.get("revenue"), key_url, prior_period_end, "data.incomeStatement[1].revenue", "annual", prior_period)
+        add_field("net_income", income.get("netIncome"), key_url, period_end, "data.incomeStatement[0].netIncome", "annual", period)
+        # The endpoint also returns header marketCap, but the screener keeps
+        # market_cap derived from price * shares_outstanding; do not introduce a
+        # raw balance-sheet/cash-flow field the endpoint did not return.
+        return fields
+
+
 ADAPTER_CLASSES: dict[str, type] = {
     "fmp": FmpAdapter,
     "alpha_vantage": AlphaVantageAdapter,
+    "eodhd": EodhdAdapter,
+    "asx_markitdigital": AsxMarkitDigitalAdapter,
 }
 
 
@@ -1699,11 +2776,17 @@ def merge_missing_fields(
 
     for field_name in RAW_FIELDS:
         fv: Optional[FieldValue] = company.get(field_name)
-        if fv is not None and fv.value is not None:
+        if not _field_is_fallback_fillable(fv):
             continue
+        reject_zero = field_name in BALANCE_CASHFLOW_FIELDS
         for provider_name, fields in provider_fields:
             candidate = fields.get(field_name)
             if candidate is not None and candidate.value is not None:
+                if reject_zero and candidate.value == 0:
+                    # A zero balance-sheet/cash-flow line is a fabrication risk, not a
+                    # legitimate fill. Reject it so a fabricated zero can never satisfy
+                    # the "fully hydrated" bar. Mark for downstream visibility.
+                    continue
                 company[field_name] = sanitized_field_value(field_name, candidate)
                 filled[field_name] = provider_name
                 break
@@ -1719,7 +2802,11 @@ def merge_missing_fields(
         elif fv.value is None:
             fv.provenance["missing_reason"] = "unavailable"
 
-    provider_inputs = [(provider_name, fields) for provider_name, fields in provider_fields]
+    provider_inputs = [
+        (provider_name, {name: fv for name, fv in fields.items() if filled.get(name) == provider_name})
+        for provider_name, fields in provider_fields
+    ]
+    provider_inputs = [(provider_name, fields) for provider_name, fields in provider_inputs if fields]
     try:
         consolidated = consolidate_company_fields(company, provider_inputs)
         company["multi_source_fields"] = consolidated["fields"]
@@ -1816,6 +2903,7 @@ _PROVIDER_SELECTION_RANK = {
     "alpha_vantage": 20,
     "eodhd": 30,
     "twelve_data": 40,
+    "asx_markitdigital": 45,
     "yahoo-finance": 50,
     "yahoo_finance": 50,
     "derived": 5,
@@ -1828,6 +2916,7 @@ _SOURCE_FAMILY_RANK = {
     "fmp": 10,
     "alpha_vantage": 10,
     "quote_market_data": 15,
+    "asx_markitdigital": 25,
     "unofficial_statement": 30,
     "yahoo-finance": 30,
     "derived": 5,
@@ -2309,9 +3398,17 @@ def build_file_first_run_payload(
             "suspended": row.get("suspended"),
             "delisted": row.get("delisted"),
         })
+        depth = row.get("_eodhd_depth")
+        if isinstance(depth, dict):
+            companies[-1]["annual_depth"] = {
+                "income": depth.get("income"),
+                "balance_sheet": depth.get("balance_sheet"),
+                "cash_flow": depth.get("cash_flow"),
+            }
         excluded = bool(row.get("excluded"))
+        is_partial = row.get("hydration_tier") == "partial"
         exclusion_reason = "; ".join(str(reason) for reason in row.get("exclusion_reasons") or row.get("caveats") or [] if reason) or None
-        scores.append({
+        score_entry = {
             "rank": row.get("rank") or index,
             "ticker": ticker,
             "name": row.get("name") or ticker,
@@ -2323,7 +3420,16 @@ def build_file_first_run_payload(
             "sub_scores": dict(row.get("sub_scores") or {}),
             "excluded": excluded,
             "exclusion_reason": exclusion_reason,
-        })
+        }
+        if is_partial:
+            score_entry["hydration_tier"] = "partial"
+            score_entry["hydration_completeness"] = {
+                "present": (row.get("hydration_completeness") or {}).get("present"),
+                "denominator": (row.get("hydration_completeness") or {}).get("denominator"),
+            }
+            score_entry["missing_raw_fields"] = list(row.get("missing_raw_fields") or [])
+            score_entry["suppressed_sub_scores"] = list(row.get("suppressed_sub_scores") or [])
+        scores.append(score_entry)
         observations.extend(_row_field_observations(row))
         provenance.extend(_row_file_first_provenance(row))
         if excluded:
@@ -2331,7 +3437,10 @@ def build_file_first_run_payload(
             failures.append(item)
             exclusions.append({"ticker": ticker, "reason": item["reason"]})
 
-    usable = len([row for row in scores if not row["excluded"] and row["composite_score"] is not None])
+    fully_scored = [row for row in scores if not row["excluded"] and row.get("hydration_tier") != "partial" and row["composite_score"] is not None]
+    partially_hydrated = [row for row in scores if not row["excluded"] and row.get("hydration_tier") == "partial" and row["composite_score"] is not None]
+    usable = len(fully_scored)
+    scored = len(fully_scored) + len(partially_hydrated)
     batch_metadata = dict(batch_metadata or {})
     universe_metadata = dict(universe_metadata or {})
     denominator = batch_metadata["eligible_count"] if "eligible_count" in batch_metadata else (len(universe) if universe else len(companies))
@@ -2358,11 +3467,17 @@ def build_file_first_run_payload(
     else:
         denominator_label = universe_source
     complete_listing = bool(batch_metadata.get("complete_exchange_listing", False))
+    market = "US" if mode == "us-eodhd-fundamentals" else "ASX"
     source_caveats = [
         "Yahoo Finance public endpoints are unofficial; verify against ASX announcements/company reports before acting."
     ] if source == "yahoo-finance" or mode == "asx-yahoo-timeseries" else []
+    if market == "US":
+        source_caveats.append(
+            "US fundamentals from EODHD (licensed); live price from Yahoo chart. "
+            "USD values are NOT comparable to ASX AUD values without FX normalization."
+        )
     return {
-        "market": "ASX",
+        "market": market,
         "source": source,
         "mode": mode,
         "fixture": mode == "fixture",
@@ -2373,7 +3488,7 @@ def build_file_first_run_payload(
         "universe": {
             "source": universe_source,
             "version": universe_version,
-            "market": "ASX",
+            "market": market,
             "count": denominator,
             "complete_exchange_listing": complete_listing,
             "full_count": batch_metadata.get("full_count"),
@@ -2402,8 +3517,9 @@ def build_file_first_run_payload(
             "denominator_label": denominator_label,
             "denominator_status": denominator_status,
             "scraped": len(companies),
-            "scored": len([row for row in scores if row["composite_score"] is not None]),
+            "scored": scored,
             "usable": usable,
+            "partially_hydrated": len(partially_hydrated),
             "excluded": len(exclusions),
             "failed": len(failures),
             "stale": 0,
@@ -2602,8 +3718,9 @@ def _stable_run_key(source: str, mode: str, universe: list[str], metadata: Optio
         "universe": sorted(str(item) for item in universe),
         "metadata": metadata or {},
     }
+    market = "US" if mode == "us-eodhd-fundamentals" else "ASX"
     digest = __import__("hashlib").sha256(_json_param(payload).encode()).hexdigest()[:16]
-    return f"investment-screener:ASX:{mode}:{digest}"
+    return f"investment-screener:{market}:{mode}:{digest}"
 
 
 def _row_data_as_of(row: dict) -> Optional[str]:
@@ -2920,6 +4037,7 @@ def insert_screener_run(
     the same run/company/observation/score rows instead of inserting mystery twins.
     """
     run_key = run_key or _stable_run_key(source, mode, universe, metadata)
+    market = "US" if mode == "us-eodhd-fundamentals" else "ASX"
     universe_metadata_payload = _json_param(universe_metadata or {})
     provider_failures_payload = _json_param(sanitize_provider_failures(provider_failures))
     cur = conn.cursor()
@@ -2947,7 +4065,7 @@ def insert_screener_run(
         (
             run_key,
             "completed",
-            "ASX",
+            market,
             mode,
             universe_version,
             _json_param({"source": source, "universe": universe}),
@@ -3121,6 +4239,15 @@ def parse_args(argv=None):
         help="Hydrate specific ASX tickers via Yahoo (appends .AX when omitted).",
     )
     ap.add_argument(
+        "--us-universe-seed",
+        default=None,
+        help="Reviewed US curated universe seed JSON (e.g. S&P 500 constituents). Hydrates via the EODHD fundamentals path.",
+    )
+    ap.add_argument(
+        "--us-tickers", nargs="*", metavar="TICKER",
+        help="Hydrate specific US tickers via EODHD fundamentals (appends .US when omitted).",
+    )
+    ap.add_argument(
         "--fixture", action="store_true", default=False,
         help="Use built-in fixture data instead of live network calls.",
     )
@@ -3254,6 +4381,9 @@ def apply_provider_fallbacks_to_companies(companies: list[dict], adapters: list[
     updated: list[dict] = []
     failures: list[dict] = []
     for company in companies:
+        if not _company_needs_provider_fallback(company):
+            updated.append(company)
+            continue
         merged, company_failures = fill_company_missing_fields(company, adapters)
         updated.append(merged)
         failures.extend(company_failures)
@@ -3338,8 +4468,60 @@ def main(argv=None):
         for w in warnings:
             print(w, file=sys.stderr)
         mode = "asx-yahoo-timeseries"
+    elif args.us_universe_seed:
+        seed_path = Path(args.us_universe_seed)
+        watchlist_path_str = str(seed_path)
+        seed = load_us_universe_seed(seed_path)
+        selected = select_us_universe_batch(
+            seed["entries"],
+            batch_offset=args.batch_offset,
+            max_tickers=args.max_tickers,
+            denominator_label=args.denominator_label,
+        )
+        universe_tickers = list(selected["tickers"])
+        cache_dir = Path(args.cache_dir) if args.cache_dir else None
+        universe_source = US_DENOMINATOR_LABEL
+        universe_version = build_universe_version(seed_path, seed["metadata"])
+        universe_metadata = dict(seed["metadata"])
+        batch_metadata = dict(selected)
+        batch_metadata.pop("entries", None)
+        batch_metadata.pop("tickers", None)
+        bound = f"offset={args.batch_offset}, size={args.max_tickers or selected['selected_count']}"
+        print(f"Hydrating {len(universe_tickers)} US tickers via EODHD fundamentals from universe seed ({bound}); sleep_seconds={args.sleep_seconds}.", file=sys.stderr)
+        eodhd = EodhdAdapter()
+        companies = _fetch_us_eodhd_companies(
+            universe_tickers,
+            eodhd,
+            cache_dir=cache_dir,
+            sleep_seconds=args.sleep_seconds,
+            failure_sink=hydration_failures.append,
+        )
+        companies = apply_us_seed_identity(companies, selected["entries"])
+        mode = "us-eodhd-fundamentals"
+        universe_source = US_DENOMINATOR_LABEL
+    elif args.us_tickers:
+        print(f"Hydrating US tickers via EODHD fundamentals: {', '.join(args.us_tickers)}", file=sys.stderr)
+        universe_tickers = [normalise_us_ticker(ticker) for ticker in args.us_tickers]
+        cache_dir = Path(args.cache_dir) if args.cache_dir else None
+        universe_source = "explicit US ticker list"
+        eodhd = EodhdAdapter()
+        companies = _fetch_us_eodhd_companies(
+            universe_tickers,
+            eodhd,
+            cache_dir=cache_dir,
+            sleep_seconds=args.sleep_seconds,
+            failure_sink=hydration_failures.append,
+        )
+        batch_metadata = {
+            "eligible_count": len(universe_tickers),
+            "selected_count": len(universe_tickers),
+            "full_count": len(universe_tickers),
+            "denominator_status": "known_sample_universe",
+            "denominator_label": "explicit US ticker list",
+        }
+        mode = "us-eodhd-fundamentals"
     else:
-        print("No input specified. Use --fixture, --asx-watchlist, or --asx-tickers.", file=sys.stderr)
+        print("No input specified. Use --fixture, --asx-watchlist, --asx-tickers, --us-universe-seed, or --us-tickers.", file=sys.stderr)
         sys.exit(1)
 
     if not companies:
@@ -3365,7 +4547,7 @@ def main(argv=None):
     if args.file_first_run_json:
         payload = build_file_first_run_payload(
             ranked,
-            source="yahoo-finance" if mode == "asx-yahoo-timeseries" else mode,
+            source="yahoo-finance" if mode == "asx-yahoo-timeseries" else ("eodhd" if mode == "us-eodhd-fundamentals" else mode),
             mode=mode,
             universe=universe_tickers,
             universe_source=universe_source,

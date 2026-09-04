@@ -484,7 +484,7 @@ class TestDashboardExportShape(unittest.TestCase):
 
     def test_export_candidates_omit_sector_industry_when_classification_missing(self):
         cfg = load_config(CONFIG_PATH)
-        c = asx_company()
+        c = asx_company()  # no sector/industry
         ranked = rank_companies([c], cfg)
         export = build_dashboard_ranked_export(ranked, mode="asx-yahoo-timeseries")
 
@@ -501,6 +501,7 @@ class TestDashboardExportShape(unittest.TestCase):
         filtered = scr.apply_filters(ranked, {"sector": ["materials"], "industry": ["metals & mining"]})
 
         self.assertEqual([r["ticker"] for r in filtered], ["BHP.AX"])
+
 
     def test_derived_metric_provenance_is_labeled_as_derived(self):
         company = asx_company()
@@ -1135,6 +1136,72 @@ class TestProviderAdapterFailClosed(unittest.TestCase):
         self.assertFalse(adapter.enabled())
         self.assertEqual(adapter.fetch("BHP.AX"), {})
 
+    def test_asx_markitdigital_disabled_without_explicit_flag_is_noop(self):
+        calls = []
+        adapter = scr.AsxMarkitDigitalAdapter(
+            env={},
+            fetcher=lambda url, timeout=None: calls.append(url) or {"data": {}},
+        )
+
+        self.assertFalse(adapter.enabled())
+        self.assertEqual(adapter.fetch("BHP.AX"), {})
+        self.assertEqual(calls, [])
+
+    def test_asx_markitdigital_normalizes_live_smoke_fields_with_public_provenance(self):
+        calls = []
+
+        def fetcher(url, timeout=None):
+            calls.append(url)
+            if url.endswith("/key-statistics"):
+                return {
+                    "data": {
+                        "priceAsk": 14.91,
+                        "numOfShares": 2_044_406_773,
+                        "incomeStatement": [
+                            {"period": "2026A", "fPeriodEndDate": 46203, "revenue": 5_558_774_000, "netIncome": 1_475_055_000},
+                            {"period": "2025A", "fPeriodEndDate": 45838, "revenue": 4_351_475_000, "netIncome": 926_169_000},
+                        ],
+                    }
+                }
+            if url.endswith("/header"):
+                return {"data": {"priceAsk": 14.91, "marketCap": 32_035_854_133}}
+            raise AssertionError("unexpected url " + url)
+
+        adapter = scr.AsxMarkitDigitalAdapter(env={"ASX_MARKITDIGITAL_ENABLED": "true"}, fetcher=fetcher)
+        fields = adapter.fetch("EVN.AX")
+
+        self.assertEqual([scr.urllib.parse.urlsplit(url).path for url in calls], [
+            "/asx-research/1.0/companies/EVN/key-statistics",
+            "/asx-research/1.0/companies/EVN/header",
+        ])
+        self.assertAlmostEqual(fields["price"].value, 14.91)
+        self.assertAlmostEqual(fields["shares_outstanding"].value, 2_044_406_773)
+        self.assertAlmostEqual(fields["revenue"].value, 5_558_774_000)
+        self.assertIn("prior_revenue", fields)
+        prior_revenue = fields["prior_revenue"].value
+        self.assertEqual(prior_revenue, 4_351_475_000.0)
+        self.assertAlmostEqual(fields["net_income"].value, 1_475_055_000)
+        self.assertNotIn("total_assets", fields)
+        self.assertNotIn("total_liabilities", fields)
+        prov = fields["revenue"].provenance
+        self.assertEqual(prov["source_family"], "asx_markitdigital")
+        self.assertEqual(prov["provider"], "asx_markitdigital")
+        self.assertEqual(prov["trust_level"], "exchange_site_public")
+        self.assertEqual(prov["period_end"], "2026-06-30")
+        self.assertEqual(prov["fiscal_year"], "2026")
+        self.assertEqual(prov["source_reported_period"], "2026A")
+        self.assertIn("undocumented public ASX-site endpoint", prov["notes"])
+
+    def test_asx_markitdigital_symbol_not_found_fails_closed(self):
+        def fetcher(url, timeout=None):
+            raise urllib.error.HTTPError(url, 400, "Bad Request: Symbol not found", None, None)
+
+        adapter = scr.AsxMarkitDigitalAdapter(env={"ASX_MARKITDIGITAL_ENABLED": "1"}, fetcher=fetcher)
+
+        self.assertEqual(adapter.fetch("PDI.AX"), {})
+        self.assertIsNotNone(adapter.last_error)
+        self.assertIn("symbol not found", str(adapter.last_error).lower())
+
     def test_adapter_status_reports_missing_credential_reason(self):
         adapter = scr.AlphaVantageAdapter(env={})
         status = adapter.status()
@@ -1642,6 +1709,72 @@ class TestFallbackRegistry(unittest.TestCase):
         adapters = scr.build_fallback_adapters(env=env)
         self.assertEqual([adapter.name for adapter in adapters], ["fmp", "alpha_vantage"])
 
+    def test_build_fallback_adapters_includes_asx_markitdigital_only_when_enabled(self):
+        self.assertEqual([adapter.name for adapter in scr.build_fallback_adapters(env={})], [])
+
+        adapters = scr.build_fallback_adapters(env={"ASX_MARKITDIGITAL_ENABLED": "true"})
+
+        self.assertEqual([adapter.name for adapter in adapters], ["asx_markitdigital"])
+
+    def test_apply_provider_fallbacks_fills_missing_from_asx_markitdigital_without_overwriting(self):
+        company = self._company_with_missing__helper()
+        original_revenue = company["revenue"].value
+
+        class FakeMarkit(scr.ProviderAdapter):
+            name = "asx_markitdigital"
+            last_error = None
+            def fetch(self, ticker):
+                return {
+                    "revenue": FieldValue(1.0, {"source_family": "asx_markitdigital", "provider": "asx_markitdigital", "field_name": "revenue", "trust_level": "exchange_site_public"}),
+                    "net_income": FieldValue(9_800_000_000.0, {"source_family": "asx_markitdigital", "provider": "asx_markitdigital", "field_name": "net_income", "trust_level": "exchange_site_public"}),
+                }
+
+        updated, failures = scr.apply_provider_fallbacks_to_companies([company], [FakeMarkit()])
+
+        self.assertEqual(failures, [])
+        self.assertEqual(updated[0]["revenue"].value, original_revenue)
+        self.assertEqual(updated[0]["net_income"].provenance["source_family"], "asx_markitdigital")
+        self.assertEqual(updated[0]["net_income"].provenance["trust_level"], "exchange_site_public")
+
+    def test_provider_fallback_replaces_stale_but_not_fresh_fields(self):
+        company = asx_company()
+        company["revenue"] = FieldValue(10.0, {"provider": "yahoo-finance", "source_family": "yahoo-finance", "data_as_of": "2020-06-30", "field_name": "revenue"})
+        company["net_income"] = FieldValue(20.0, {"provider": "yahoo-finance", "source_family": "yahoo-finance", "data_as_of": "2025-06-30", "field_name": "net_income"})
+
+        class FakeMarkit(scr.ProviderAdapter):
+            name = "asx_markitdigital"
+            last_error = None
+            def fetch(self, ticker):
+                return {
+                    "revenue": FieldValue(111.0, {"source_family": "asx_markitdigital", "provider": "asx_markitdigital", "field_name": "revenue", "trust_level": "exchange_site_public", "data_as_of": "2026-06-30"}),
+                    "net_income": FieldValue(222.0, {"source_family": "asx_markitdigital", "provider": "asx_markitdigital", "field_name": "net_income", "trust_level": "exchange_site_public", "data_as_of": "2026-06-30"}),
+                }
+
+        updated, failures = scr.apply_provider_fallbacks_to_companies([company], [FakeMarkit()])
+
+        self.assertEqual(failures, [])
+        self.assertEqual(updated[0]["revenue"].value, 111.0)
+        self.assertEqual(updated[0]["revenue"].provenance["provider"], "asx_markitdigital")
+        self.assertEqual(updated[0]["net_income"].value, 20.0)
+        self.assertEqual(updated[0]["net_income"].provenance["provider"], "yahoo-finance")
+
+    def test_provider_fallback_skips_companies_with_complete_fresh_fields(self):
+        company = asx_company()
+        calls = []
+
+        class FakeMarkit(scr.ProviderAdapter):
+            name = "asx_markitdigital"
+            last_error = None
+            def fetch(self, ticker):
+                calls.append(ticker)
+                return {"revenue": FieldValue(111.0, {"provider": "asx_markitdigital"})}
+
+        updated, failures = scr.apply_provider_fallbacks_to_companies([company], [FakeMarkit()])
+
+        self.assertEqual(failures, [])
+        self.assertEqual(updated[0], company)
+        self.assertEqual(calls, [])
+
     def test_fill_company_missing_fields_records_disabled_providers(self):
         company = self._company_with_missing__helper()
         # no credentials -> no adapters -> fields stay missing, no network
@@ -1706,6 +1839,469 @@ class TestFallbackRegistry(unittest.TestCase):
         company = asx_company()
         company["net_income"] = scr.missing_field_value("net_income", "provider_absent", "yahoo-finance")
         return company
+
+
+def _revenue_only_company(**overrides):
+    """A company with fresh income/valuation inputs but all BS/cash-flow fields missing."""
+    company = asx_company(ticker="REV.AX", **overrides)
+    for name in scr.BALANCE_CASHFLOW_FIELDS:
+        company[name] = field(None, name)
+    return company
+
+
+class TestPartialScoringPolicy(unittest.TestCase):
+    """Acceptance tests from docs: asx-partial-scoring-policy-2026-09-01.md."""
+
+    def test_bucket_separation(self):
+        # Acceptance test 1
+        cfg = load_config(CONFIG_PATH)
+        partial = _revenue_only_company()
+        full = asx_company(ticker="FULL.AX")
+        ranked = rank_companies([partial, full], cfg)
+        by_ticker = {row["ticker"]: row for row in ranked}
+
+        self.assertEqual(by_ticker["REV.AX"]["hydration_tier"], "partial")
+        self.assertEqual(by_ticker["FULL.AX"]["hydration_tier"], "full")
+
+        export = build_dashboard_ranked_export(ranked, mode="asx-yahoo-timeseries")
+        partial_tickers = [row["ticker"] for row in export.get("partial", [])]
+        candidate_tickers = [row["ticker"] for row in export["candidates"]]
+        self.assertIn("REV.AX", partial_tickers)
+        self.assertNotIn("REV.AX", candidate_tickers)
+        self.assertIn("FULL.AX", candidate_tickers)
+
+    def test_no_imputation(self):
+        # Acceptance test 2
+        cfg = load_config(CONFIG_PATH)
+        company = _revenue_only_company()
+        metrics = scr._derive_metrics(company)
+        self.assertEqual(metrics["current_ratio"], None)
+        self.assertEqual(metrics["debt_to_assets"], None)
+
+        row = score_company(company, cfg)
+        self.assertEqual(row["sub_scores"]["graham_safety"], 0)
+        self.assertEqual(row["sub_scores"]["risk_adjustments"], 0)
+        self.assertIn("graham_safety", row["suppressed_sub_scores"])
+        self.assertIn("risk_adjustments", row["suppressed_sub_scores"])
+        for name in scr.BALANCE_CASHFLOW_FIELDS:
+            self.assertEqual(row["fields"][name]["status"], "missing")
+            self.assertIsNone(row["fields"][name]["value"])
+
+    def test_partial_composite_never_exceeds_cap(self):
+        # Acceptance test 3
+        cfg = load_config(CONFIG_PATH)
+        # Maximal growth/valuation revenue: huge revenue growth and cheap P/E/P/S.
+        company = _revenue_only_company()
+        company["revenue"] = field(1_000_000_000, "revenue")
+        company["prior_revenue"] = field(10_000, "prior_revenue")  # massive growth
+        company["net_income"] = field(500_000_000, "net_income")
+        company["price"] = field(1.0, "price")
+        company["shares_outstanding"] = field(1_000_000, "shares_outstanding")
+
+        row = score_company(company, cfg)
+        cap = float(cfg.get("partial_scoring", {}).get("partial_cap", 60))
+        self.assertIsNotNone(row["composite_score"])
+        self.assertLessEqual(row["composite_score"], cap)
+
+    def test_denominator_renormalization(self):
+        # Acceptance test 4: the partial composite is renormalized over LIVE
+        # category weights only; a dead category is excluded from the denominator
+        # (not scored as zero-weights), and bringing a category live changes the
+        # denominator accordingly. Assert the denominator directly (the capped
+        # composite can collide at the cap, so it is not a reliable discriminator).
+        cfg = load_config(CONFIG_PATH)
+        weights = cfg["composite_weights"]
+        company = _revenue_only_company()
+        partial_metrics = scr._derive_metrics(company)
+
+        partial_weights = scr._live_subscore_weights(weights, partial_metrics)
+        # graham_safety + risk_adjustments are structurally dead for revenue-only
+        # (their only inputs — current_ratio/debt_to_assets — are balance-sheet derived).
+        self.assertNotIn("graham_safety", partial_weights)
+        self.assertNotIn("risk_adjustments", partial_weights)
+        # quality/durability both retain the net_margin term, so they stay live
+        # (their sub-scores internally reflect the missing roe/fcf terms).
+        self.assertIn("quality", partial_weights)
+        self.assertIn("durability", partial_weights)
+        self.assertIn("valuation", partial_weights)
+        self.assertIn("growth", partial_weights)
+
+        # Supplying balance-sheet fields makes graham_safety + risk_adjustments live.
+        company2 = _revenue_only_company()
+        company2["total_assets"] = field(100_000_000, "total_assets")
+        company2["total_liabilities"] = field(40_000_000, "total_liabilities")
+        company2["current_assets"] = field(50_000_000, "current_assets")
+        company2["current_liabilities"] = field(20_000_000, "current_liabilities")
+        enriched_metrics = scr._derive_metrics(company2)
+        enriched_weights = scr._live_subscore_weights(weights, enriched_metrics)
+
+        self.assertIn("graham_safety", enriched_weights)
+        self.assertIn("risk_adjustments", enriched_weights)
+        self.assertGreater(
+            sum(enriched_weights.values()),
+            sum(partial_weights.values()),
+        )
+
+    def test_full_name_regression(self):
+        # Acceptance test 5
+        cfg = load_config(CONFIG_PATH)
+        company = asx_company()
+        row = score_company(company, cfg)
+        self.assertEqual(row["hydration_tier"], "full")
+        self.assertEqual(row["missing_raw_fields"], [])
+        self.assertEqual(row["suppressed_sub_scores"], [])
+
+    def test_export_contract(self):
+        # Acceptance test 6
+        cfg = load_config(CONFIG_PATH)
+        ranked = rank_companies([_revenue_only_company()], cfg)
+        export = build_dashboard_ranked_export(ranked, mode="asx-yahoo-timeseries")
+
+        self.assertIn("partial", export)
+        self.assertIn("candidates", export)
+        self.assertIn("excluded", export)
+        partial_row = export["partial"][0]
+        self.assertEqual(partial_row["hydration_tier"], "partial")
+        self.assertIn("hydration_completeness", partial_row)
+        self.assertIsInstance(partial_row["missing_raw_fields"], list)
+        self.assertIsInstance(partial_row["suppressed_sub_scores"], list)
+        # no raw provenance leaks
+        self.assertNotIn("fields", partial_row)
+        self.assertNotIn("provenance_summary", partial_row)
+        self.assertNotIn("source_url", json.dumps(partial_row).lower())
+        # completupeness counts: 5 core present / 11
+        self.assertEqual(partial_row["hydration_completeness"]["present"], 5)
+        self.assertEqual(partial_row["hydration_completeness"]["denominator"], 11)
+
+    def test_coverage_honesty(self):
+        # Acceptance test 7
+        cfg = load_config(CONFIG_PATH)
+        full = asx_company(ticker="FULL.AX")
+        partial = _revenue_only_company()
+        ranked = rank_companies([full, partial], cfg)
+
+        payload = build_file_first_run_payload(
+            ranked,
+            source="yahoo-finance",
+            mode="asx-yahoo-timeseries",
+            universe=["FULL.AX", "REV.AX"],
+        )
+        cov = payload["coverage"]
+        self.assertEqual(cov["usable"], 1)  # only the full name is "usable"
+        self.assertEqual(cov["partially_hydrated"], 1)
+        self.assertEqual(cov["scored"], 2)
+        self.assertEqual(cov["percent"], 50.0)
+
+    def test_freshness_gate_preserved(self):
+        # Acceptance test 8
+        cfg = load_config(CONFIG_PATH)
+        company = _revenue_only_company()
+        # Make revenue stale beyond the freshness window.
+        company["revenue"] = stale_field(60_000_000_000, "revenue")
+        reasons = apply_hard_exclusions(company, cfg)
+        self.assertTrue(any("stale" in reason for reason in reasons))
+        ranked = rank_companies([company], cfg)
+        self.assertTrue(ranked[0]["excluded"])
+
+    def test_zero_fill_rejection(self):
+        # Acceptance test 9
+        company = asx_company()
+        # Remove balance-sheet fields so they're fallback-fillable.
+        for name in scr.BALANCE_CASHFLOW_FIELDS:
+            company[name] = scr.missing_field_value(name, "unavailable", "no-provider")
+
+        provider_fields = [(
+            "fabricator",
+            {name: FieldValue(0.0, {"source_family": "fabricator", "provider": "fabricator", "field_name": name})
+             for name in scr.BALANCE_CASHFLOW_FIELDS},
+        )]
+        merged, filled = scr.merge_missing_fields(company, provider_fields)
+
+        # A fabricated zero must never be admitted as a fill for BS/cash-flow fields.
+        for name in scr.BALANCE_CASHFLOW_FIELDS:
+            self.assertNotIn(name, filled)
+            self.assertIsNone(merged[name].value)
+
+
+# ---------------------------------------------------------------------------
+# EODHD multi-market adapter + US universe identity (t_994d9a06)
+# ---------------------------------------------------------------------------
+
+def _eodhd_payload_fixture():
+    """Minimal EODHD fundamentals payload shaped like the live v1.1 response."""
+    return {
+        "General": {
+            "Code": "AAPL",
+            "Name": "Apple Inc.",
+            "CurrencyCode": "USD",
+            "Sector": "Technology",
+            "Industry": "Consumer Electronics",
+            "GicSector": "Information Technology",
+            "GicIndustry": "Technology Hardware, Storage & Peripherals",
+            "Exchange": "NASDAQ",
+            "CountryISO": "US",
+        },
+        "SharesStats": {"SharesOutstanding": 14_594_180_000},
+        "Financials": {
+            "Income_Statement": {
+                "currency_symbol": "USD",
+                "yearly": {
+                    "0": {"date": "2025-09-30", "totalRevenue": "416161000000.00", "netIncome": "112010000000.00"},
+                    "1": {"date": "2024-09-30", "totalRevenue": "391035000000.00", "netIncome": "93736000000.00"},
+                },
+            },
+            "Balance_Sheet": {
+                "currency_symbol": "USD",
+                "yearly": {
+                    "0": {
+                        "date": "2025-09-30",
+                        "totalAssets": "359241000000.00",
+                        "totalLiab": "285508000000.00",
+                        "totalCurrentAssets": "147957000000.00",
+                        "totalCurrentLiabilities": "165631000000.00",
+                    },
+                },
+            },
+            "Cash_Flow": {
+                "currency_symbol": "USD",
+                "yearly": {
+                    "0": {
+                        "date": "2025-09-30",
+                        "totalCashFromOperatingActivities": "111482000000.00",
+                        "capitalExpenditures": "12715000000",
+                    },
+                },
+            },
+        },
+    }
+
+
+def _us_ticker_list():
+    return [{"Code": "AAPL", "Name": "Apple Inc."}, {"Code": "MSFT", "Name": "Microsoft Corporation"}]
+
+
+class TestNormaliseUsTicker(unittest.TestCase):
+
+    def test_bare_symbol_gets_dot_us_appended(self):
+        self.assertEqual(scr.normalise_us_ticker("AAPL"), "AAPL.US")
+
+    def test_explicit_us_suffix_normalised_uppercase(self):
+        self.assertEqual(scr.normalise_us_ticker("aapl.us"), "AAPL.US")
+
+    def test_yahoo_style_bare_unchanged_and_suffixed(self):
+        self.assertEqual(scr.normalise_us_ticker("MSFT"), "MSFT.US")
+
+    def test_empty_ticker_returns_empty(self):
+        self.assertEqual(scr.normalise_us_ticker(""), "")
+
+
+class TestNormaliseUsUniverseRows(unittest.TestCase):
+
+    def test_rows_normalise_to_active_us_entries(self):
+        rows = _us_ticker_list()
+        entries, metadata = scr.normalise_us_universe_rows(
+            rows, "https://example.com/sp500.csv", "2026-09-01T00:00:00Z", "abc123"
+        )
+        self.assertEqual(len(entries), 2)
+        self.assertEqual(entries[0]["ticker"], "AAPL.US")
+        self.assertEqual(entries[0]["company_id"], "us:AAPL")
+        self.assertEqual(entries[0]["market"], "US")
+        self.assertEqual(entries[0]["region"], "US")
+        self.assertEqual(entries[0]["currency"], "USD")
+        self.assertTrue(entries[0]["active"])
+        self.assertEqual(metadata["denominator_label"], scr.US_DENOMINATOR_LABEL)
+
+    def test_duplicate_symbol_raises(self):
+        rows = [{"Code": "AAPL"}, {"Code": "AAPL"}]
+        with self.assertRaises(ValueError):
+            scr.normalise_us_universe_rows(rows, "https://example.com", "2026-09-01", "abc")
+
+    def test_missing_symbol_excluded_with_audit_record(self):
+        rows = [{"Name": "No ticker"}, {"Code": "AAPL"}]
+        entries, metadata = scr.normalise_us_universe_rows(
+            rows, "https://example.com", "2026-09-01", "abc"
+        )
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(metadata["excluded_count"], 1)
+        self.assertTrue(any("missing" in ex.get("reason", "") for ex in metadata["excluded"]))
+
+
+class TestSelectUsUniverseBatch(unittest.TestCase):
+
+    def test_select_us_batch_accounting_is_honest(self):
+        entries, _ = scr.normalise_us_universe_rows(
+            [{"Code": f"TICK{i:03d}"} for i in range(10)], "https://example.com", "2026-09-01", "abc"
+        )
+        selected = scr.select_us_universe_batch(entries, batch_offset=0, max_tickers=3)
+        self.assertEqual(selected["eligible_count"], 10)
+        self.assertEqual(selected["selected_count"], 3)
+        self.assertFalse(selected["complete_exchange_listing"])
+        self.assertEqual(selected["denominator_status"], "ranked_market_cap_batch")
+        self.assertEqual(selected["denominator_label"], "S&P 500 constituents (reviewed static seed)")
+
+    def test_select_us_batch_complete_listing(self):
+        entries, _ = scr.normalise_us_universe_rows(
+            [{"Code": "AAA"}, {"Code": "BBB"}], "https://example.com", "2026-09-01", "abc"
+        )
+        selected = scr.select_us_universe_batch(entries)
+        self.assertTrue(selected["complete_exchange_listing"])
+        self.assertEqual(selected["denominator_status"], "complete_exchange_listing")
+
+
+class TestEodhdAdapterMapping(unittest.TestCase):
+
+    def test_eodhd_adapter_disabled_without_credential_is_noop(self):
+        adapter = scr.EodhdAdapter(env={})
+        self.assertFalse(adapter.enabled())
+        self.assertEqual(adapter.fetch("AAPL.US"), {})
+        self.assertIsNone(adapter.fetch_payload("AAPL.US"))
+
+    def test_eodhd_normalises_financial_fields_with_usd_and_identity(self):
+        adapter = scr.EodhdAdapter(env={"EODHD_API_KEY": "test-key"})
+        payload = _eodhd_payload_fixture()
+        ident = adapter._extract_identity(payload)
+        self.assertEqual(ident["company_id"], "us:AAPL")
+        self.assertEqual(ident["currency"], "USD")
+        self.assertEqual(ident["market"], "US")
+        self.assertEqual(ident["name"], "Apple Inc.")
+
+        fields = adapter._parse_payload(payload, "https://eodhd.com/api/fundamentals/AAPL.US?fmt=json")
+        # Pop the special keys.
+        identity = fields.pop("_identity")
+        depth = fields.pop("_financials_depth")
+        shares = fields.pop("_shares_outstanding")
+
+        self.assertAlmostEqual(fields["revenue"].value, 416_161_000_000.0)
+        self.assertAlmostEqual(fields["net_income"].value, 112_010_000_000.0)
+        self.assertAlmostEqual(fields["prior_revenue"].value, 391_035_000_000.0)
+        self.assertAlmostEqual(fields["total_assets"].value, 359_241_000_000.0)
+        self.assertAlmostEqual(fields["total_liabilities"].value, 285_508_000_000.0)
+        self.assertAlmostEqual(fields["operating_cash_flow"].value, 111_482_000_000.0)
+        # capex forced negative
+        self.assertLess(fields["capital_expenditures"].value, 0)
+        self.assertAlmostEqual(fields["current_assets"].value, 147_957_000_000.0)
+        self.assertAlmostEqual(fields["current_liabilities"].value, 165_631_000_000.0)
+
+        # currency provenance is USD, not the legacy AUD default
+        self.assertEqual(fields["revenue"].provenance["currency"], "USD")
+        self.assertEqual(fields["total_assets"].provenance["currency"], "USD")
+        # shares_outstanding from SharesStats
+        self.assertEqual(fields["shares_outstanding"].value, 14_594_180_000.0)
+        self.assertEqual(fields["shares_outstanding"].provenance["source_family"], "eodhd")
+        # depth reflected
+        self.assertEqual(depth["income"], 2)
+        self.assertEqual(depth["balance_sheet"], 1)
+        self.assertEqual(depth["cash_flow"], 1)
+        self.assertEqual(shares, 14_594_180_000.0)
+        self.assertEqual(identity["sector"], "Technology")
+
+    def test_eodhd_never_fabricates_from_totals(self):
+        # A payload with no current assets/liabilities lines must yield missing,
+        # not total_assets - total_liabilities. Our mapping only reads explicit
+        # keys, so a bare-totals payload simply lacks those fields.
+        adapter = scr.EodhdAdapter(env={"EODHD_API_KEY": "k"})
+        payload = {
+            "General": {"Code": "X", "CurrencyCode": "USD", "Name": "X Corp"},
+            "Financials": {
+                "Balance_Sheet": {"yearly": {"0": {"date": "2025-01-01", "totalAssets": "100", "totalLiab": "40"}}},
+                "Income_Statement": {"yearly": {"0": {"date": "2025-01-01", "totalRevenue": "50", "netIncome": "5"}}},
+                "Cash_Flow": {"yearly": {"0": {"date": "2025-01-01", "totalCashFromOperatingActivities": "10", "capitalExpenditures": "3"}}},
+            },
+        }
+        fields = adapter._parse_payload(payload, "https://eodhd.com/x")
+        fields.pop("_identity"); fields.pop("_financials_depth"); fields.pop("_shares_outstanding")
+        self.assertNotIn("current_assets", fields)
+        self.assertNotIn("current_liabilities", fields)
+        self.assertIn("total_assets", fields)
+        self.assertIn("total_liabilities", fields)
+
+    def test_eodhd_symbol_normalisation_is_multi_market(self):
+        adapter = scr.EodhdAdapter(env={})
+        self.assertEqual(adapter._normalise_symbol("AAPL.US"), "AAPL.US")
+        self.assertEqual(adapter._normalise_symbol("AAPL"), "AAPL.US")
+        self.assertEqual(adapter._normalise_symbol("BHP.AX"), "BHP.AU")
+        self.assertEqual(adapter._normalise_symbol("BHP.AU"), "BHP.AU")
+
+    def test_eodhd_no_secret_in_provenance_or_errors(self):
+        adapter = scr.EodhdAdapter(env={"EODHD_API_KEY": "super-secret-key-123"})
+
+        def boom(url, timeout=None):
+            raise urllib.error.HTTPError(url, 403, "Forbidden", None, None)
+
+        adapter._fetcher = boom
+        payload = adapter.fetch_payload("AAPL.US")
+        self.assertIsNone(payload)
+        self.assertIsNotNone(adapter.last_error)
+        self.assertNotIn("super-secret-key-123", str(adapter.last_error))
+
+    def test_missing_name_degrades_gracefully_never_imputed(self):
+        adapter = scr.EodhdAdapter(env={"EODHD_API_KEY": "k"})
+        payload = {
+            "General": {"Code": "ZZZ", "CurrencyCode": "USD"},  # no Name
+            "Financials": {},
+        }
+        ident = adapter._extract_identity(payload)
+        self.assertIsNone(ident["name"])
+        self.assertIsNone(ident["name_normalized"])
+        self.assertEqual(ident["company_id"], "us:ZZZ")
+
+
+class TestBuildCompanyFromEodhd(unittest.TestCase):
+
+    def test_build_company_from_eodhd_is_us_market(self):
+        payload = _eodhd_payload_fixture()
+        quote = {"price": 220.0, "currency": "USD", "exchange": "NMS", "name": "Apple Inc."}
+        company = scr.build_company_from_eodhd_fundamentals("AAPL.US", payload, quote)
+        self.assertEqual(company["market"], "US")
+        self.assertEqual(company["region"], "US")
+        self.assertEqual(company["currency"], "USD")
+        self.assertEqual(company["ticker"], "AAPL.US")
+        self.assertEqual(company["company_id"], "us:AAPL")
+        self.assertEqual(company["sector"], "Technology")
+        # comma-containing industry round-trips intact
+        self.assertEqual(company["industry"], "Consumer Electronics")
+        self.assertIsNotNone(company["price"])
+        self.assertAlmostEqual(company["price"].value, 220.0)
+        self.assertAlmostEqual(company["shares_outstanding"].value, 14_594_180_000.0)
+        self.assertAlmostEqual(company["revenue"].value, 416_161_000_000.0)
+
+
+class TestCommaContainingClassification(unittest.TestCase):
+
+    def test_titlecase_preserves_embedded_comma(self):
+        out = scr._titlecase_us_classification("technology hardware, storage & peripherals")
+        self.assertEqual(out, "Technology Hardware, Storage & Peripherals")
+
+    def test_titlecase_none_and_blank(self):
+        self.assertIsNone(scr._titlecase_us_classification(None))
+        self.assertIsNone(scr._titlecase_us_classification("  "))
+
+
+class TestUsSeedIdentityOverlay(unittest.TestCase):
+
+    def test_apply_us_seed_identity_preserves_hydrated_sector(self):
+        seed = [{
+            "company_id": "us:AAPL",
+            "ticker": "AAPL.US",
+            "us_code": "AAPL",
+            "region": "US",
+            "security_type": "unknown_from_eodhd_general",
+            "active": True,
+            "suspended": False,
+            "delisted": False,
+        }]
+        company = scr.build_company_from_eodhd_fundamentals("AAPL.US", _eodhd_payload_fixture(), {"price": 220.0})
+        # seed should NOT clobber the EODHD-sourced name/sector/industry
+        enriched = scr.apply_us_seed_identity([company], seed)
+        self.assertEqual(enriched[0]["sector"], "Technology")
+        self.assertEqual(enriched[0]["company_id"], "us:AAPL")
+        self.assertEqual(enriched[0]["region"], "US")
+
+    def test_apply_us_seed_identity_sets_company_id_when_absent(self):
+        seed = [{"company_id": "us:MSFT", "ticker": "MSFT.US", "us_code": "MSFT", "region": "US"}]
+        company = {"ticker": "MSFT.US", "market": "US", "name": "Microsoft"}
+        enriched = scr.apply_us_seed_identity([company], seed)
+        self.assertEqual(enriched[0]["company_id"], "us:MSFT")
 
 
 if __name__ == "__main__":
