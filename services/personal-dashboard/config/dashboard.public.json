@@ -168,23 +168,23 @@
         "detail": "JDK 21 was verified for Android builds."
       },
       {
-        "id": "avd-flutter-headless",
-        "label": "AVD flutter_headless",
-        "state": "last_known_present",
-        "detail": "Headless Android virtual device exists; dashboard status is read-only and will not boot it."
+        "id": "avd-agent-feedback",
+        "label": "AVD agent_feedback (live)",
+        "state": "running",
+        "detail": "Persistent headless Android 16 (API 36) AVD on tori; boots via android-emulator.service with -no-snapshot-load. KVM-accelerated, 2 vCPU / 1536 MB RAM."
       }
     ],
     "runtime": {
-      "state": "not_running",
-      "adbDeviceId": null,
-      "detail": "No adb device was attached during the last live workflow check."
+      "state": "running",
+      "adbDeviceId": "emulator-5554",
+      "detail": "Emulator is live; noVNC viewer is reachable from the trusted LAN at http://192.168.0.20:6080 (token-gated; see docs/operations/android-emulator-runbook.md)."
     },
-    "lastSuccessfulCycleAt": null,
+    "lastSuccessfulCycleAt": "2026-09-05T03:00:00Z",
     "viewer": {
-      "mode": "review_required",
-      "label": "Emulator viewer requires review",
-      "instruction": "Use the proven headless cycle on tori for now. A read-only adb screenshot, noVNC, or scrcpy web viewer must be placed behind authentication before the dashboard links to it.",
-      "href": null
+      "mode": "live_lan_token_gated",
+      "label": "Android emulator viewer",
+      "instruction": "Open http://192.168.0.20:6080/vnc.html?token=<TOKEN> from a trusted LAN host. The token lives in /opt/android-emulator/novnc/vnc_tokens on tori (Vaultwarden ref planned). Full connect/stop/verify steps in docs/operations/android-emulator-runbook.md.",
+      "href": "http://192.168.0.20:6080/vnc.html"
     }
   },
   "unifiedInbox": {
