@@ -23,6 +23,10 @@
         {
           "label": "Unified Inbox",
           "href": "http://192.168.0.50:8766"
+        },
+        {
+          "label": "Bazarr",
+          "href": "http://192.168.0.8:6767"
         }
       ]
     }
@@ -59,6 +63,16 @@
         200
       ],
       "timeoutMs": 1000
+    },
+    {
+      "id": "bazarr",
+      "label": "Bazarr",
+      "targetUrl": "http://192.168.0.8:6767/",
+      "displayUrl": "http://192.168.0.8:6767",
+      "acceptableStatuses": [
+        200
+      ],
+      "timeoutMs": 1500
     }
   ],
   "metaMcp": {
@@ -106,11 +120,15 @@
     },
     "access": {
       "mode": "lan_gateway",
-      "localUrl": "http://192.168.0.20:12008",
-      "note": "LAN gateway is reachable at the URL below and still requires gateway authentication. The dashboard stores only the URL.",
+      "localUrl": "http://metamcp.local:12008",
+      "note": "LAN gateway is reachable at the URL below and still requires gateway authentication. Friendly name metamcp.local (mDNS) resolves to 192.168.0.20; plain-Linux hosts without mDNS should use http://192.168.0.20:12008. The dashboard stores only the URL.",
       "links": [
         {
-          "label": "Open MetaMCP gateway",
+          "label": "Open MetaMCP gateway (metamcp.local)",
+          "href": "http://metamcp.local:12008"
+        },
+        {
+          "label": "Open MetaMCP gateway (IP)",
           "href": "http://192.168.0.20:12008"
         },
         {

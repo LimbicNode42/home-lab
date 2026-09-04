@@ -1,9 +1,71 @@
 # MetaMCP LAN exposure runbook
 
-Date: 2026-09-03
-Tasks: implementation `t_0bbbe4a8`; approval `t_5227cffc`; this documentation `t_f1d36fd1`
+Date: 2026-09-03 (updated 2026-09-04)
+Tasks: implementation `t_0bbbe4a8`; approval `t_5227cffc`; documentation `t_f1d36fd1`; friendly-name `t_d822a9d0`
 Host: `tori` (`192.168.0.20`), Debian trixie
 Service: MetaMCP 2.4.22, Docker container `metamcp`
+
+## 2026-09-04 update — friendly home-network name (metamcp.local)
+
+Task `t_d822a9d0` asked to make MetaMCP reachable via a friendly, documented path. Outcome: the friendly **name** is now live and verified via a host-local mDNS alias; the friendly-name **browser login** is a confirmed blocker that still needs a bounded `APP_URL`/`trustedOrigins` change + container recreate (explicitly gated — see "Login-through-friendly-name barrier" below).
+
+### What changed (this update)
+
+New host-local systemd unit, `metamcp-mdns-alias.service`, publishes a stable mDNS alias `metamcp.local` -> `192.168.0.20` using avahi. It never touches the container, the relay, Traefik, the router, or WAN/DNS. No `0.0.0.0` bind; no auth-boundary change.
+
+```ini
+[Unit]
+Description=MetaMCP mDNS alias publisher (metamcp.local -> 192.168.0.20)
+After=network-online.target avahi-daemon.service
+Wants=network-online.target
+Requires=avahi-daemon.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/avahi-publish-address -R metamcp.local 192.168.0.20
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Key pitfall: `avahi-publish-address` **without `-R`** fails with `Local name collision`, because avahi already owns `192.168.0.20` -> `tori.local` (the reverse/PTR record). `-R` (`--no-reverse`) publishes only the forward alias and is required here.
+
+### Verification (all passed, 2026-09-04)
+
+- `avahi-resolve -n metamcp.local` -> `192.168.0.20`; glibc `getaddrinfo` also resolves (nss-mdns present on tori).
+- `http://metamcp.local:12008/health` -> `200`.
+- `http://metamcp.local:12008/en/login` -> `200` (login page loads via the friendly name).
+- `http://metamcp.local:12008/metamcp/financial-data/mcp` -> `401 authentication_required` (API-key boundary intact through the friendly name).
+- Bind state unchanged: `192.168.0.20:12008` (socat) + `127.0.0.1:12008` (docker-proxy). No `0.0.0.0`.
+
+### Login-through-friendly-name barrier (BLOCKING, needs approval)
+
+The friendly name loads the UI, but a browser **cannot complete login** through it. Root cause (confirmed from the served client bundle + backend `dist/index.js`, not assumed):
+
+- `NEXT_PUBLIC_APP_URL` / `APP_URL` are `http://localhost:12008`.
+- The frontend auth client resolves its base URL as `env("NEXT_PUBLIC_APP_URL") || window.location.origin`. Since `NEXT_PUBLIC_APP_URL` is baked into the served client (`window.__NEXT_DATA__` / `PublicEnvScript` shows `http://localhost:12008`), a browser at `metamcp.local` still targets `localhost:12008` for auth, and the session cookie is scoped to `localhost`.
+- Backend better-auth `trustedOrigins` only lists localhost/127.0.0.1/0.0.0.0 (verified in `apps/backend/dist/index.js`).
+- Net effect: login works from `localhost:12008` (or via an SSH tunnel to `localhost`), but a non-localhost LAN origin cannot complete/retain a browser session. There is also a client-side "Domain Mismatch Warning" that fires when `window.location.origin` != the configured `APP_URL`.
+
+Closing this requires: (a) set `APP_URL` / `NEXT_PUBLIC_APP_URL` to `http://metamcp.local:12008` (or the desired friendly URL) and add it to better-auth `trustedOrigins` and `crossSubDomainCookies`; and (b) a controlled container recreate/rebuild. That is exactly the change class that previously stalled (Drizzle migration) and is gated behind "new approach + explicit approval" — do NOT retry the bare recreate. Any future attempt must first capture the current container's exact env/mount/network, snapshot the DB, and have a rollback path. The mDNS alias itself is harmless and remains live regardless.
+
+### Router / Traefik notes (no change made)
+
+- The TP-Link router (`192.168.0.1`, DHCP/DNS at `192.168.0.1`) has **no local DNS override / split-horizon**; `*.wheeler-network.com` resolves only to public Cloudflare anycast IPs (jellyfin/dashboard return CF IPs). There is no LAN DNS service deployed: `dnsmasq` is installed but unused, and AdGuard Home has only a NAS config directory (container not running). A `metamcp.wheeler-network.com` entry would require either a Cloudflare DNS record (rejected: WAN exposure) or deploying a LAN DNS resolver (larger, unapproved change). mDNS `metamcp.local` sidesteps this without touching any of it.
+- Traefik on `critical` routes by exact `Host(...)` (jellyfin/dashboard/cluster/vault `.wheeler-network.com`), all public-CF-backed. No Traefik change is needed for a LAN-only friendly name, and none was made.
+
+### Access note
+
+- Friendly name works for **mDNS-aware clients only** (macOS/Windows/iOS/systemd+avahi+nss-mdns hosts). Plain-Linux hosts without avahi/nss-mdns (e.g. `critical` PVE, `hosts: files dns`) will NOT resolve `metamcp.local`; they keep using `http://192.168.0.20:12008` directly. This is expected; a full LAN-wide friendly name would require DNS (see above).
+- The API key is still required for all MCP/tool access. The UI login remains `localhost`-bound until the barrier above is resolved; use `ssh -L 12008:127.0.0.1:12008 tori` from a LAN host for a working authenticated UI today.
+
+### Pre-existing security gaps carried forward (unchanged, for sentinel)
+
+See "Known security findings for follow-up" below. These remain open and are NOT part of this change; a separate sentinel task should own them.
 
 ## Intent
 
