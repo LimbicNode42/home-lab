@@ -5,9 +5,69 @@ Tasks: implementation `t_0bbbe4a8`; approval `t_5227cffc`; documentation `t_f1d3
 Host: `tori` (`192.168.0.20`), Debian trixie
 Service: MetaMCP 2.4.22, Docker container `metamcp`
 
+## 2026-09-05 update — friendly-name browser login delivered (Path B)
+
+Task `t_d822a9d0`, operator-approved path B (2026-09-05). The friendly-name **browser login** is now closed. A browser on a trusted LAN host can open `http://metamcp.local:12008`, complete login, and hit an authenticated MCP endpoint — no SSH tunnel.
+
+### What changed (this update)
+
+Repointed the app to its friendly name and recreated the container with the correct launch parameters:
+
+- `APP_URL` and `NEXT_PUBLIC_APP_URL` changed `http://localhost:12008` -> `http://metamcp.local:12008`.
+- Added `BETTER_AUTH_TRUSTED_ORIGINS=http://metamcp.local:12008,http://metamcp.local,http://localhost:12008,http://127.0.0.1:12008`.
+- Recreated the `metamcp` container from the same digest-pinned image, preserving mounts (`metamcp_mcp_fs_data`, `metamcp_mcp_git_data`), network (`metamcp_metamcp-network`, alias `app`), user (`nextjs`), restart policy, and the `127.0.0.1:12008->12008/tcp` publish.
+
+**No image rebuild needed.** Two runtime mechanisms make this env-only:
+- Frontend uses `next-runtime-env` (v3.3.0); `NEXT_PUBLIC_APP_URL` is injected into `window.__ENV` at serve time, not baked at `next build`.
+- Backend better-auth 1.4.2 auto-trusts its `baseURL` origin and honors a `BETTER_AUTH_TRUSTED_ORIGINS` env override, so the hardcoded `trustedOrigins` array in `dist/index.js` did not need a code patch.
+
+### The critical launch pitfall (root cause of the prior "Drizzle stall")
+
+The original compose project set `security_opt: [apparmor=unconfined]`. A plain `docker run` (or compose without that key) applies Docker's default `docker-default` AppArmor profile, which blocks something drizzle-kit/esbuild needs during config load. Symptom is indistinguishable from the runbook's documented stall:
+
+```
+No config path provided, using default 'drizzle.config.ts'
+Reading config file '/app/apps/backend/drizzle.config.ts'
+```
+
+...then the container never passes that line, `npx drizzle-kit migrate` exits 124, health turns `unhealthy`. It is NOT the migration itself and NOT the port binding. Reproduced cleanly: a fresh container with the **original localhost env** still stalled under the default profile, and completed in seconds once `--security-opt apparmor=unconfined` was added. **Any future reproduce/recreate must include `--security-opt apparmor=unconfined`.**
+
+### Verification (all passed, 2026-09-05)
+
+- `metamcp` healthy; new `APP_URL`/`NEXT_PUBLIC_APP_URL` = `http://metamcp.local:12008`.
+- Served login HTML now references `metamcp.local` (0 `localhost` refs, previously 2) — Domain Mismatch eliminated.
+- `http://metamcp.local:12008/health` -> 200; `/en/login` -> 200.
+- Sign-in from `Origin: http://metamcp.local:12008` -> `401 INVALID_EMAIL_OR_PASSWORD` (sane auth, not an origin/trustedOrigins `FORBIDDEN`).
+- `GET /api/auth/get-session` via friendly origin -> 200.
+- Authenticated MCP via friendly name: `initialize` -> 200 + `mcp-session-id`; `tools/list` -> 89 tools. API key read from container env/DB only, never printed or committed.
+- Localhost regression: `127.0.0.1:12008/health` and `/en/login` still 200.
+- Cross-host: `critical` reaches `192.168.0.20:12008/health` -> 200.
+- Binding unchanged: `192.168.0.20:12008` (socat relay) + `127.0.0.1:12008` (docker-proxy). No `0.0.0.0`. iptables `192.168.0.0/24` allowlist intact.
+
+### End-to-end user path (browser login + authenticated MCP)
+
+1. From a trusted LAN host (mDNS-aware: macOS/Windows/iOS/systemd+avahi+nss-mdns), open `http://metamcp.local:12008`.
+2. Complete the email/password login (the UI was already public at `/en/login`; the app is now correctly scoped to `metamcp.local` so the session cookie is retained).
+3. For MCP tool access, still authenticate with the `sk_mt_*` API key (`X-API-Key` header or query param) — the API-key boundary is unchanged and required for all `/metamcp/*/mcp` traffic.
+4. Plain-Linux hosts without mDNS (e.g. `critical`) can't resolve `metamcp.local` and instead use `http://192.168.0.20:12008` directly (browser login also works there now, since the app is no longer `localhost`-bound). A LAN-wide friendly name would require a real DNS resolver — out of scope.
+
+### Rollback (one command)
+
+The pre-change container is preserved (renamed, not deleted) as `metamcp-rollback-20260905T105010Z` (image `sha256:d452b621…`). To roll back:
+
+```bash
+docker rm -f metamcp && docker rename metamcp-rollback-20260905T105010Z metamcp && docker start metamcp
+```
+
+Snapshots (mode 0600) under `/root/.hermes/profiles/kobold/runtime/metamcp-recreate-*/`: full `docker inspect` JSON, pre-change DB `pg_dump`, and the rebuilt env file. Image id before == after (`sha256:d452b621ee4c8829d95a7d137693933dcd991af2fff3876ddf7bed142b63bcca`); this was an env+launch-param recreate only, no image change.
+
+### Home Dashboard note
+
+Dashboard `metaMcp.access` already carries `localUrl: http://metamcp.local:12008` and IP-fallback links (added 2026-09-04). The freshness/status signaling is the existing dashboard live-probe (`live_probe_configured`); no dashboard change beyond that is required for this task — the friendly-name link now actually works end-to-end for browser login, which is the meaningful improvement.
+
 ## 2026-09-04 update — friendly home-network name (metamcp.local)
 
-Task `t_d822a9d0` asked to make MetaMCP reachable via a friendly, documented path. Outcome: the friendly **name** is now live and verified via a host-local mDNS alias; the friendly-name **browser login** is a confirmed blocker that still needs a bounded `APP_URL`/`trustedOrigins` change + container recreate (explicitly gated — see "Login-through-friendly-name barrier" below).
+Task `t_d822a9d0` asked to make MetaMCP reachable via a friendly, documented path. Outcome: the friendly **name** is now live and verified via a host-local mDNS alias; the friendly-name **browser login** was a confirmed blocker that needed a bounded `APP_URL`/`trustedOrigins` change + container recreate (now delivered — see the 2026-09-05 update above).
 
 ### What changed (this update)
 
@@ -288,7 +348,9 @@ Rollback was tested live: stopping the relay restored loopback-only (LAN refused
 
 ## Prior attempt not to repeat
 
-A container-recreate approach was attempted first (recreate `metamcp` app container with published port changed to `192.168.0.20:12008->12008/tcp`). The replacement container never became healthy: logs stopped at Drizzle migration config load (`Reading config file '/app/apps/backend/drizzle.config.ts'`), and UI/MCP probes failed with connection refused. It was rolled back to the original loopback-only container. The socat relay avoids this entirely — it never touches the container. Do not retry the container-recreate path without a new approach and explicit approval.
+A container-recreate approach was attempted first (recreate `metamcp` app container with published port changed to `192.168.0.20:12008->12008/tcp`). The replacement container never became healthy: logs stopped at Drizzle migration config load (`Reading config file '/app/apps/backend/drizzle.config.ts'`), and UI/MCP probes failed with connection refused. It was rolled back to the original loopback-only container.
+
+**Root cause of that stall, now understood (2026-09-05):** the replacement container was launched without `security_opt: [apparmor=unconfined]`. Docker's default `docker-default` AppArmor profile blocks a step drizzle-kit needs during config load, so `pnpm exec drizzle-kit migrate` hangs and the container never gets past "Reading config file". It is not the migration, not the DB, and not the port change. A `docker run`/compose recreate must set `--security-opt apparmor=unconfined` to match the original compose project. The socat relay avoids the container recreate entirely — it never touches the container. See the 2026-09-05 update above for the full diagnosis and the successful recreated container.
 
 ## Known security findings for follow-up (NOT part of this LAN-exposure change)
 

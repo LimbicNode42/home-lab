@@ -121,7 +121,7 @@
     "access": {
       "mode": "lan_gateway",
       "localUrl": "http://metamcp.local:12008",
-      "note": "LAN gateway is reachable at the URL below and still requires gateway authentication. Friendly name metamcp.local (mDNS) resolves to 192.168.0.20; plain-Linux hosts without mDNS should use http://192.168.0.20:12008. The dashboard stores only the URL.",
+      "note": "LAN gateway is reachable at the URL below and still requires gateway authentication. Friendly name metamcp.local (mDNS) resolves to 192.168.0.20; plain-Linux hosts without mDNS should use http://192.168.0.20:12008. Browser login works end-to-end at the friendly name (2026-09-05); the dashboard stores only the URL, never credentials/keys.",
       "links": [
         {
           "label": "Open MetaMCP gateway (metamcp.local)",
