@@ -2304,5 +2304,31 @@ class TestUsSeedIdentityOverlay(unittest.TestCase):
         self.assertEqual(enriched[0]["company_id"], "us:MSFT")
 
 
+class TestBuildUniverseVersionIsPathFree(unittest.TestCase):
+
+    def test_version_embeds_label_and_hash_only(self):
+        metadata = {
+            "sha256": "ad58b7c23600e51095c8b4d29af26af4398840214971de93076d4d842e481f47",
+            "retrieved_at": "2026-09-05T00:00:00Z",
+            "denominator_label": "S&P 500 constituents (reviewed static seed)",
+        }
+        version = scr.build_universe_version(metadata)
+        self.assertNotIn("/", version)
+        self.assertIn("S&P 500 constituents (reviewed static seed)", version)
+        self.assertIn("sha256:ad58b7c23600e51095c8b4d29af26af4398840214971de93076d4d842e481f47", version)
+        self.assertIn("retrieved_at:2026-09-05T00:00:00Z", version)
+
+    def test_version_falls_back_to_source_name_when_no_denominator_label(self):
+        metadata = {
+            "source_sha256": "abc123",
+            "retrieved_at": "2026-09-05T00:00:00Z",
+            "source_name": "US curated universe (S&P 500 constituents)",
+        }
+        version = scr.build_universe_version(metadata)
+        self.assertNotIn("/", version)
+        self.assertIn("sha256:abc123", version)
+        self.assertIn("US curated universe (S&P 500 constituents)", version)
+
+
 if __name__ == "__main__":
     unittest.main()

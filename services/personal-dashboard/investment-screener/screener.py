@@ -385,11 +385,19 @@ def select_asx_universe_batch(
     }
 
 
-def build_universe_version(seed_path: Path, metadata: dict) -> str:
-    """Build a public, path-safe seed version label."""
+def build_universe_version(metadata: dict) -> str:
+    """Build a public, path-free seed version label.
+
+    Embeds only the content hash and a human-readable source label, never a
+    filesystem path, so published provenance stays machine-independent and
+    reproducible. The label comes from the seed's own ``denominator_label``
+    (e.g. "S&P 500 constituents (reviewed static seed)") with ``source_name``
+    as an honest fallback for seeds that carry no explicit denominator label.
+    """
     sha = metadata.get("sha256") or metadata.get("source_sha256") or "unknown"
     retrieved = metadata.get("retrieved_at") or "unknown"
-    return f"{seed_path.as_posix()} sha256:{sha} retrieved_at:{retrieved}"
+    label = metadata.get("denominator_label") or metadata.get("source_name") or "reviewed static seed"
+    return f"{label} sha256:{sha} retrieved_at:{retrieved}"
 
 
 def parse_security_type_list(value: Optional[str]) -> Optional[list[str]]:
@@ -4424,7 +4432,7 @@ def main(argv=None):
         universe_tickers = list(selected["tickers"])
         cache_dir = Path(args.cache_dir) if args.cache_dir else None
         universe_source = "ASX company directory CSV via reviewed static seed"
-        universe_version = build_universe_version(seed_path, seed["metadata"])
+        universe_version = build_universe_version(seed["metadata"])
         universe_metadata = dict(seed["metadata"])
         batch_metadata = dict(selected)
         batch_metadata.pop("entries", None)
@@ -4481,7 +4489,7 @@ def main(argv=None):
         universe_tickers = list(selected["tickers"])
         cache_dir = Path(args.cache_dir) if args.cache_dir else None
         universe_source = US_DENOMINATOR_LABEL
-        universe_version = build_universe_version(seed_path, seed["metadata"])
+        universe_version = build_universe_version(seed["metadata"])
         universe_metadata = dict(seed["metadata"])
         batch_metadata = dict(selected)
         batch_metadata.pop("entries", None)
