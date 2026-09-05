@@ -444,16 +444,40 @@ def normalise_asx_ticker(ticker: str) -> str:
 def normalise_us_ticker(ticker: str) -> str:
     """Append .US to bare US symbols; normalise existing .US tickers to uppercase.
 
-    Accepts bare symbols (``AAPL``), a Yahoo-style suffix (``AAPL``), or an
-    explicit EODHD suffix (``AAPL.US``). Unlike ASX, the normalized form always
+    Accepts bare symbols (``AAPL``), an explicit EODHD suffix (``AAPL.US``), or a
+    dual-class symbol (``BF.B``, ``BRK.B``). Unlike ASX, the normalized form always
     ends in ``.US`` because that is the EODHD fundamentals symbol contract.
+
+    Dual-class US shares use a hyphen (not a dot) in the EODHD and Yahoo symbol
+    contract: ``BF.B`` -> ``BF-B.US``, ``BRK.B`` -> ``BRK-B.US``. The class dot is
+    therefore rewritten to a hyphen rather than dropped, so a dual-class symbol is
+    never collapsed to its base root (``BF``/``BRK``), which 404s on both providers.
     """
-    upper = str(ticker or "").strip().upper().split(".")[0]
-    return upper + ".US" if upper else ""
+    upper = str(ticker or "").strip().upper()
+    if not upper:
+        return ""
+    # Strip a pre-existing .US suffix so a class dot inside the bare symbol (the
+    # segment between root and .US) is normalized rather than misread as the
+    # suffix delimiter.
+    body = upper[:-3] if upper.endswith(".US") else upper
+    # Any remaining dot is a dual-class delimiter (BF.B -> BF-B), the canonical
+    # EODHD/Yahoo form.
+    if "." in body:
+        body = body.replace(".", "-")
+    return body + ".US"
 
 
 def _us_code_from_ticker(ticker: str) -> str:
-    return str(ticker or "").strip().upper().split(".")[0]
+    """Return the bare exchange symbol (Yahoo form) for a US ticker.
+
+    Strips the trailing ``.US`` and preserves a dual-class hyphen, so the Yahoo
+    chart-quote symbol is the exchange-correct ``BF-B``/``BRK-B`` rather than the
+    collapsed root ``BF``/``BRK``. Yahoo accepts neither ``BF.B`` nor ``BF-B.US``.
+    """
+    normalised = normalise_us_ticker(ticker)
+    if normalised.endswith(".US"):
+        return normalised[:-3]
+    return normalised
 
 
 def _us_company_id(code: str) -> str:
@@ -523,7 +547,7 @@ def normalise_us_universe_rows(
         if not code or not US_CODE_RE.match(code):
             excluded.append({"code": code, "reason": "missing or invalid US symbol"})
             continue
-        ticker = f"{code}.US"
+        ticker = normalise_us_ticker(code)
         if code in seen_codes:
             raise ValueError(f"Duplicate US symbol in universe source: {code}")
         if ticker in seen_tickers:
@@ -3368,7 +3392,16 @@ def build_file_first_run_payload(
     failures: list[dict] = []
     exclusions: list[dict] = []
     for failure in hydration_failures or []:
-        ticker = normalise_asx_ticker(str(failure.get("ticker") or "UNKNOWN")) if failure.get("ticker") else "UNKNOWN"
+        raw_ticker = str(failure.get("ticker") or "")
+        if not raw_ticker:
+            ticker = "UNKNOWN"
+        elif ".US" in raw_ticker.upper():
+            # US hydration runs emit ``.US`` tickers (and dual-class ``BF-B.US``);
+            # they must never be mangled by the ASX normalizer, which would append a
+            # spurious ``.AX`` (the exact failure mode of the BF.B/BRK.B dual-class 404s).
+            ticker = normalise_us_ticker(raw_ticker)
+        else:
+            ticker = normalise_asx_ticker(raw_ticker)
         failures.append({
             "ticker": ticker,
             "reason": str(failure.get("reason") or "provider hydration failed"),
