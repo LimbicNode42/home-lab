@@ -362,6 +362,14 @@ Recorded during implementation verification, carried forward for a separate secu
 
 These do not affect the MCP API-key acceptance criteria but should be triaged separately.
 
+### 2026-09-05 triage outcome (sentinel, task `t_c63720cf`)
+
+All three findings were triaged live against the running container, its baked `dist/index.js` / `index.js.map` / `packages/*/dist` sources, and the live `metamcp_db`. No test users were created. Full assessment: `metamcp-auth-security-assessment.md` (attached to `t_c63720cf`).
+
+- **Finding 1 (permissive CORS) — LOW, accepted-risk, no action now.** Root cause: the backend mounts the OAuth router at the app root (`app.use(oauth_default)`, no path filter), and that router applies `cors({ origin: "*", credentials: true })` globally, stamping the wildcard headers on every path including `/api/auth/*`. It is not browser-exploitable: `*` + `credentials: true` is spec-rejected by browsers (they fail closed), the session cookie is `SameSite=Lax`, and better-auth `trustedOrigins` blocks cross-origin session issuance. The correct fix is a code change (trusted-origin list + drop `credentials`) requiring an image rebuild — deferred to the next service-definition rebuild, not a one-off recreate.
+- **Finding 2 (open sign-up) — MEDIUM-HIGH, remediation pending approval.** Root cause: the signup gate is a DB config row `DISABLE_SIGNUP` (checked in a `databaseHooks.user.create.before` hook); the `BOOTSTRAP_DISABLE_REGISTRATION_UI`/`_SSO` env vars are consumed nowhere in the container, and the `config` table is empty, so signup is open. A new user can create their own filesystem/git MCP servers (the `filesystem`/`git` namespaces are `is_public: true`) = container filesystem access; they cannot reach the existing `financial-data`/`homelab` endpoints or the `hermes-gateway-key`. Recommended remediation is a single reversible DB insert — `INSERT INTO config (id,value,description) VALUES ('DISABLE_SIGNUP','true','…')` (rollback: `DELETE FROM config WHERE id='DISABLE_SIGNUP'`) — no recreate, no rebuild, no env change. Awaiting operator approval to apply.
+- **Finding 3 (`/service/*`) — INFO, no action.** Unauthenticated 404 upstream; no tools/data exposure.
+
 ## Follow-up desired-state gap
 
 The live MetaMCP app was originally launched from a now-missing temporary kanban workspace; the running container is the live source of truth. A separate service-import task should build `services/metamcp/` desired state with non-secret `.env.example` / Vaultwarden references, digest-pinned image, restore notes, and explicit API-key/auth boundaries. This runbook is operational documentation, not the long-term source of truth for the service definition.
