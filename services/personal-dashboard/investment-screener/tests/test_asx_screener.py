@@ -1114,6 +1114,22 @@ class TestFileFirstArtifactPayload(unittest.TestCase):
         self.assertEqual(payload["failures"][0]["ticker"], "BAD.AX")
         self.assertEqual(payload["failures"][0]["provider"], "yahoo-finance")
 
+    def test_failure_ticker_dot_us_not_mangled_to_ax(self):
+        payload = build_file_first_run_payload(
+            [{"ticker": "AAPL.US", "company_id": "us:AAPL", "name": "Apple", "market": "US"}],
+            source="eodhd",
+            mode="us-eodhd-fundamentals",
+            universe=["AAPL.US"],
+            hydration_failures=[
+                {"ticker": "BF-B.US", "reason": "recoverable EODHD fundamentals failure: status 404", "provider": "eodhd", "recoverable": True},
+                {"ticker": "BAD.AX", "reason": "provider 404", "provider": "yahoo-finance", "recoverable": True},
+            ],
+        )
+        tickers = [f["ticker"] for f in payload["failures"]]
+        self.assertIn("BF-B.US", tickers)
+        self.assertIn("BAD.AX", tickers)
+        self.assertNotIn("BF-B.US.AX", tickers)
+
     def test_cli_exposes_file_first_run_payload_output_without_requiring_postgres(self):
         args = parse_args([
             "--fixture",
@@ -2094,6 +2110,22 @@ class TestNormaliseUsTicker(unittest.TestCase):
     def test_empty_ticker_returns_empty(self):
         self.assertEqual(scr.normalise_us_ticker(""), "")
 
+    def test_dual_class_preserves_class_dot_as_hyphen(self):
+        self.assertEqual(scr.normalise_us_ticker("BF.B"), "BF-B.US")
+        self.assertEqual(scr.normalise_us_ticker("BRK.B"), "BRK-B.US")
+
+    def test_dual_class_explicit_us_suffix_is_idempotent(self):
+        self.assertEqual(scr.normalise_us_ticker("BF-B.US"), "BF-B.US")
+        self.assertEqual(scr.normalise_us_ticker("BRK.B.US"), "BRK-B.US")
+
+    def test_dual_class_lowercase_normalised_capitalised(self):
+        self.assertEqual(scr.normalise_us_ticker("bf.b"), "BF-B.US")
+
+    def test_us_code_derives_hyphenated_yahoo_symbol(self):
+        self.assertEqual(scr._us_code_from_ticker("BF.B.US"), "BF-B")
+        self.assertEqual(scr._us_code_from_ticker("BRK.B.US"), "BRK-B")
+        self.assertEqual(scr._us_code_from_ticker("AAPL.US"), "AAPL")
+
 
 class TestNormaliseUsUniverseRows(unittest.TestCase):
 
@@ -2124,6 +2156,15 @@ class TestNormaliseUsUniverseRows(unittest.TestCase):
         self.assertEqual(len(entries), 1)
         self.assertEqual(metadata["excluded_count"], 1)
         self.assertTrue(any("missing" in ex.get("reason", "") for ex in metadata["excluded"]))
+
+    def test_dual_class_codes_normalise_to_hyphenated_ticker(self):
+        rows = [{"Code": "BF.B", "Name": "Brown-Forman"}, {"Code": "BRK.B", "Name": "Berkshire Hathaway"}]
+        entries, _ = scr.normalise_us_universe_rows(
+            rows, "https://example.com", "2026-09-01", "abc"
+        )
+        tickers = {e["us_code"]: e["ticker"] for e in entries}
+        self.assertEqual(tickers["BF.B"], "BF-B.US")
+        self.assertEqual(tickers["BRK.B"], "BRK-B.US")
 
 
 class TestSelectUsUniverseBatch(unittest.TestCase):
