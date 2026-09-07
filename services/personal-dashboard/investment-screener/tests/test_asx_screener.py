@@ -2373,13 +2373,25 @@ class TestBuildUniverseVersionIsPathFree(unittest.TestCase):
 
 class TestNasdaqUniverseRows(unittest.TestCase):
 
+    def _row(self, symbol, name, etf="N", test="N", fin="N"):
+        return {
+            "Symbol": symbol,
+            "Security Name": name,
+            "Market Category": "Q",
+            "Test Issue": test,
+            "Financial Status": fin,
+            "Round Lot Size": "100",
+            "ETF": etf,
+            "NextShares": "N",
+        }
+
     def test_rows_normalise_to_explicit_nasdaq_entries(self):
         rows = [
-            {"Symbol": "AAPL", "Company Name": "Apple Inc.", "Market Cap": "4,000", "Sector": "Technology", "Industry": "Consumer Electronics"},
-            {"Symbol": "MSFT", "Company Name": "Microsoft Corporation", "Market Cap": "3,000"},
+            self._row("AAPL", "Apple Inc. - Common Stock"),
+            self._row("MSFT", "Microsoft Corporation - Common Stock"),
         ]
         entries, metadata = scr.normalise_nasdaq_universe_rows(
-            rows, "https://api.nasdaq.com/api/quote/list-type/nasdaq100", "2026-09-07T00:00:00Z", "abc123"
+            rows, "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt", "2026-09-08T00:00:00Z", "abc123"
         )
         self.assertEqual(len(entries), 2)
         self.assertEqual(entries[0]["ticker"], "AAPL.US")
@@ -2389,37 +2401,102 @@ class TestNasdaqUniverseRows(unittest.TestCase):
         self.assertEqual(entries[0]["exchange"], "NASDAQ")
         self.assertEqual(entries[0]["region"], "US")
         self.assertEqual(entries[0]["currency"], "USD")
-        self.assertEqual(metadata["denominator_label"], scr.NASDAQ_DENOMINATOR_LABEL)
-        self.assertIn("NASDAQ-100", metadata["denominator_label"])
+        self.assertEqual(entries[0]["security_type"], "nasdaq_listed_equity")
+        self.assertEqual(metadata["denominator_status"], "complete_security_type_filtered_listing")
+        self.assertTrue(metadata["complete_security_type_filtered_listing"])
+        self.assertNotIn("known_sample_universe", metadata["denominator_status"])
+        self.assertIn("NASDAQ", metadata["denominator_label"])
+
+    def test_etf_test_issue_and_non_equity_are_excluded(self):
+        rows = [
+            self._row("GOOG", "Alphabet Inc. - Class C Capital Stock"),
+            self._row("SPY", "SPDR S&P 500 ETF Trust", etf="Y"),
+            self._row("ZXYZ.A", "Nasdaq Symbology Test Common Stock", test="Y"),
+            self._row("AACIU", "Armada Acquisition Corp. III - Units"),
+            self._row("AACIW", "Armada Acquisition Corp. III - Warrant"),
+            self._row("AACPU", "Apogee Acquisition Corp - Units"),
+            self._row("GAINZ", "Gladstone Investment Corporation - 4.875% Notes due 2028"),
+        ]
+        entries, metadata = scr.normalise_nasdaq_universe_rows(
+            rows, "https://example.com", "2026-09-08", "abc"
+        )
+        self.assertEqual([e["us_code"] for e in entries], ["GOOG"])
+        self.assertEqual(len(entries), 1)
+        reasons = {ex["code"]: ex["reason"] for ex in metadata["excluded"]}
+        self.assertEqual(reasons["SPY"], "etf")
+        self.assertEqual(reasons["ZXYZ.A"], "test_issue")
+        self.assertTrue(reasons["AACIU"].startswith("non_equity:"))
+        self.assertTrue(reasons["AACIW"].startswith("non_equity:"))
+        self.assertTrue(reasons["GAINZ"].startswith("non_equity:"))
+
+    def test_word_boundary_does_not_misclassify_company_names(self):
+        # "United"/"Unit"/"Notion" must NOT be dropped as Unit/Note securities.
+        rows = [
+            self._row("UAL", "United Airlines Holdings, Inc. - Common Stock"),
+            self._row("UNIT", "Uniti Group Inc. - Common Stock"),
+            self._row("NOTV", "Inotiv, Inc. - Common Stock"),
+        ]
+        entries, metadata = scr.normalise_nasdaq_universe_rows(rows, "https://example.com", "2026-09-08", "abc")
+        self.assertEqual({e["us_code"] for e in entries}, {"UAL", "UNIT", "NOTV"})
+        self.assertEqual(len(metadata["excluded"]), 0)
 
     def test_dual_class_uses_us_hyphen_contract(self):
-        rows = [{"Symbol": "BRK.B", "Company Name": "Berkshire Hathaway"}]
+        rows = [self._row("BRK.B", "Berkshire Hathaway Class B")]
         entries, _ = scr.normalise_nasdaq_universe_rows(rows, "https://example.com", "2026-09-07", "abc")
         self.assertEqual(entries[0]["ticker"], "BRK-B.US")
         self.assertEqual(entries[0]["us_code"], "BRK-B")
 
-    def test_select_nasdaq_batch_keeps_bounded_denominator_label(self):
+    def test_full_universe_emits_complete_security_type_filtered(self):
         entries, _ = scr.normalise_nasdaq_universe_rows(
-            [{"Symbol": f"TICK{i:03d}", "Company Name": f"Ticker {i}"} for i in range(5)],
+            [self._row(f"TICK{i:03d}", f"Test Ticker {i}") for i in range(5)],
+            "https://example.com", "2026-09-07", "abc"
+        )
+        selected = scr.select_nasdaq_universe_batch(entries)
+        self.assertEqual(selected["eligible_count"], 5)
+        self.assertEqual(selected["selected_count"], 5)
+        self.assertEqual(selected["denominator_status"], "complete_security_type_filtered_listing")
+        self.assertTrue(selected["complete_security_type_filtered_listing"])
+        self.assertFalse(selected["complete_exchange_listing"])
+        self.assertEqual(selected["denominator_label"], scr.NASDAQ_DENOMINATOR_LABEL)
+
+    def test_partial_nasdaq_batch_still_ranked_batch(self):
+        entries, _ = scr.normalise_nasdaq_universe_rows(
+            [self._row(f"TICK{i:03d}", f"Test Ticker {i}") for i in range(5)],
             "https://example.com", "2026-09-07", "abc"
         )
         selected = scr.select_nasdaq_universe_batch(entries, max_tickers=2)
-        self.assertEqual(selected["eligible_count"], 5)
-        self.assertEqual(selected["selected_count"], 2)
         self.assertEqual(selected["denominator_status"], "ranked_market_cap_batch")
-        self.assertEqual(selected["denominator_label"], scr.NASDAQ_DENOMINATOR_LABEL)
 
     def test_nasdaq_universe_version_is_path_free(self):
         metadata = {
             "sha256": "abc123",
-            "retrieved_at": "2026-09-07T00:00:00Z",
+            "retrieved_at": "2026-09-08T00:00:00Z",
             "denominator_label": scr.NASDAQ_DENOMINATOR_LABEL,
+            "source_name": scr.NASDAQ_SOURCE_NAME,
         }
         version = scr.build_universe_version(metadata)
         self.assertNotIn("/tmp/", version)
         self.assertNotIn("/root/", version)
         self.assertNotIn("/mnt/", version)
-        self.assertIn("NASDAQ-100", version)
+        self.assertIn("nasdaq", version.lower())
+
+    def test_parse_nasdaq_listed_file_extracts_rows_and_footer(self):
+        body = (
+            "Symbol|Security Name|Market Category|Test Issue|Financial Status|Round Lot Size|ETF|NextShares\n"
+            "AAPL|Apple Inc. - Common Stock|Q|N|N|100|N|N\n"
+            "SPY|SPDR S&P 500 ETF Trust|G|N|N|100|Y|N\n"
+            "File Creation Time: 0904202621:31|||||||\n"
+        ).encode("utf-8")
+        rows, meta = scr.parse_nasdaq_listed_file(body)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["Symbol"], "AAPL")
+        self.assertEqual(meta["file_creation_time"], "0904202621:31")
+
+    def test_classify_nasdaq_listed_row(self):
+        self.assertEqual(scr.classify_nasdaq_listed_row(self._row("AAPL", "Apple Inc.")), "equity_kept")
+        self.assertEqual(scr.classify_nasdaq_listed_row(self._row("SPY", "SPY ETF Trust", etf="Y")), "etf")
+        self.assertEqual(scr.classify_nasdaq_listed_row(self._row("ZXYZ.A", "Test", test="Y")), "test_issue")
+        self.assertEqual(scr.classify_nasdaq_listed_row(self._row("AACIW", "Warrant")), "non_equity:warrant")
 
 
 class TestNasdaqFileFirstPayload(unittest.TestCase):
@@ -2445,9 +2522,9 @@ class TestNasdaqFileFirstPayload(unittest.TestCase):
             mode="nasdaq-eodhd-fundamentals",
             universe=["AAPL.US"],
             universe_source=scr.NASDAQ_DENOMINATOR_LABEL,
-            universe_version="NASDAQ-100 constituents (reviewed static seed) sha256:abc123 retrieved_at:2026-09-07T00:00:00Z",
-            batch_metadata={"eligible_count": 101, "selected_count": 1, "denominator_label": scr.NASDAQ_DENOMINATOR_LABEL},
-            completed_at="2026-09-07T00:00:00Z",
+            universe_version=scr.NASDAQ_DENOMINATOR_LABEL + " sha256:abc123 retrieved_at:2026-09-08T00:00:00Z",
+            batch_metadata={"eligible_count": 3432, "selected_count": 1, "denominator_label": scr.NASDAQ_DENOMINATOR_LABEL},
+            completed_at="2026-09-08T00:00:00Z",
         )
         self.assertEqual(payload["market"], "NASDAQ")
         self.assertEqual(payload["source"], "eodhd")
@@ -2460,8 +2537,8 @@ class TestNasdaqFileFirstPayload(unittest.TestCase):
 class TestNasdaqCliArgs(unittest.TestCase):
 
     def test_parse_args_accepts_nasdaq_seed_and_tickers(self):
-        seed_args = scr.parse_args(["--nasdaq-universe-seed", "universe/nasdaq100.seed.json", "--max-tickers", "3"])
-        self.assertEqual(seed_args.nasdaq_universe_seed, "universe/nasdaq100.seed.json")
+        seed_args = scr.parse_args(["--nasdaq-universe-seed", "universe/nasdaq-listed-equities.seed.json", "--max-tickers", "3"])
+        self.assertEqual(seed_args.nasdaq_universe_seed, "universe/nasdaq-listed-equities.seed.json")
         ticker_args = scr.parse_args(["--nasdaq-tickers", "AAPL", "MSFT"])
         self.assertEqual(ticker_args.nasdaq_tickers, ["AAPL", "MSFT"])
 

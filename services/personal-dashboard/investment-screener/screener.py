@@ -194,10 +194,30 @@ US_UNIVERSE_SEED_SCHEMA_VERSION = "investment-screener-us-universe-seed/v1"
 US_IDENTITY_RULE = "company_id=us:{us_code}; eodhd_ticker={us_code}.US"
 US_DEFAULT_SECURITY_TYPE = "unknown_from_eodhd_general"
 US_DENOMINATOR_LABEL = "S&P 500 constituents (reviewed static seed)"
-NASDAQ_UNIVERSE_SEED_SCHEMA_VERSION = "investment-screener-nasdaq-universe-seed/v1"
+NASDAQ_UNIVERSE_SEED_SCHEMA_VERSION = "investment-screener-nasdaq-universe-seed/v2"
 NASDAQ_IDENTITY_RULE = "company_id=nasdaq:{us_code}; eodhd_ticker={us_code}.US; exchange=NASDAQ"
-NASDAQ_DENOMINATOR_LABEL = "NASDAQ-100 constituents (reviewed static seed)"
+NASDAQ_DENOMINATOR_LABEL = "NASDAQ listed equities (security-type-filtered, reviewed static seed)"
 NASDAQ_MODE = "nasdaq-eodhd-fundamentals"
+NASDAQ_SOURCE_NAME = "NASDAQ Trader listed securities (nasdaqlisted.txt)"
+NASDAQ_SOURCE_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
+NASDAQ_EQUITY_SECURITY_TYPE = "nasdaq_listed_equity"
+# Security-type filter for the reviewed FULL NASDAQ listing (not a bounded
+# top-N sample). Excludes ETFs, exchange test/simulator symbols, and non-equity
+# instruments (warrants, rights, SPAC units, preferred/depositary shares, notes,
+# ETNs). Word-bounded so company names like ``United``/``Unit``/``Notion`` are
+# NOT misread as ``Unit``/``Note`` securities. Matches the reviewed source's
+# documented denominator (~3,432 equity listings of 5,592 rows; 1,258 ETF,
+# 8 test, 894 other non-equity).
+#
+# NOTE (sentinel review): ``\bUnits?\b`` also matches "Common Units" on the ~4
+# NASDAQ-listed MLP/partnership issuers (ARLP/DMLP/MMLP/PAA). The reviewed
+# source prose mentions keeping MLPs, but its measured 3,432 denominator counts
+# those rows as ``non_equity:units``. We reproduce the documented count exactly
+# rather than silently reclassifying a handful of issuers; the sentinel gate
+# (t_befb8628) can reconcile the 4-symbol delta as a follow-up.
+NASDAQ_NON_EQUITY_TOKEN_RE = re.compile(
+    r"\b(Warrants?|Rights?|Units?|Preferred|Notes?|ETN)\b", re.IGNORECASE
+)
 US_EODHD_MODE = "us-eodhd-fundamentals"
 
 
@@ -535,6 +555,12 @@ def _titlecase_us_classification(value: Any) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 US_CODE_RE = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,9}$")
+# Exchange test/simulator symbols with a dot/hyphen suffix (e.g. NASDAQ
+# ``ZXYZ.A``, ``ZXYZ-$``). Mirrors the reviewed source spec's ``^Z[A-Z]{3}[.$]``
+# guard; bare ``Z``-prefixed operating names (``ZION``, ``ZTS``, ``ZYME``) are NOT
+# matched. The primary test-issue filter is the ``Test Issue`` flag; this only
+# defensively drops dotted/suffixed test symbols.
+US_TEST_SYMBOL_RE = re.compile(r"^Z[A-Z]{3}[.$]")
 
 
 def normalise_us_universe_rows(
@@ -692,18 +718,78 @@ def _nasdaq_row_symbol(row: dict) -> str:
     ).strip()
 
 
+def parse_nasdaq_listed_file(body: bytes) -> tuple[list[dict], dict]:
+    """Parse the pipe-delimited ``nasdaqlisted.txt`` listing into rows + provenance.
+
+    The file is ``Symbol|Security Name|Market Category|Test Issue|Financial
+    Status|Round Lot Size|ETF|NextShares`` with a trailing ``File Creation Time``
+    footer. Returns ``(rows, file_meta)`` where ``file_meta`` carries the parsed
+    refresh timestamp (the ``File Creation Time`` footer) rather than any host
+    path, so provenance stays machine-independent.
+    """
+    text = body.decode("utf-8-sig")
+    lines = [line for line in text.replace("\r\n", "\n").split("\n")]
+    if not lines:
+        raise ValueError("NASDAQ Trader listing is empty")
+    header = lines[0].split("|")
+    columns = ["Symbol", "Security Name", "Market Category", "Test Issue", "Financial Status", "Round Lot Size", "ETF", "NextShares"]
+    if header != columns:
+        raise ValueError(f"Unexpected NASDAQ Trader header: {header!r}")
+    file_creation_time = None
+    rows: list[dict] = []
+    for line in lines[1:]:
+        if not line.strip():
+            continue
+        if line.startswith("File Creation Time"):
+            value = line.split(":", 1)[1].split("|", 1)[0].strip()
+            file_creation_time = value or None
+            continue
+        parts = line.split("|")
+        if len(parts) != len(columns):
+            raise ValueError(f"Malformed NASDAQ Trader row (expected {len(columns)} fields): {line[:80]!r}")
+        rows.append(dict(zip(columns, parts)))
+    return rows, {"file_creation_time": file_creation_time}
+
+
+def classify_nasdaq_listed_row(row: dict) -> str:
+    """Classify a ``nasdaqlisted.txt`` row for the full-universe equity filter.
+
+    Returns ``"etf"``, ``"test_issue"``, a ``non_equity:<token>`` reason, or
+    ``"equity_kept"``. Order and semantics follow the reviewed source spec
+    (t_e4b82658): drop ETFs and exchange test/simulator symbols, then drop
+    non-equity security types (warrants, rights, units, preferred, notes, ETNs)
+    via a word-bounded token match so issuer names are not misread.
+    """
+    if str(row.get("ETF") or "").strip().upper() == "Y":
+        return "etf"
+    if str(row.get("Test Issue") or "").strip().upper() == "Y":
+        return "test_issue"
+    match = NASDAQ_NON_EQUITY_TOKEN_RE.search(str(row.get("Security Name") or ""))
+    if match:
+        return f"non_equity:{match.group(1).lower()}"
+    return "equity_kept"
+
+
 def normalise_nasdaq_universe_rows(
     rows: list[dict],
     source_url: str,
     retrieved_at: str,
     source_sha256: str,
+    file_creation_time: Optional[str] = None,
 ) -> tuple[list[dict], dict]:
-    """Normalize a bounded NASDAQ-100/QQQ-class source into v1 seed entries.
+    """Normalize the reviewed FULL NASDAQ listed-securities listing into v2 entries.
 
     NASDAQ keeps explicit user-facing exchange semantics while reusing the EODHD
-    US fundamentals symbol contract: provider tickers are still ``{symbol}.US``
-    and dual-class symbols use the inherited hyphen form. This seed is a bounded
-    NASDAQ-100 constituent list, not a full NASDAQ exchange directory.
+    US fundamentals symbol contract: provider tickers are ``{symbol}.US`` and the
+    inherited hyphen form applies to any (currently-nonexistent) dotted symbol.
+
+    This is the full ``nasdaqlisted.txt`` directory, security-type filtered to
+    equity: ETFs, exchange test/simulator symbols, and non-equity instruments
+    (warrants/rights/units/preferred/notes/ETNs) are excluded, so the emitted
+    denominator is honestly ``complete_security_type_filtered_listing`` rather
+    than a bounded/sample label. ``nasdaqlisted.txt`` carries no sector/industry
+    columns — those arrive from EODHD ``General`` at hydration time — so entries
+    leave them ``None`` and carry the listing's ``Financial Status`` flag.
     """
     entries: list[dict] = []
     excluded: list[dict] = []
@@ -712,7 +798,7 @@ def normalise_nasdaq_universe_rows(
     row_count = len(rows)
     public_source_url = redact_url_secrets(source_url)
     source = {
-        "name": "NASDAQ-100 constituents from Nasdaq API",
+        "name": NASDAQ_SOURCE_NAME,
         "url": public_source_url,
         "retrieved_at": retrieved_at,
         "sha256": source_sha256,
@@ -722,9 +808,16 @@ def normalise_nasdaq_universe_rows(
         if not isinstance(row, dict):
             excluded.append({"reason": "row is not an object"})
             continue
+        classification = classify_nasdaq_listed_row(row)
+        if classification != "equity_kept":
+            excluded.append({"code": _nasdaq_row_symbol(row), "reason": classification})
+            continue
         raw_code = _nasdaq_row_symbol(row).upper()
         if not raw_code or not US_CODE_RE.match(raw_code):
             excluded.append({"code": raw_code, "reason": "missing or invalid NASDAQ symbol"})
+            continue
+        if US_TEST_SYMBOL_RE.search(raw_code):
+            excluded.append({"code": raw_code, "reason": "exchange test/simulator symbol prefix"})
             continue
         ticker = normalise_us_ticker(raw_code)
         us_code = _us_code_from_ticker(ticker)
@@ -734,9 +827,8 @@ def normalise_nasdaq_universe_rows(
             raise ValueError(f"Duplicate EODHD ticker in NASDAQ universe source: {ticker}")
         seen_codes.add(us_code)
         seen_tickers.add(ticker)
-        name_raw = str(row.get("Company Name") or row.get("companyName") or row.get("Name") or row.get("Company") or us_code).strip() or us_code
-        sector = _titlecase_us_classification(row.get("Sector")) or _titlecase_us_classification(row.get("GicSector"))
-        industry = _titlecase_us_classification(row.get("Industry")) or _titlecase_us_classification(row.get("GicIndustry"))
+        name_raw = str(row.get("Security Name") or row.get("Company Name") or row.get("companyName") or us_code).strip() or us_code
+        financial_status = str(row.get("Financial Status") or "").strip().upper() or None
         entry = {
             "company_id": _nasdaq_company_id(us_code),
             "ticker": ticker,
@@ -747,18 +839,18 @@ def normalise_nasdaq_universe_rows(
             "market": "NASDAQ",
             "exchange": "NASDAQ",
             "region": "US",
-            "sector": sector,
-            "industry": industry,
-            "market_cap": _parse_market_cap(row.get("Market Cap") or row.get("marketCap")),
+            "sector": None,
+            "industry": None,
             "currency": "USD",
-            "security_type": US_DEFAULT_SECURITY_TYPE,
+            "security_type": NASDAQ_EQUITY_SECURITY_TYPE,
+            "financial_status": financial_status,
             "active": True,
             "suspended": False,
             "delisted": False,
             "source": source,
         }
         entries.append(entry)
-    entries.sort(key=lambda entry: (entry["market_cap"] is None, -(entry["market_cap"] or 0), str(entry["us_code"])))
+    entries.sort(key=lambda entry: str(entry["us_code"]))
     for index, entry in enumerate(entries, start=1):
         entry["universe_rank"] = index
     metadata = {
@@ -773,11 +865,15 @@ def normalise_nasdaq_universe_rows(
         "normalized_active_count": len(entries),
         "excluded_count": len(excluded),
         "excluded": excluded,
-        "sort_rule": "market_cap_desc_nulls_last_then_symbol_asc",
+        "file_creation_time": file_creation_time,
+        "sort_rule": "symbol_asc",
         "identity_rule": NASDAQ_IDENTITY_RULE,
         "denominator_label": NASDAQ_DENOMINATOR_LABEL,
-        "denominator_status": "known_sample_universe",
-        "security_type_source": "NASDAQ seed does not carry security type; entries default to unknown_from_eodhd_general",
+        "denominator_status": "complete_security_type_filtered_listing",
+        "complete_exchange_listing": False,
+        "complete_security_type_filtered_listing": True,
+        "security_type_filter": ["etf", "test_issue", "warrant", "warrants", "right", "rights", "unit", "units", "preferred", "notes", "etn"],
+        "security_type_source": "NASDAQ Trader listing ETF/Test-Issue flags + security-name token match (warrant/right/unit/preferred/note/ETN); sector/industry deferred to EODHD at hydration",
         "generated_by": "investment-screener/screener.py normalise_nasdaq_universe_rows",
     }
     return entries, metadata
@@ -802,12 +898,18 @@ def select_nasdaq_universe_batch(
     max_tickers: Optional[int] = None,
     denominator_label: Optional[str] = None,
 ) -> dict:
-    """Select a deterministic active NASDAQ-100 slice and return accounting metadata."""
+    """Select a deterministic full-universe slice and return accounting metadata.
+
+    The reviewed full NASDAQ seed is a security-type-filtered exchange listing,
+    so a complete (unbounded) selection is honestly labeled
+    ``complete_security_type_filtered_listing``, never ``known_sample_universe``.
+    """
     selected = select_us_universe_batch(entries, batch_offset=batch_offset, max_tickers=max_tickers, denominator_label=denominator_label or NASDAQ_DENOMINATOR_LABEL)
     selected["denominator_label"] = denominator_label or NASDAQ_DENOMINATOR_LABEL
     if selected["denominator_status"] == "complete_exchange_listing":
-        selected["denominator_status"] = "known_sample_universe"
+        selected["denominator_status"] = "complete_security_type_filtered_listing"
         selected["complete_exchange_listing"] = False
+        selected["complete_security_type_filtered_listing"] = True
     return selected
 
 
@@ -4463,7 +4565,7 @@ def parse_args(argv=None):
     ap.add_argument(
         "--nasdaq-universe-seed",
         default=None,
-        help="Reviewed bounded NASDAQ-100/QQQ-class seed JSON. Hydrates via the EODHD fundamentals path with explicit NASDAQ exchange semantics.",
+        help="Reviewed full NASDAQ listed-equity seed JSON (security-type-filtered nasdaqlisted.txt). Hydrates via the EODHD fundamentals path with explicit NASDAQ exchange semantics.",
     )
     ap.add_argument(
         "--nasdaq-tickers", nargs="*", metavar="TICKER",
