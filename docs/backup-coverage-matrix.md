@@ -41,6 +41,34 @@ Generated: 2026-05-21T11:16:00Z
 - 2026-05-10 and 2026-05-17 backup logs for VMID 101 failed while writing/compressing to the NAS dump path with `zstd: /*stdout*: Input/output error`.
 - Do not delete VMID 101 backup artifacts without explicit approval.
 
+## Unified Inbox NAS snapshot/manifest coverage
+
+The `unified-inbox` service (read-only message aggregation backend, deployed on `critical` LXC 100) writes two immutable artifact classes under NAS paths after each ingested batch closes:
+
+- Closed normalized snapshots: `/mnt/nas/services/unified-inbox/snapshots/normalized/`
+- Batch manifests (schema version, record counts, min/max `sent_at`, sha256, copy status): `/mnt/nas/services/unified-inbox/manifests/`
+
+Container mount (from `services/unified-inbox/compose.yaml`): host `/mnt/nas/services/unified-inbox` -> container `/app/nas-export`, with `UNIFIED_INBOX_NAS_ROOT=/app/nas-export`.
+
+### Read-only / rebuildability design note
+
+- Active writable state stays host-local at `/var/lib/unified-inbox` (off NFS): live cursors, retry queues, ingest staging, and closed-batch staging live under the container's `/app/state` bind, never on the NAS.
+- NAS copies are write-once immutable artifacts produced by `FileSnapshotStore.appendBatch` (atomic tmp -> rename host-local, copy to NAS, then write manifest). They are the durable canonical backup/export surface and are intended to be rebuildable from their source connectors — see `docs/architecture/unified-inbox-readonly-architecture-adr.md` and `docs/architecture/unified-inbox-infra-runtime-handoff.md`.
+- If a shared-Postgres projection is added later it must likewise be rebuildable from snapshots; active DB/WAL state must not live under `/mnt/nas`.
+
+### Coverage status: UNRESOLVED — needs decision
+
+No backup job currently documented to cover `/mnt/nas/services/unified-inbox`:
+
+- The scheduled LXC 100 `vzdump` job (snapshot, keep-last=3) does **not** capture this content: `/mnt/nas/...` is an NFS export from the NAS VM (192.168.0.250), and vzdump snapshot excludes NFS-mounted external storage. Refer to `docs/incidents/nas-vm-backup-lock-2026-05-24.md` for the self-referential VM-103 deadlock pattern that a NAS->NAS backup of this path would repeat.
+- No NAS-level retention/backup mechanism for `/mnt/nas/services/*` is documented. The last NAS share inventory (`inventory/discovery/nas-250-backup-tree.txt`) predates the unified-inbox service and lists no `unified-inbox` path under `/srv/mergerfs/nas/nas/services/`.
+- The only NAS-side "backup" directories in evidence are ad-hoc folders (`drive_backups`, `backups`: openclaw-config, jellyfin-config, host-configs); no scheduled NAS-services backup job exists in evidence.
+
+Open questions for a decision (do not assume coverage):
+
+1. Is the NAS snapshot/manifest tree accepted as the canonical backup (i.e. reposing on NAS mergerfs/disk redundancy + rebuild-from-source only), or does it require a secondary off-NAS copy target?
+2. If a secondary copy is required, it must target storage independent of the NAS VM itself (host-local / PBS / external) to avoid the VM-103 self-referential deadlock.
+
 ## NAS capacity details
 
 - `/dev/sdb1` is 98% used and contains `nas/media` at about 6.9T.
