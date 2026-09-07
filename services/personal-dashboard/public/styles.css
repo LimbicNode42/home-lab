@@ -133,6 +133,25 @@ h2, h3 { margin-top: 0; }
 }
 .metamcp-access-label { margin: 0; font-weight: 700; }
 .metamcp-services { margin-top: 1rem; }
+.metamcp-registry {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid #273244;
+  border-radius: 0.8rem;
+  background: #111827;
+}
+.metamcp-registry h3 { margin: 0 0 0.5rem; }
+.metamcp-server-list { margin: 0.5rem 0 0; padding: 0; list-style: none; }
+.metamcp-server-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid #1b2434;
+  flex-wrap: wrap;
+}
+.metamcp-server-list li:last-child { border-bottom: none; }
+.metamcp-server-name { font-weight: 700; color: #e6edf3; min-width: 12ch; }
 
 
 /* Flutter mobile workflow overview */
@@ -572,6 +591,17 @@ h2, h3 { margin-top: 0; }
   .writing-embed-width-wide { width: 100%; }
 }
 
+
+.metamcp-live-status,
+.metamcp-access-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0.8rem 0;
+}
+
+
 /* Unified Inbox overview */
 .unified-inbox-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
 .unified-inbox-summary-card, .unified-inbox-connector-card {
@@ -584,3 +614,15 @@ h2, h3 { margin-top: 0; }
 .unified-inbox-detail-list li { margin: 0.25rem 0; }
 .unified-inbox-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.65rem; margin: 0.8rem 0; }
 .unified-inbox-connectors { margin-top: 1rem; }
+
+/* Subtitle automation overview */
+.subtitle-automation-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+.subtitle-automation-summary-card {
+  padding: 1rem;
+  border: 1px solid #273244;
+  border-radius: 0.9rem;
+  background: #111827;
+}
+.subtitle-automation-detail-list { margin: 0.75rem 0 0; padding-left: 1.1rem; color: #cdd9e5; }
+.subtitle-automation-detail-list li { margin: 0.25rem 0; }
+.subtitle-automation-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.65rem; margin: 0.8rem 0 0; }

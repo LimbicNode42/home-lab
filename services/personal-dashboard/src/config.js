@@ -400,6 +400,68 @@ function validateMobileWorkflow(mobileWorkflow) {
   return normalized;
 }
 
+function validateSubtitleAutomation(subtitleAutomation) {
+  if (subtitleAutomation === undefined || subtitleAutomation === null) return null;
+  if (typeof subtitleAutomation !== 'object' || Array.isArray(subtitleAutomation)) {
+    throw new Error('Invalid dashboard config: subtitleAutomation must be an object');
+  }
+
+  const enabled = subtitleAutomation.enabled !== false;
+  const title = requireText(subtitleAutomation.title ?? 'Subtitle automation', 'subtitleAutomation.title');
+  const note = requireText(subtitleAutomation.note ?? 'Bazarr-driven subtitle automation.', 'subtitleAutomation.note');
+  const state = validateStateValue(subtitleAutomation.state ?? 'unknown', 'subtitleAutomation.state');
+
+  const link = subtitleAutomation.link;
+  let normalizedLink = null;
+  if (link !== undefined && link !== null) {
+    const label = requireText(link.label, 'subtitleAutomation.link.label');
+    const href = requireText(link.href, 'subtitleAutomation.link.href');
+    if (!isHttpUrl(href)) {
+      throw new Error('Invalid dashboard config: subtitleAutomation.link.href must be an http(s) URL');
+    }
+    if (/[?&](?:token|api[_-]?key|key|authorization)=/i.test(href)) {
+      throw new Error('Invalid subtitle automation config: link must not embed credentials');
+    }
+    normalizedLink = { label, href };
+  }
+
+  const lastRunAt = requireOptionalText(subtitleAutomation.lastRunAt, 'subtitleAutomation.lastRunAt');
+  const providerSummary = requireOptionalText(subtitleAutomation.providerSummary, 'subtitleAutomation.providerSummary');
+  const blockedOn = requireOptionalText(subtitleAutomation.blockedOn, 'subtitleAutomation.blockedOn');
+
+  const coverage = subtitleAutomation.coverage ?? {};
+  if (typeof coverage !== 'object' || Array.isArray(coverage)) {
+    throw new Error('Invalid dashboard config: subtitleAutomation.coverage must be an object');
+  }
+  const count = (value, field) => {
+    if (value === undefined || value === null) return null;
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+      throw new Error(`Invalid dashboard config: ${field} must be a non-negative integer`);
+    }
+    return parsed;
+  };
+  const normalizedCoverage = {
+    episodesDownloaded: count(coverage.episodesDownloaded, 'subtitleAutomation.coverage.episodesDownloaded'),
+    episodesWanted: count(coverage.episodesWanted, 'subtitleAutomation.coverage.episodesWanted'),
+    moviesWanted: count(coverage.moviesWanted, 'subtitleAutomation.coverage.moviesWanted')
+  };
+
+  const normalized = {
+    enabled,
+    title,
+    note,
+    state,
+    link: normalizedLink,
+    lastRunAt,
+    providerSummary,
+    blockedOn,
+    coverage: normalizedCoverage
+  };
+  assertNoUnsafeOperatorInternals(JSON.stringify(normalized), 'subtitleAutomation');
+  return normalized;
+}
+
 function validateStatusChecks(statusChecks) {
   if (!Array.isArray(statusChecks)) {
     throw new Error('Invalid dashboard config: statusChecks must be an array');
@@ -455,7 +517,8 @@ export function normalizeConfig(rawConfig = DEFAULT_CONFIG) {
     statusChecks: validateStatusChecks(rawConfig.statusChecks ?? []),
     unifiedInbox: validateUnifiedInbox(rawConfig.unifiedInbox),
     metaMcp: validateMetaMcp(rawConfig.metaMcp),
-    mobileWorkflow: validateMobileWorkflow(rawConfig.mobileWorkflow)
+    mobileWorkflow: validateMobileWorkflow(rawConfig.mobileWorkflow),
+    subtitleAutomation: validateSubtitleAutomation(rawConfig.subtitleAutomation)
   };
 }
 
@@ -494,6 +557,7 @@ export function toPublicConfig(config) {
       expectedConnectors: config.unifiedInbox.expectedConnectors
     } } : {}),
     ...(config.metaMcp ? { metaMcp: config.metaMcp } : {}),
-    ...(config.mobileWorkflow ? { mobileWorkflow: config.mobileWorkflow } : {})
+    ...(config.mobileWorkflow ? { mobileWorkflow: config.mobileWorkflow } : {}),
+    ...(config.subtitleAutomation ? { subtitleAutomation: config.subtitleAutomation } : {})
   };
 }

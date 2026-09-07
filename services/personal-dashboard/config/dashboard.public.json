@@ -257,5 +257,23 @@
       }
     ],
     "timeoutMs": 1000
+  },
+  "subtitleAutomation": {
+    "enabled": true,
+    "title": "Subtitle automation (Bazarr)",
+    "note": "Last-known backfill summary, not a live poll: Bazarr's API requires an API key the dashboard deliberately does not hold. Service reachability is still probed live via the Bazarr status check above.",
+    "state": "provider_limited",
+    "link": {
+      "label": "Open Bazarr",
+      "href": "http://192.168.0.8:6767"
+    },
+    "lastRunAt": "2026-09-08T02:29:44Z",
+    "providerSummary": "gestdown worked (TV-oriented); opensubtitlescom auth-failed; subf2m in config-error backoff.",
+    "blockedOn": "Ben reconciling OpenSubtitles.com credentials (OPENSUBS_CREDENTIALS Vaultwarden item). Until fixed the movie backfill cannot progress.",
+    "coverage": {
+      "episodesDownloaded": 10,
+      "episodesWanted": 53,
+      "moviesWanted": 409
+    }
   }
 }

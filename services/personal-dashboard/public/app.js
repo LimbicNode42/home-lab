@@ -10,6 +10,7 @@ const statusList = document.querySelector('#status-list');
 const metamcpOverview = document.querySelector('#metamcp-overview');
 const mobileWorkflowOverview = document.querySelector('#mobile-workflow-overview');
 const unifiedInboxOverview = document.querySelector('#unified-inbox-overview');
+const subtitleAutomationOverview = document.querySelector('#subtitle-automation-overview');
 const refreshUnifiedInboxButton = document.querySelector('#refresh-unified-inbox');
 const refreshMobileWorkflowButton = document.querySelector('#refresh-mobile-workflow');
 let dashboardConfig = null;
@@ -26,6 +27,8 @@ const refreshInvestmentScreenerButton = document.querySelector('#refresh-investm
 const investmentScreenerControls = document.querySelector('#investment-screener-controls');
 const investmentSearchFilter = document.querySelector('#investment-search-filter');
 const investmentMarketFilter = document.querySelector('#investment-market-filter');
+const investmentExchangeFilter = document.querySelector('#investment-exchange-filter');
+const investmentRegionFilter = document.querySelector('#investment-region-filter');
 const investmentSectorFilter = document.querySelector('#investment-sector-filter');
 const investmentIndustryFilter = document.querySelector('#investment-industry-filter');
 const investmentMetricFilter = document.querySelector('#investment-metric-filter');
@@ -91,6 +94,7 @@ let currentGoalId = null;
 let dashboardBootComplete = false;
 let mobileWorkflowConfig = null;
 let unifiedInboxConfig = null;
+let subtitleAutomationConfig = null;
 const FEATURED_DOC_IDS = ['home-lab-service-catalog'];
 
 function el(tag, attrs = {}, children = []) {
@@ -207,7 +211,6 @@ function renderMetaMcpOverview(metaMcp, statusPayload = null) {
   }
 
   const services = Array.isArray(metaMcp.services) ? metaMcp.services : [];
-  const domains = Array.isArray(metaMcp.tools?.domains) ? metaMcp.tools.domains : [];
   const liveGateway = Array.isArray(statusPayload?.checks)
     ? statusPayload.checks.find((check) => check.id === 'metamcp-gateway')
     : null;
@@ -222,10 +225,6 @@ function renderMetaMcpOverview(metaMcp, statusPayload = null) {
       el('p', { className: 'muted', text: service.detail || 'No status detail available.' })
     ]))
     : [el('p', { className: 'muted', text: 'No MetaMCP service status has been published yet.' })];
-
-  const domainList = domains.length > 0
-    ? el('ul', { className: 'metamcp-domain-list' }, domains.map((domain) => el('li', { text: `${domain.label || domain.id}: ${domain.count} tools` })))
-    : el('p', { className: 'muted', text: 'No MetaMCP tool discovery data has been published yet.' });
 
   const access = metaMcp.access || {};
   const accessChildren = [
@@ -248,17 +247,59 @@ function renderMetaMcpOverview(metaMcp, statusPayload = null) {
   metamcpOverview.append(el('div', { className: 'metamcp-grid' }, [
     el('article', { className: 'metamcp-summary-card' }, [
       el('h3', { text: metaMcp.title || 'MetaMCP aggregator' }),
-      el('p', { className: 'muted', text: `Version ${metaMcp.version || 'unknown'} · ${metaMcp.tools?.total ?? 0} last-known tools` }),
+      el('p', { className: 'muted', text: `Version ${metaMcp.version || 'unknown'}` }),
       el('div', { className: 'metamcp-live-status' }, [
         el('span', { className: `badge ${gatewayStatus}`, text: `Live gateway: ${gatewayStatus}` }),
         el('span', { className: 'muted', text: gatewayStatusDetail })
-      ]),
-      domainList
+      ])
     ]),
     el('article', { className: 'metamcp-access-card' }, accessChildren)
   ]));
   metamcpOverview.append(el('div', { className: 'status-grid metamcp-services' }, serviceCards));
+  // Live registered-server registry (published by scripts/publish-metamcp-status.sh).
+  // Rendered below the static config summary; refreshed independently so the list
+  // reflects the current MetaMCP control-plane Postgres rather than a hand-maintained
+  // snapshot in config.
+  metamcpOverview.append(el('div', { id: 'metamcp-registry', className: 'metamcp-registry' }, [
+    el('p', { className: 'muted', text: 'Loading registered MetaMCP servers…' })
+  ]));
 }
+
+function metamcpServerBadgeClass(errorStatus) {
+  if (errorStatus === 'ok') return 'up';
+  if (!errorStatus || errorStatus === 'unknown') return 'neutral';
+  return 'down';
+}
+
+async function refreshMetaMcpRegistry() {
+  const registry = document.querySelector('#metamcp-registry');
+  if (!registry) return;
+  try {
+    const payload = await getJson('/api/metamcp/status');
+    const servers = Array.isArray(payload.servers) ? payload.servers : [];
+    const namespaces = Array.isArray(payload.namespaces) ? payload.namespaces : [];
+    const children = [el('h3', { text: 'Registered MCP servers' })];
+    if (Array.isArray(payload.namespaces) && payload.namespaces.length > 0) {
+      children.push(el('p', { className: 'muted', text: `Namespaces: ${namespaces.join(', ')}` }));
+    }
+    if (payload.generatedAt) {
+      children.push(el('p', { className: 'muted', text: `Snapshot: ${payload.generatedAt}` }));
+    }
+    if (servers.length > 0) {
+      children.push(el('ul', { className: 'metamcp-server-list' }, servers.map((server) => el('li', [
+        el('span', { className: 'metamcp-server-name', text: server.name }),
+        el('span', { className: `badge ${metamcpServerBadgeClass(server.errorStatus)}`, text: server.errorStatus || 'unknown' }),
+        el('span', { className: 'muted', text: server.namespace ? `${server.transport} · ${server.namespace}` : server.transport })
+      ]))));
+    } else {
+      children.push(el('p', { className: 'muted', text: payload.message || 'No MetaMCP servers have been registered yet.' }));
+    }
+    registry.replaceChildren(...children);
+  } catch (error) {
+    registry.replaceChildren(el('p', { className: 'error', text: `MetaMCP registry unavailable: ${error.message}` }));
+  }
+}
+
 
 
 
@@ -356,6 +397,46 @@ async function refreshUnifiedInboxStatus() {
   } finally {
     if (refreshUnifiedInboxButton) refreshUnifiedInboxButton.disabled = false;
   }
+}
+
+function subtitleAutomationBadgeClass(state) {
+  if (['complete', 'healthy', 'up'].includes(state)) return 'up';
+  if (['provider_limited', 'blocked', 'error', 'down'].includes(state)) return 'down';
+  return 'neutral';
+}
+
+function renderSubtitleAutomationOverview(config = subtitleAutomationConfig) {
+  if (!subtitleAutomationOverview) return;
+  subtitleAutomationOverview.replaceChildren();
+  if (!config?.enabled) {
+    subtitleAutomationOverview.append(el('p', { className: 'muted', text: 'Subtitle automation is not configured on this dashboard.' }));
+    return;
+  }
+
+  const coverage = config.coverage || {};
+  const summaryLines = [
+    coverage.episodesDownloaded != null ? `Episodes downloaded (last run): ${coverage.episodesDownloaded}` : null,
+    coverage.episodesWanted != null ? `Episodes still wanted: ${coverage.episodesWanted}` : null,
+    coverage.moviesWanted != null ? `Movies still wanted: ${coverage.moviesWanted}` : null,
+    config.lastRunAt ? `Last backfill run: ${config.lastRunAt}` : null,
+    config.providerSummary ? `Providers: ${config.providerSummary}` : null,
+    config.blockedOn ? `Blocked on: ${config.blockedOn}` : null
+  ].filter(Boolean);
+
+  const actions = [];
+  if (config.link?.href) {
+    actions.push(el('a', { href: config.link.href, text: config.link.label || 'Open Bazarr', rel: 'noreferrer noopener' }));
+  }
+
+  subtitleAutomationOverview.append(el('div', { className: 'subtitle-automation-grid' }, [
+    el('article', { className: 'subtitle-automation-summary-card' }, [
+      el('h3', { text: config.title || 'Subtitle automation' }),
+      el('span', { className: `badge ${subtitleAutomationBadgeClass(config.state)}`, text: config.state || 'unknown' }),
+      el('p', { className: 'muted', text: config.note || 'Bazarr-driven subtitle automation.' }),
+      ...(summaryLines.length > 0 ? [el('ul', { className: 'subtitle-automation-detail-list' }, summaryLines.map((line) => el('li', { text: line })))] : []),
+      ...(actions.length > 0 ? [el('div', { className: 'subtitle-automation-actions' }, actions)] : [])
+    ])
+  ]));
 }
 
 function mobileWorkflowBadgeClass(state) {
@@ -488,11 +569,14 @@ async function loadOverviewData() {
     dashboardConfig = config;
     renderConfig(config);
     renderMetaMcpOverview(config.metaMcp);
+    await refreshMetaMcpRegistry();
     unifiedInboxConfig = config.unifiedInbox || null;
     renderUnifiedInboxOverview(null);
     await refreshUnifiedInboxStatus();
     mobileWorkflowConfig = config.mobileWorkflow || null;
     await refreshMobileWorkflowStatus();
+    subtitleAutomationConfig = config.subtitleAutomation || null;
+    renderSubtitleAutomationOverview(subtitleAutomationConfig);
   } catch (error) {
     sections.replaceChildren(el('p', { className: 'error', text: `Config unavailable: ${error.message}` }));
     renderMetaMcpOverview(null);
@@ -910,6 +994,8 @@ function investmentScreenerRequestPath() {
   const searchParams = new URLSearchParams();
   const queryText = investmentSearchFilter?.value?.trim();
   const market = investmentMarketFilter?.value?.trim();
+  const exchange = investmentExchangeFilter?.value?.trim();
+  const region = investmentRegionFilter?.value?.trim();
   const metric = investmentMetricFilter?.value?.trim();
   const weight = investmentWeightFilter?.value?.trim();
   const topN = investmentTopNFilter?.value?.trim();
@@ -917,6 +1003,8 @@ function investmentScreenerRequestPath() {
   const industries = investmentSelectedOptions(investmentIndustryFilter);
   if (queryText) searchParams.set('q', queryText);
   if (market) searchParams.set('market', market);
+  if (exchange) searchParams.set('exchange', exchange);
+  if (region) searchParams.set('region', region);
   for (const sector of sectors) searchParams.append('sector', sector);
   for (const industry of industries) searchParams.append('industry', industry);
   if (metric && metric !== 'composite') searchParams.set('metric', metric);
@@ -1110,6 +1198,8 @@ function investmentAppliedFilterSummary(appliedFilters) {
   const parts = [];
   if (appliedFilters.q) parts.push(`Search: ${appliedFilters.q}`);
   if (appliedFilters.market) parts.push(`Market: ${appliedFilters.market}`);
+  if (appliedFilters.exchange) parts.push(`Exchange: ${appliedFilters.exchange}`);
+  if (appliedFilters.region) parts.push(`Region: ${appliedFilters.region}`);
   if (Array.isArray(appliedFilters.sector) && appliedFilters.sector.length) parts.push(`Sector: ${appliedFilters.sector.join(', ')}`);
   if (Array.isArray(appliedFilters.industry) && appliedFilters.industry.length) parts.push(`Industry: ${appliedFilters.industry.join(', ')}`);
   if (appliedFilters.metric) parts.push(`Score focus: ${appliedFilters.metric}`);
@@ -1120,7 +1210,7 @@ function investmentAppliedFilterSummary(appliedFilters) {
 }
 
 function renderInvestmentCandidate(candidate) {
-  const meta = [candidate.market, candidate.currency, candidate.sector, candidate.industry].filter(Boolean).join(' · ');
+  const meta = [candidate.market, candidate.exchange, candidate.region, candidate.currency, candidate.sector, candidate.industry].filter(Boolean).join(' · ');
   const riskFlags = Array.isArray(candidate.risk_flags) ? candidate.risk_flags.slice(0, 3) : [];
   const caveats = Array.isArray(candidate.caveats) ? candidate.caveats.slice(0, 2) : [];
   const detailButton = el('button', { className: 'investment-detail-button', type: 'button', text: 'Fundamentals' });
@@ -1260,6 +1350,8 @@ if (resetInvestmentScreenerFiltersButton) {
   resetInvestmentScreenerFiltersButton.addEventListener('click', () => {
     if (investmentSearchFilter) investmentSearchFilter.value = '';
     if (investmentMarketFilter) investmentMarketFilter.value = '';
+    if (investmentExchangeFilter) investmentExchangeFilter.value = '';
+    if (investmentRegionFilter) investmentRegionFilter.value = '';
     if (investmentSectorFilter) investmentClearSelection(investmentSectorFilter);
     if (investmentIndustryFilter) investmentClearSelection(investmentIndustryFilter);
     if (investmentMetricFilter) investmentMetricFilter.value = 'composite';
