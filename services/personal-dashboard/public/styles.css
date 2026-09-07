@@ -133,6 +133,25 @@ h2, h3 { margin-top: 0; }
 }
 .metamcp-access-label { margin: 0; font-weight: 700; }
 .metamcp-services { margin-top: 1rem; }
+.metamcp-registry {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid #273244;
+  border-radius: 0.8rem;
+  background: #111827;
+}
+.metamcp-registry h3 { margin: 0 0 0.5rem; }
+.metamcp-server-list { margin: 0.5rem 0 0; padding: 0; list-style: none; }
+.metamcp-server-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid #1b2434;
+  flex-wrap: wrap;
+}
+.metamcp-server-list li:last-child { border-bottom: none; }
+.metamcp-server-name { font-weight: 700; color: #e6edf3; min-width: 12ch; }
 
 
 /* Flutter mobile workflow overview */

@@ -207,7 +207,6 @@ function renderMetaMcpOverview(metaMcp, statusPayload = null) {
   }
 
   const services = Array.isArray(metaMcp.services) ? metaMcp.services : [];
-  const domains = Array.isArray(metaMcp.tools?.domains) ? metaMcp.tools.domains : [];
   const liveGateway = Array.isArray(statusPayload?.checks)
     ? statusPayload.checks.find((check) => check.id === 'metamcp-gateway')
     : null;
@@ -222,10 +221,6 @@ function renderMetaMcpOverview(metaMcp, statusPayload = null) {
       el('p', { className: 'muted', text: service.detail || 'No status detail available.' })
     ]))
     : [el('p', { className: 'muted', text: 'No MetaMCP service status has been published yet.' })];
-
-  const domainList = domains.length > 0
-    ? el('ul', { className: 'metamcp-domain-list' }, domains.map((domain) => el('li', { text: `${domain.label || domain.id}: ${domain.count} tools` })))
-    : el('p', { className: 'muted', text: 'No MetaMCP tool discovery data has been published yet.' });
 
   const access = metaMcp.access || {};
   const accessChildren = [
@@ -248,17 +243,59 @@ function renderMetaMcpOverview(metaMcp, statusPayload = null) {
   metamcpOverview.append(el('div', { className: 'metamcp-grid' }, [
     el('article', { className: 'metamcp-summary-card' }, [
       el('h3', { text: metaMcp.title || 'MetaMCP aggregator' }),
-      el('p', { className: 'muted', text: `Version ${metaMcp.version || 'unknown'} · ${metaMcp.tools?.total ?? 0} last-known tools` }),
+      el('p', { className: 'muted', text: `Version ${metaMcp.version || 'unknown'}` }),
       el('div', { className: 'metamcp-live-status' }, [
         el('span', { className: `badge ${gatewayStatus}`, text: `Live gateway: ${gatewayStatus}` }),
         el('span', { className: 'muted', text: gatewayStatusDetail })
-      ]),
-      domainList
+      ])
     ]),
     el('article', { className: 'metamcp-access-card' }, accessChildren)
   ]));
   metamcpOverview.append(el('div', { className: 'status-grid metamcp-services' }, serviceCards));
+  // Live registered-server registry (published by scripts/publish-metamcp-status.sh).
+  // Rendered below the static config summary; refreshed independently so the list
+  // reflects the current MetaMCP control-plane Postgres rather than a hand-maintained
+  // snapshot in config.
+  metamcpOverview.append(el('div', { id: 'metamcp-registry', className: 'metamcp-registry' }, [
+    el('p', { className: 'muted', text: 'Loading registered MetaMCP servers…' })
+  ]));
 }
+
+function metamcpServerBadgeClass(errorStatus) {
+  if (errorStatus === 'ok') return 'up';
+  if (!errorStatus || errorStatus === 'unknown') return 'neutral';
+  return 'down';
+}
+
+async function refreshMetaMcpRegistry() {
+  const registry = document.querySelector('#metamcp-registry');
+  if (!registry) return;
+  try {
+    const payload = await getJson('/api/metamcp/status');
+    const servers = Array.isArray(payload.servers) ? payload.servers : [];
+    const namespaces = Array.isArray(payload.namespaces) ? payload.namespaces : [];
+    const children = [el('h3', { text: 'Registered MCP servers' })];
+    if (Array.isArray(payload.namespaces) && payload.namespaces.length > 0) {
+      children.push(el('p', { className: 'muted', text: `Namespaces: ${namespaces.join(', ')}` }));
+    }
+    if (payload.generatedAt) {
+      children.push(el('p', { className: 'muted', text: `Snapshot: ${payload.generatedAt}` }));
+    }
+    if (servers.length > 0) {
+      children.push(el('ul', { className: 'metamcp-server-list' }, servers.map((server) => el('li', [
+        el('span', { className: 'metamcp-server-name', text: server.name }),
+        el('span', { className: `badge ${metamcpServerBadgeClass(server.errorStatus)}`, text: server.errorStatus || 'unknown' }),
+        el('span', { className: 'muted', text: server.namespace ? `${server.transport} · ${server.namespace}` : server.transport })
+      ]))));
+    } else {
+      children.push(el('p', { className: 'muted', text: payload.message || 'No MetaMCP servers have been registered yet.' }));
+    }
+    registry.replaceChildren(...children);
+  } catch (error) {
+    registry.replaceChildren(el('p', { className: 'error', text: `MetaMCP registry unavailable: ${error.message}` }));
+  }
+}
+
 
 
 
@@ -488,6 +525,7 @@ async function loadOverviewData() {
     dashboardConfig = config;
     renderConfig(config);
     renderMetaMcpOverview(config.metaMcp);
+    await refreshMetaMcpRegistry();
     unifiedInboxConfig = config.unifiedInbox || null;
     renderUnifiedInboxOverview(null);
     await refreshUnifiedInboxStatus();

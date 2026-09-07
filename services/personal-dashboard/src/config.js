@@ -245,25 +245,34 @@ function validateMetaMcp(metaMcp) {
     };
   });
 
+  // The "tools" block is a legacy static snapshot of the MetaMCP tool domains.
+  // It drift-proned (it was hand-maintained and stopped matching the live
+  // registry), so it is now optional and no longer authoritative: the live
+  // registered-server list is published separately by
+  // scripts/publish-metamcp-status.sh and surfaced via /api/metamcp/status.
+  // Accept the legacy shape when present (backward-compatible), otherwise
+  // normalize to an empty placeholder.
   const tools = metaMcp.tools ?? {};
-  const total = Number(tools.total ?? 0);
-  if (!Number.isInteger(total) || total < 0) {
-    throw new Error('Invalid dashboard config: metaMcp.tools.total must be a non-negative integer');
-  }
-  if (!Array.isArray(tools.domains)) {
-    throw new Error('Invalid dashboard config: metaMcp.tools.domains must be an array');
-  }
-  const domains = tools.domains.map((domain, index) => {
-    const count = Number(domain?.count ?? 0);
-    if (!Number.isInteger(count) || count < 0) {
-      throw new Error(`Invalid dashboard config: metaMcp.tools.domains[${index}].count must be a non-negative integer`);
+  const hasTools = Number.isInteger(Number(tools.total)) && Array.isArray(tools.domains);
+  let total = null;
+  let domains = [];
+  if (hasTools) {
+    total = Number(tools.total ?? 0);
+    if (total < 0) {
+      throw new Error('Invalid dashboard config: metaMcp.tools.total must be a non-negative integer');
     }
-    return {
-      id: requireText(domain?.id, `metaMcp.tools.domains[${index}].id`),
-      label: requireText(domain?.label, `metaMcp.tools.domains[${index}].label`),
-      count
-    };
-  });
+    domains = tools.domains.map((domain, index) => {
+      const count = Number(domain?.count ?? 0);
+      if (!Number.isInteger(count) || count < 0) {
+        throw new Error(`Invalid dashboard config: metaMcp.tools.domains[${index}].count must be a non-negative integer`);
+      }
+      return {
+        id: requireText(domain?.id, `metaMcp.tools.domains[${index}].id`),
+        label: requireText(domain?.label, `metaMcp.tools.domains[${index}].label`),
+        count
+      };
+    });
+  }
 
   const access = metaMcp.access ?? {};
   const mode = requireText(access.mode, 'metaMcp.access.mode');

@@ -2724,6 +2724,116 @@ async function readMobileWorkflowStatus({ config, statusFile }) {
   }
 }
 
+const METAMCP_CACHE_STATUSES = new Set(['fresh', 'not_configured', 'missing', 'malformed', 'read_error']);
+
+const METAMCP_SERVER_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
+const METAMCP_TRANSPORTS = new Set(['STDIO', 'STREAMABLE_HTTP', 'SSE', 'HTTP', 'UNKNOWN']);
+
+function sanitizeMetaMcpServer(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const name = typeof raw.name === 'string' ? raw.name.trim() : '';
+  if (!METAMCP_SERVER_NAME_RE.test(name)) return null;
+  const transport = typeof raw.transport === 'string' && METAMCP_TRANSPORTS.has(raw.transport.trim().toUpperCase())
+    ? raw.transport.trim().toUpperCase()
+    : 'UNKNOWN';
+  const namespace = typeof raw.namespace === 'string' && METAMCP_SERVER_NAME_RE.test(raw.namespace.trim())
+    ? raw.namespace.trim()
+    : null;
+  const errorStatus = typeof raw.errorStatus === 'string' && /^[a-z0-9_-]{0,32}$/i.test(raw.errorStatus.trim())
+    ? raw.errorStatus.trim()
+    : 'unknown';
+  return { name, transport, namespace, errorStatus };
+}
+
+function metaMcpPayload({ config, statusFilePayload = null, cacheStatus, message, fileMtimeMs = null }) {
+  if (!config?.enabled) {
+    return {
+      enabled: false,
+      title: config?.title ?? 'MetaMCP aggregator',
+      cacheStatus: 'not_configured',
+      message: 'MetaMCP overview is not configured on this dashboard.'
+    };
+  }
+  const rawServers = Array.isArray(statusFilePayload?.servers) ? statusFilePayload.servers : [];
+  const servers = rawServers.map(sanitizeMetaMcpServer).filter(Boolean);
+  const rawNamespaces = Array.isArray(statusFilePayload?.namespaces) ? statusFilePayload.namespaces : [];
+  const namespaces = rawNamespaces
+    .map((n) => (typeof n === 'object' && n && typeof n.name === 'string' && METAMCP_SERVER_NAME_RE.test(n.name.trim()) ? n.name.trim() : null))
+    .filter(Boolean);
+  const generatedAt = sanitizeIsoTimestamp(statusFilePayload?.generatedAt) ?? (fileMtimeMs ? new Date(fileMtimeMs).toISOString() : null);
+  return {
+    enabled: true,
+    title: config.title,
+    version: config.version,
+    servers,
+    namespaces,
+    generatedAt,
+    cacheStatus: METAMCP_CACHE_STATUSES.has(cacheStatus) ? cacheStatus : 'read_error',
+    message: sanitizeMobileText(message, null)
+  };
+}
+
+async function readMetaMcpStatus({ config, statusFile }) {
+  if (!statusFile) {
+    return {
+      statusCode: 200,
+      payload: metaMcpPayload({
+        config,
+        cacheStatus: 'not_configured',
+        message: 'No MetaMCP registry snapshot cache is configured; showing the last reviewed service state.'
+      })
+    };
+  }
+
+  try {
+    const info = await stat(statusFile);
+    if (!info.isFile()) {
+      return {
+        statusCode: 200,
+        payload: metaMcpPayload({
+          config,
+          cacheStatus: 'missing',
+          message: 'MetaMCP registry snapshot cache is not a regular file; showing the last reviewed service state.'
+        })
+      };
+    }
+    const parsed = JSON.parse(await readFile(statusFile, 'utf8'));
+    return {
+      statusCode: 200,
+      payload: metaMcpPayload({ config, statusFilePayload: parsed, cacheStatus: 'fresh', fileMtimeMs: info.mtimeMs })
+    };
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      return {
+        statusCode: 200,
+        payload: metaMcpPayload({
+          config,
+          cacheStatus: 'missing',
+          message: 'No MetaMCP registry snapshot has been published yet; showing the last reviewed service state.'
+        })
+      };
+    }
+    if (err instanceof SyntaxError) {
+      return {
+        statusCode: 502,
+        payload: metaMcpPayload({
+          config,
+          cacheStatus: 'malformed',
+          message: 'MetaMCP registry snapshot is malformed; showing the last reviewed service state.'
+        })
+      };
+    }
+    return {
+      statusCode: 502,
+      payload: metaMcpPayload({
+        config,
+        cacheStatus: 'read_error',
+        message: 'Unable to read the MetaMCP registry snapshot; showing the last reviewed service state.'
+      })
+    };
+  }
+}
+
 export async function createApp(options = {}) {
   const config = await loadConfig({ configPath: options.configPath });
   const authMode = options.authMode ?? process.env.DASHBOARD_AUTH_MODE ?? 'reverse-proxy';
@@ -2739,6 +2849,9 @@ export async function createApp(options = {}) {
   const mobileWorkflowStatusFile = Object.prototype.hasOwnProperty.call(options, 'mobileWorkflowStatusFile')
     ? options.mobileWorkflowStatusFile
     : (process.env.MOBILE_WORKFLOW_STATUS_FILE ?? null);
+  const metamcpStatusFile = Object.prototype.hasOwnProperty.call(options, 'metamcpStatusFile')
+    ? options.metamcpStatusFile
+    : (process.env.METAMCP_STATUS_FILE ?? null);
   const unifiedInboxStatusUrl = Object.prototype.hasOwnProperty.call(options, 'unifiedInboxStatusUrl')
     ? options.unifiedInboxStatusUrl
     : (process.env.UNIFIED_INBOX_STATUS_URL ?? config.unifiedInbox?.statusUrl ?? null);
@@ -2822,6 +2935,11 @@ export async function createApp(options = {}) {
 
       if (request.method === 'GET' && url.pathname === '/api/mobile-workflow/status') {
         const result = await readMobileWorkflowStatus({ config: config.mobileWorkflow, statusFile: mobileWorkflowStatusFile });
+        return json(response, result.statusCode, result.payload);
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/metamcp/status') {
+        const result = await readMetaMcpStatus({ config: config.metaMcp, statusFile: metamcpStatusFile });
         return json(response, result.statusCode, result.payload);
       }
 

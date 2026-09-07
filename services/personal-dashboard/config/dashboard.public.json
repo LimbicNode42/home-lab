@@ -92,31 +92,6 @@
         "detail": "Container metamcp-pg was previously verified healthy as the internal MetaMCP database."
       }
     ],
-    "tools": {
-      "total": 36,
-      "domains": [
-        {
-          "id": "filesystem",
-          "label": "filesystem",
-          "count": 11
-        },
-        {
-          "id": "git",
-          "label": "git",
-          "count": 11
-        },
-        {
-          "id": "memory",
-          "label": "memory",
-          "count": 9
-        },
-        {
-          "id": "fetch",
-          "label": "fetch",
-          "count": 5
-        }
-      ]
-    },
     "access": {
       "mode": "lan_gateway",
       "localUrl": "http://metamcp.local:12008",

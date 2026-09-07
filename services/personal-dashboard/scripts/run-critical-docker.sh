@@ -17,6 +17,7 @@ INVESTMENT_SCREENER_HOST_DIR=${INVESTMENT_SCREENER_HOST_DIR:-/mnt/nas/services/p
 KANBAN_DB_HOST_DIR=${KANBAN_DB_HOST_DIR:-/mnt/nas/services/personal-dashboard/kanban}
 HOMELAB_HEALTH_HOST_DIR=${HOMELAB_HEALTH_HOST_DIR:-/mnt/nas/services/personal-dashboard/homelab-health}
 MOBILE_WORKFLOW_STATUS_HOST_DIR=${MOBILE_WORKFLOW_STATUS_HOST_DIR:-/mnt/nas/services/personal-dashboard/mobile-workflow}
+METAMCP_STATUS_HOST_DIR=${METAMCP_STATUS_HOST_DIR:-/mnt/nas/services/personal-dashboard/metamcp}
 WRITING_POSTS_HOST_DIR=${WRITING_POSTS_HOST_DIR:-/var/lib/personal-dashboard/writing}
 FINNICK_REPORT_HOST_PATH=$FINNICK_REPORT_HOST_DIR/latest_report.txt
 INVESTMENT_SCREENER_REPORT_HOST_PATH=$INVESTMENT_SCREENER_HOST_DIR/latest_report.txt
@@ -111,6 +112,7 @@ INVESTMENT_SCREENER_HOST_DIR="$INVESTMENT_SCREENER_HOST_DIR" \
 KANBAN_DB_HOST_DIR="$KANBAN_DB_HOST_DIR" \
 HOMELAB_HEALTH_HOST_DIR="$HOMELAB_HEALTH_HOST_DIR" \
 MOBILE_WORKFLOW_STATUS_HOST_DIR="$MOBILE_WORKFLOW_STATUS_HOST_DIR" \
+METAMCP_STATUS_HOST_DIR="$METAMCP_STATUS_HOST_DIR" \
 APP_DIR="$APP_DIR" \
   "$APP_DIR/scripts/sync-runtime-snapshots.sh"
 
@@ -148,6 +150,7 @@ docker run -d \
   -e INVESTMENT_SCREENER_DATA_ROOT=/app \
   -e HOMELAB_HEALTH_REPORT_FILE=/app/homelab-health/latest_report.txt \
   -e MOBILE_WORKFLOW_STATUS_FILE=/app/mobile-workflow/status.json \
+  -e METAMCP_STATUS_FILE=/app/metamcp/status.json \
   -e DASHBOARD_AUTH_MODE=${DASHBOARD_AUTH_MODE:-reverse-proxy} \
   -e DASHBOARD_PROXY_USER_HEADER=${DASHBOARD_PROXY_USER_HEADER:-cf-access-authenticated-user-email} \
   -e DASHBOARD_STATUS_CACHE_TTL_MS=${DASHBOARD_STATUS_CACHE_TTL_MS:-30000} \
@@ -163,6 +166,7 @@ docker run -d \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/kanban,target=/app/kanban,readonly" \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/homelab-health,target=/app/homelab-health,readonly" \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/mobile-workflow,target=/app/mobile-workflow,readonly" \
+  --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/metamcp,target=/app/metamcp,readonly" \
   --mount "type=bind,source=$WRITING_POSTS_HOST_DIR,target=/app/writing" \
   "$IMAGE"
 
