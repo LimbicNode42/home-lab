@@ -10,7 +10,10 @@ const DEFAULT_CONFIG = {
         { label: 'Vaultwarden', href: 'https://vault.wheeler-network.com' },
         { label: 'Traefik', href: 'https://traefik.wheeler-network.com' },
         { label: 'Hermes Kanban', href: 'http://192.168.0.20:9119/kanban' },
-        { label: 'Unified Inbox', href: 'http://192.168.0.50:8766' }
+        { label: 'MetaMCP gateway', href: 'http://metamcp.local:12008' },
+        { label: 'Unified Inbox', href: 'http://192.168.0.50:8766' },
+        { label: 'Bazarr', href: 'http://192.168.0.8:6767' },
+        { label: 'Jellyfin', href: 'http://jester.local:8096' }
       ]
     }
   ],
@@ -35,6 +38,22 @@ const DEFAULT_CONFIG = {
       displayUrl: 'http://192.168.0.50:8766',
       acceptableStatuses: [200],
       timeoutMs: 1000
+    },
+    {
+      id: 'bazarr',
+      label: 'Bazarr',
+      targetUrl: 'http://192.168.0.8:6767/',
+      displayUrl: 'http://192.168.0.8:6767',
+      acceptableStatuses: [200],
+      timeoutMs: 1500
+    },
+    {
+      id: 'jellyfin',
+      label: 'Jellyfin',
+      targetUrl: 'http://192.168.0.8:8096/health',
+      displayUrl: 'http://jester.local:8096',
+      acceptableStatuses: [200],
+      timeoutMs: 1500
     }
   ],
   unifiedInbox: {

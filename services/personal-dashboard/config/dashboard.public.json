@@ -27,6 +27,10 @@
         {
           "label": "Bazarr",
           "href": "http://192.168.0.8:6767"
+        },
+        {
+          "label": "Jellyfin",
+          "href": "http://jester.local:8096"
         }
       ]
     }
@@ -68,6 +72,16 @@
       "label": "Bazarr",
       "targetUrl": "http://192.168.0.8:6767/",
       "displayUrl": "http://192.168.0.8:6767",
+      "acceptableStatuses": [
+        200
+      ],
+      "timeoutMs": 1500
+    },
+    {
+      "id": "jellyfin",
+      "label": "Jellyfin",
+      "targetUrl": "http://192.168.0.8:8096/health",
+      "displayUrl": "http://jester.local:8096",
       "acceptableStatuses": [
         200
       ],
