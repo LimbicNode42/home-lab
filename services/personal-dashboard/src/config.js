@@ -24,9 +24,9 @@ const DEFAULT_CONFIG = {
     {
       id: 'metamcp-gateway',
       label: 'MetaMCP gateway',
-      targetUrl: 'http://192.168.0.20:12008/mcp',
-      displayUrl: 'http://192.168.0.20:12008',
-      acceptableStatuses: [200, 401]
+      targetUrl: 'http://192.168.0.20:12008/health',
+      displayUrl: 'http://metamcp.local:12008',
+      acceptableStatuses: [200]
     },
     {
       id: 'unified-inbox',
@@ -73,10 +73,10 @@ const DEFAULT_CONFIG = {
     },
     access: {
       mode: 'lan_gateway',
-      localUrl: 'http://192.168.0.20:12008',
+      localUrl: 'http://metamcp.local:12008',
       note: 'LAN gateway is reachable at the URL below and still requires gateway authentication. The dashboard stores only the URL.',
       links: [
-        { label: 'Open MetaMCP gateway', href: 'http://192.168.0.20:12008' },
+        { label: 'Open MetaMCP gateway', href: 'http://metamcp.local:12008' },
         { label: 'MCP endpoint', href: 'http://192.168.0.20:12008/mcp' }
       ]
     }
