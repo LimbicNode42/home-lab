@@ -1350,9 +1350,9 @@ const INVESTMENT_SCREENER_DOC_LINKS = [
   { label: 'Interpreting screener results', url: '/api/docs/investment-screener-interpreting-results', doc_id: 'investment-screener-interpreting-results' },
   { label: 'Investment screener operations', url: '/api/docs/investment-screener-operations-limitations', doc_id: 'investment-screener-operations-limitations' }
 ];
-const INVESTMENT_SCREENER_MODE_VALUES = new Set(['fixture', 'live', 'asx-yahoo-timeseries', 'unknown']);
-const INVESTMENT_SCREENER_FILTERABLE_FIELDS = new Set(['market', 'sector', 'industry']);
-const INVESTMENT_SCREENER_UNAVAILABLE_FIELDS = new Set(['exchange', 'region']);
+const INVESTMENT_SCREENER_MODE_VALUES = new Set(['fixture', 'live', 'asx-yahoo-timeseries', 'us-eodhd-fundamentals', 'nasdaq-eodhd-fundamentals', 'unknown']);
+const INVESTMENT_SCREENER_FILTERABLE_FIELDS = new Set(['market', 'exchange', 'region', 'sector', 'industry']);
+const INVESTMENT_SCREENER_UNAVAILABLE_FIELDS = new Set([]);
 const INVESTMENT_SCREENER_METRIC_VALUES = new Set(['composite', 'quality', 'valuation', 'growth', 'graham_safety', 'durability', 'risk_adjustments']);
 const INVESTMENT_SCREENER_WEIGHT_VALUES = new Set(['balanced', 'quality', 'valuation', 'growth', 'graham_safety', 'durability', 'risk_adjustments']);
 const INVESTMENT_SCREENER_QUERY_KEYS = new Set(['market', 'exchange', 'region', 'sector', 'industry', 'metric', 'weight', 'topN', 'q', 'limit', 'offset']);
@@ -1360,6 +1360,8 @@ const INVESTMENT_SCREENER_ASX_UNIVERSE_FILE = resolve(__dirname, '..', 'investme
 const INVESTMENT_SCREENER_MODE_LABELS = {
   fixture: 'Fixture/sample data',
   'asx-yahoo-timeseries': 'Yahoo Finance ASX bootstrap scrape',
+  'us-eodhd-fundamentals': 'EODHD US fundamentals',
+  'nasdaq-eodhd-fundamentals': 'EODHD NASDAQ fundamentals',
   live: 'Live scrape/export',
   cached: 'Cached provider data',
   'manual-seed': 'Manual universe seed',
@@ -1416,6 +1418,10 @@ function safeMarket(value, fallback = 'ASX') {
   const text = safeText(value, fallback, 20);
   if (!text || !/^[A-Z0-9._-]{1,20}$/i.test(text)) return fallback;
   return text.toUpperCase();
+}
+
+function investmentSourceForMarket(market) {
+  return safeMarket(market) === 'NASDAQ' ? 'eodhd' : 'yahoo-finance';
 }
 
 // GICS-style sector/industry labels are free-text ("Health Care Equipment & Services",
@@ -1855,7 +1861,7 @@ function sanitizeInvestmentCandidate(candidate, index = 0) {
   if (!ticker && !name) return null;
   const rank = safeNumber(candidate.rank);
   const score = safeNumber(candidate.score) ?? safeNumber(candidate.composite_score);
-  return {
+  const output = {
     rank: rank ?? index + 1,
     ticker: ticker ?? 'UNKNOWN',
     name: name ?? ticker ?? 'Unknown candidate',
@@ -1871,6 +1877,11 @@ function sanitizeInvestmentCandidate(candidate, index = 0) {
     score_caps: safeScoreCaps(candidate.score_caps),
     sanitized_provenance_summary: safeText(candidate.sanitized_provenance_summary, null, 300)
   };
+  const exchange = safeText(candidate.exchange, null, 32);
+  const region = safeText(candidate.region, null, 32);
+  if (exchange) output.exchange = exchange;
+  if (region) output.region = region;
+  return output;
 }
 
 function safeScoreCaps(value) {
@@ -1928,13 +1939,6 @@ function readInvestmentFilterParams(searchParams) {
     }
   }
 
-  for (const field of INVESTMENT_SCREENER_UNAVAILABLE_FIELDS) {
-    const value = searchParams.get(field);
-    if (value && value.trim()) {
-      return investmentFilterError('unsupported_investment_screener_filter', `${field} filtering is not available in the sanitized ranked output yet.`);
-    }
-  }
-
   for (const field of INVESTMENT_SCREENER_FILTERABLE_FIELDS) {
     const rawValue = searchParams.get(field);
     if (!rawValue || !rawValue.trim()) {
@@ -1943,12 +1947,12 @@ function readInvestmentFilterParams(searchParams) {
       }
       continue;
     }
-    if (field === 'market') {
+    if (field === 'market' || field === 'exchange' || field === 'region') {
       const value = safeText(rawValue, null, 80);
       if (!value || !/^[a-z0-9][a-z0-9 ._-]{0,79}$/i.test(value)) {
-        return investmentFilterError('invalid_investment_screener_filter', 'Investment screener filter values must use plain market labels.');
+        return investmentFilterError('invalid_investment_screener_filter', `Investment screener ${field} values must use plain labels.`);
       }
-      applied[field] = value;
+      applied[field] = value.toUpperCase();
       continue;
     }
     // sector / industry: repeated-parameter multi-select. Each occurrence is one
@@ -2029,7 +2033,7 @@ function readInvestmentFilterParams(searchParams) {
 function searchInvestmentCandidates(candidates, query) {
   if (!query) return candidates;
   const needle = query.toLowerCase();
-  return candidates.filter((candidate) => [candidate.ticker, candidate.name, candidate.market, candidate.currency, candidate.sector, candidate.industry]
+  return candidates.filter((candidate) => [candidate.ticker, candidate.name, candidate.market, candidate.exchange, candidate.region, candidate.currency, candidate.sector, candidate.industry]
     .some((value) => String(value ?? '').toLowerCase().includes(needle)));
 }
 
@@ -2038,6 +2042,15 @@ function matchClassification(candidate, field, wanted) {
   const actual = String(candidate?.[field] ?? '').trim().toLowerCase();
   if (!actual) return false;
   return wanted.some((entry) => String(entry).trim().toLowerCase() === actual);
+}
+
+function distinctPlainValues(candidates, field) {
+  const values = new Set();
+  for (const candidate of candidates) {
+    const value = candidate?.[field];
+    if (typeof value === 'string' && value.trim()) values.add(value.trim().toUpperCase());
+  }
+  return [...values].sort((left, right) => left.localeCompare(right));
 }
 
 function distinctClassifications(candidates, field) {
@@ -2074,6 +2087,8 @@ function applyInvestmentScreenerFilters(payload, searchParams) {
       payload: {
         ...payload,
         available_facets: {
+          exchanges: distinctPlainValues(allCandidates, 'exchange'),
+          regions: distinctPlainValues(allCandidates, 'region'),
           sectors: distinctClassifications(allCandidates, 'sector'),
           industries: distinctClassifications(allCandidates, 'industry')
         }
@@ -2088,6 +2103,14 @@ function applyInvestmentScreenerFilters(payload, searchParams) {
   if (applied.market) {
     const wanted = applied.market.toLowerCase();
     candidates = candidates.filter((candidate) => String(candidate.market ?? '').toLowerCase() === wanted);
+  }
+  if (applied.exchange) {
+    const wanted = applied.exchange.toLowerCase();
+    candidates = candidates.filter((candidate) => String(candidate.exchange ?? '').toLowerCase() === wanted);
+  }
+  if (applied.region) {
+    const wanted = applied.region.toLowerCase();
+    candidates = candidates.filter((candidate) => String(candidate.region ?? '').toLowerCase() === wanted);
   }
 
   if (applied.sector) {
@@ -2115,6 +2138,8 @@ function applyInvestmentScreenerFilters(payload, searchParams) {
   // Facets are computed against the full (pre-pagination) filtered candidate set so
   // the sector/industry dropdowns reflect what remains selectable after other filters.
   const available_facets = {
+    exchanges: distinctPlainValues(candidates, 'exchange'),
+    regions: distinctPlainValues(candidates, 'region'),
     sectors: distinctClassifications(candidates, 'sector'),
     industries: distinctClassifications(candidates, 'industry')
   };
@@ -2266,7 +2291,7 @@ function payloadFromDuckDbSummary(summary) {
 
 async function coverageFromDuckDbDataRoot(dataRoot, market = 'ASX') {
   if (!dataRoot) return null;
-  const summary = await buildInvestmentScreenerDuckDbSummary({ dataRoot, market: safeMarket(market), source: 'yahoo-finance' });
+  const summary = await buildInvestmentScreenerDuckDbSummary({ dataRoot, market: safeMarket(market), source: investmentSourceForMarket(market) });
   const payload = payloadFromDuckDbSummary(summary);
   return {
     market: payload.coverage.market,
@@ -2281,7 +2306,7 @@ async function coverageFromDuckDbDataRoot(dataRoot, market = 'ASX') {
 async function rankedFromDuckDbDataRoot(dataRoot, searchParams = null) {
   if (!dataRoot) return null;
   const market = safeMarket(searchParams?.get?.('market') ?? 'ASX');
-  const summary = await buildInvestmentScreenerDuckDbSummary({ dataRoot, market, source: 'yahoo-finance' });
+  const summary = await buildInvestmentScreenerDuckDbSummary({ dataRoot, market, source: investmentSourceForMarket(market) });
   return applyInvestmentScreenerFilters(payloadFromDuckDbSummary(summary), searchParams);
 }
 
@@ -2361,7 +2386,7 @@ async function readInvestmentScreenerCompany({ dataRoot = null, ticker, searchPa
       dataRoot,
       ticker,
       market: safeMarket(searchParams?.get?.('market') ?? 'ASX'),
-      source: 'yahoo-finance'
+      source: investmentSourceForMarket(safeMarket(searchParams?.get?.('market') ?? 'ASX'))
     });
     return { statusCode: 200, payload: detail };
   } catch (err) {

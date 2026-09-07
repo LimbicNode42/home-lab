@@ -160,3 +160,19 @@ For a generator run:
 - Add a machine-readable generation summary with input universe count, filtered count, excluded count, and top-level warnings.
 - Add a schema check for the ranked JSON object before publication.
 - Preserve safe historical snapshots for comparison via the Postgres contract in [Historical pipeline architecture](./historical-pipeline-architecture.md).
+
+### NASDAQ bounded EODHD hydration
+
+NASDAQ uses explicit market/exchange semantics while reusing the EODHD US fundamentals symbol contract:
+
+```bash
+python3 investment-screener/generate_nasdaq_universe_seed.py \
+  --output investment-screener/universe/nasdaq100-constituents.seed.json
+
+python3 investment-screener/screener.py \
+  --nasdaq-universe-seed investment-screener/universe/nasdaq100-constituents.seed.json \
+  --max-tickers 3 \
+  --file-first-run-json /tmp/nasdaq-smoke-run.json
+```
+
+The mode is `nasdaq-eodhd-fundamentals`; provider symbols use `.US`; dual-class symbols inherit the US hyphen contract (`BRK.B` -> `BRK-B.US`). The denominator label must remain `NASDAQ-100 constituents (reviewed static seed)` unless a future reviewed seed changes it. Secrets come only from runtime environment/Vaultwarden and must not be written into seed files, run JSON, logs, or Git.

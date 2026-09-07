@@ -2371,5 +2371,100 @@ class TestBuildUniverseVersionIsPathFree(unittest.TestCase):
         self.assertIn("US curated universe (S&P 500 constituents)", version)
 
 
+class TestNasdaqUniverseRows(unittest.TestCase):
+
+    def test_rows_normalise_to_explicit_nasdaq_entries(self):
+        rows = [
+            {"Symbol": "AAPL", "Company Name": "Apple Inc.", "Market Cap": "4,000", "Sector": "Technology", "Industry": "Consumer Electronics"},
+            {"Symbol": "MSFT", "Company Name": "Microsoft Corporation", "Market Cap": "3,000"},
+        ]
+        entries, metadata = scr.normalise_nasdaq_universe_rows(
+            rows, "https://api.nasdaq.com/api/quote/list-type/nasdaq100", "2026-09-07T00:00:00Z", "abc123"
+        )
+        self.assertEqual(len(entries), 2)
+        self.assertEqual(entries[0]["ticker"], "AAPL.US")
+        self.assertEqual(entries[0]["company_id"], "nasdaq:AAPL")
+        self.assertEqual(entries[0]["us_code"], "AAPL")
+        self.assertEqual(entries[0]["market"], "NASDAQ")
+        self.assertEqual(entries[0]["exchange"], "NASDAQ")
+        self.assertEqual(entries[0]["region"], "US")
+        self.assertEqual(entries[0]["currency"], "USD")
+        self.assertEqual(metadata["denominator_label"], scr.NASDAQ_DENOMINATOR_LABEL)
+        self.assertIn("NASDAQ-100", metadata["denominator_label"])
+
+    def test_dual_class_uses_us_hyphen_contract(self):
+        rows = [{"Symbol": "BRK.B", "Company Name": "Berkshire Hathaway"}]
+        entries, _ = scr.normalise_nasdaq_universe_rows(rows, "https://example.com", "2026-09-07", "abc")
+        self.assertEqual(entries[0]["ticker"], "BRK-B.US")
+        self.assertEqual(entries[0]["us_code"], "BRK-B")
+
+    def test_select_nasdaq_batch_keeps_bounded_denominator_label(self):
+        entries, _ = scr.normalise_nasdaq_universe_rows(
+            [{"Symbol": f"TICK{i:03d}", "Company Name": f"Ticker {i}"} for i in range(5)],
+            "https://example.com", "2026-09-07", "abc"
+        )
+        selected = scr.select_nasdaq_universe_batch(entries, max_tickers=2)
+        self.assertEqual(selected["eligible_count"], 5)
+        self.assertEqual(selected["selected_count"], 2)
+        self.assertEqual(selected["denominator_status"], "ranked_market_cap_batch")
+        self.assertEqual(selected["denominator_label"], scr.NASDAQ_DENOMINATOR_LABEL)
+
+    def test_nasdaq_universe_version_is_path_free(self):
+        metadata = {
+            "sha256": "abc123",
+            "retrieved_at": "2026-09-07T00:00:00Z",
+            "denominator_label": scr.NASDAQ_DENOMINATOR_LABEL,
+        }
+        version = scr.build_universe_version(metadata)
+        self.assertNotIn("/tmp/", version)
+        self.assertNotIn("/root/", version)
+        self.assertNotIn("/mnt/", version)
+        self.assertIn("NASDAQ-100", version)
+
+
+class TestNasdaqFileFirstPayload(unittest.TestCase):
+
+    def test_nasdaq_mode_emits_nasdaq_market_source_and_identity(self):
+        row = {
+            "rank": 1,
+            "ticker": "AAPL.US",
+            "company_id": "nasdaq:AAPL",
+            "us_code": "AAPL",
+            "name": "Apple Inc.",
+            "market": "NASDAQ",
+            "exchange": "NASDAQ",
+            "region": "US",
+            "currency": "USD",
+            "composite_score": 88.0,
+            "sub_scores": {"quality": 25},
+            "fields": {},
+        }
+        payload = scr.build_file_first_run_payload(
+            [row],
+            source="eodhd",
+            mode="nasdaq-eodhd-fundamentals",
+            universe=["AAPL.US"],
+            universe_source=scr.NASDAQ_DENOMINATOR_LABEL,
+            universe_version="NASDAQ-100 constituents (reviewed static seed) sha256:abc123 retrieved_at:2026-09-07T00:00:00Z",
+            batch_metadata={"eligible_count": 101, "selected_count": 1, "denominator_label": scr.NASDAQ_DENOMINATOR_LABEL},
+            completed_at="2026-09-07T00:00:00Z",
+        )
+        self.assertEqual(payload["market"], "NASDAQ")
+        self.assertEqual(payload["source"], "eodhd")
+        self.assertEqual(payload["mode"], "nasdaq-eodhd-fundamentals")
+        self.assertEqual(payload["universe"]["market"], "NASDAQ")
+        self.assertEqual(payload["companies"][0]["exchange"], "NASDAQ")
+        self.assertEqual(payload["coverage"]["denominator_label"], scr.NASDAQ_DENOMINATOR_LABEL)
+
+
+class TestNasdaqCliArgs(unittest.TestCase):
+
+    def test_parse_args_accepts_nasdaq_seed_and_tickers(self):
+        seed_args = scr.parse_args(["--nasdaq-universe-seed", "universe/nasdaq100.seed.json", "--max-tickers", "3"])
+        self.assertEqual(seed_args.nasdaq_universe_seed, "universe/nasdaq100.seed.json")
+        ticker_args = scr.parse_args(["--nasdaq-tickers", "AAPL", "MSFT"])
+        self.assertEqual(ticker_args.nasdaq_tickers, ["AAPL", "MSFT"])
+
+
 if __name__ == "__main__":
     unittest.main()

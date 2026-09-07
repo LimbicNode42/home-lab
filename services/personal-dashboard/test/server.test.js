@@ -1547,16 +1547,52 @@ test('GET /api/investment-screener/ranked validates filter query params with red
     assert.equal(invalidTopNBody.error, 'invalid_investment_screener_filter');
     assert.equal(JSON.stringify(invalidTopNBody).includes('/root/secret'), false);
 
-    const unsupportedField = await fetch(`${server.baseUrl}/api/investment-screener/ranked?exchange=NYSE`);
+    const unsupportedField = await fetch(`${server.baseUrl}/api/investment-screener/ranked?provider=eodhd`);
     const unsupportedBody = await unsupportedField.json();
     assert.equal(unsupportedField.status, 400);
     assert.equal(unsupportedBody.error, 'unsupported_investment_screener_filter');
-    assert.match(unsupportedBody.message, /not available/i);
+    assert.match(unsupportedBody.message, /not supported/i);
   } finally {
     await server.close();
   }
 });
 
+
+
+test('GET /api/investment-screener/ranked filters explicit NASDAQ exchange without generic US collapse', async () => {
+  const configPath = await writeConfig(basicConfig);
+  const dir = await mkdtemp(join(tmpdir(), 'investment-nasdaq-filter-'));
+  const rankedPath = join(dir, 'latest_ranked.json');
+  const candidates = [
+    { rank: 1, ticker: 'AAPL.US', name: 'Apple Inc.', market: 'NASDAQ', exchange: 'NASDAQ', region: 'US', currency: 'USD', sector: 'Technology', industry: 'Consumer Electronics', score: 91, sub_scores: { quality: 25 } },
+    { rank: 2, ticker: 'BHP.AX', name: 'BHP Group', market: 'ASX', exchange: 'ASX', region: 'AU', currency: 'AUD', sector: 'Materials', industry: 'Metals & Mining', score: 88, sub_scores: { quality: 20 } }
+  ];
+  await writeFile(rankedPath, JSON.stringify({
+    mode: 'nasdaq-eodhd-fundamentals',
+    generated_at: '2026-09-07T00:00:00Z',
+    data_as_of: '2026-09-06',
+    coverage: { denominator: 102, usable: 1, denominator_label: 'NASDAQ-100 constituents (reviewed static seed)' },
+    source_summary: { provider: 'eodhd', mode: 'nasdaq-eodhd-fundamentals' },
+    candidates
+  }), 'utf8');
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerRankedFile: rankedPath });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/investment-screener/ranked?market=NASDAQ&exchange=NASDAQ&region=US`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.deepEqual(body.candidates.map((candidate) => candidate.ticker), ['AAPL.US']);
+    assert.deepEqual(body.applied_filters, { market: 'NASDAQ', exchange: 'NASDAQ', region: 'US' });
+    assert.equal(body.candidates[0].market, 'NASDAQ');
+    assert.equal(body.candidates[0].exchange, 'NASDAQ');
+    assert.equal(body.candidates[0].region, 'US');
+    assert.equal(JSON.stringify(body).includes('"market":"US"'), false);
+    assert.equal(body.coverage.denominator_label, 'NASDAQ-100 constituents (reviewed static seed)');
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 test('GET /api/investment-screener/ranked filters by sector and industry and surfaces facet options', async () => {
   const rankedPath = new URL('./fixtures/investment-screener-ranked.json', import.meta.url);

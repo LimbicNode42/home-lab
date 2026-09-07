@@ -26,6 +26,8 @@ const refreshInvestmentScreenerButton = document.querySelector('#refresh-investm
 const investmentScreenerControls = document.querySelector('#investment-screener-controls');
 const investmentSearchFilter = document.querySelector('#investment-search-filter');
 const investmentMarketFilter = document.querySelector('#investment-market-filter');
+const investmentExchangeFilter = document.querySelector('#investment-exchange-filter');
+const investmentRegionFilter = document.querySelector('#investment-region-filter');
 const investmentSectorFilter = document.querySelector('#investment-sector-filter');
 const investmentIndustryFilter = document.querySelector('#investment-industry-filter');
 const investmentMetricFilter = document.querySelector('#investment-metric-filter');
@@ -910,6 +912,8 @@ function investmentScreenerRequestPath() {
   const searchParams = new URLSearchParams();
   const queryText = investmentSearchFilter?.value?.trim();
   const market = investmentMarketFilter?.value?.trim();
+  const exchange = investmentExchangeFilter?.value?.trim();
+  const region = investmentRegionFilter?.value?.trim();
   const metric = investmentMetricFilter?.value?.trim();
   const weight = investmentWeightFilter?.value?.trim();
   const topN = investmentTopNFilter?.value?.trim();
@@ -917,6 +921,8 @@ function investmentScreenerRequestPath() {
   const industries = investmentSelectedOptions(investmentIndustryFilter);
   if (queryText) searchParams.set('q', queryText);
   if (market) searchParams.set('market', market);
+  if (exchange) searchParams.set('exchange', exchange);
+  if (region) searchParams.set('region', region);
   for (const sector of sectors) searchParams.append('sector', sector);
   for (const industry of industries) searchParams.append('industry', industry);
   if (metric && metric !== 'composite') searchParams.set('metric', metric);
@@ -1110,6 +1116,8 @@ function investmentAppliedFilterSummary(appliedFilters) {
   const parts = [];
   if (appliedFilters.q) parts.push(`Search: ${appliedFilters.q}`);
   if (appliedFilters.market) parts.push(`Market: ${appliedFilters.market}`);
+  if (appliedFilters.exchange) parts.push(`Exchange: ${appliedFilters.exchange}`);
+  if (appliedFilters.region) parts.push(`Region: ${appliedFilters.region}`);
   if (Array.isArray(appliedFilters.sector) && appliedFilters.sector.length) parts.push(`Sector: ${appliedFilters.sector.join(', ')}`);
   if (Array.isArray(appliedFilters.industry) && appliedFilters.industry.length) parts.push(`Industry: ${appliedFilters.industry.join(', ')}`);
   if (appliedFilters.metric) parts.push(`Score focus: ${appliedFilters.metric}`);
@@ -1120,7 +1128,7 @@ function investmentAppliedFilterSummary(appliedFilters) {
 }
 
 function renderInvestmentCandidate(candidate) {
-  const meta = [candidate.market, candidate.currency, candidate.sector, candidate.industry].filter(Boolean).join(' · ');
+  const meta = [candidate.market, candidate.exchange, candidate.region, candidate.currency, candidate.sector, candidate.industry].filter(Boolean).join(' · ');
   const riskFlags = Array.isArray(candidate.risk_flags) ? candidate.risk_flags.slice(0, 3) : [];
   const caveats = Array.isArray(candidate.caveats) ? candidate.caveats.slice(0, 2) : [];
   const detailButton = el('button', { className: 'investment-detail-button', type: 'button', text: 'Fundamentals' });
@@ -1260,6 +1268,8 @@ if (resetInvestmentScreenerFiltersButton) {
   resetInvestmentScreenerFiltersButton.addEventListener('click', () => {
     if (investmentSearchFilter) investmentSearchFilter.value = '';
     if (investmentMarketFilter) investmentMarketFilter.value = '';
+    if (investmentExchangeFilter) investmentExchangeFilter.value = '';
+    if (investmentRegionFilter) investmentRegionFilter.value = '';
     if (investmentSectorFilter) investmentClearSelection(investmentSectorFilter);
     if (investmentIndustryFilter) investmentClearSelection(investmentIndustryFilter);
     if (investmentMetricFilter) investmentMetricFilter.value = 'composite';

@@ -194,6 +194,19 @@ US_UNIVERSE_SEED_SCHEMA_VERSION = "investment-screener-us-universe-seed/v1"
 US_IDENTITY_RULE = "company_id=us:{us_code}; eodhd_ticker={us_code}.US"
 US_DEFAULT_SECURITY_TYPE = "unknown_from_eodhd_general"
 US_DENOMINATOR_LABEL = "S&P 500 constituents (reviewed static seed)"
+NASDAQ_UNIVERSE_SEED_SCHEMA_VERSION = "investment-screener-nasdaq-universe-seed/v1"
+NASDAQ_IDENTITY_RULE = "company_id=nasdaq:{us_code}; eodhd_ticker={us_code}.US; exchange=NASDAQ"
+NASDAQ_DENOMINATOR_LABEL = "NASDAQ-100 constituents (reviewed static seed)"
+NASDAQ_MODE = "nasdaq-eodhd-fundamentals"
+US_EODHD_MODE = "us-eodhd-fundamentals"
+
+
+def _market_for_mode(mode: str) -> str:
+    if mode == NASDAQ_MODE:
+        return "NASDAQ"
+    if mode == US_EODHD_MODE:
+        return "US"
+    return "ASX"
 
 
 def _parse_market_cap(value: Any) -> Optional[int]:
@@ -492,6 +505,10 @@ def _us_company_id(code: str) -> str:
     return f"us:{code}"
 
 
+def _nasdaq_company_id(code: str) -> str:
+    return f"nasdaq:{code}"
+
+
 def _normalise_us_company_name(value: Any) -> str:
     """Return a stable display/match form for US company names (mirrors ASX rule)."""
     text = str(value or "").strip()
@@ -661,6 +678,159 @@ def select_us_universe_batch(
         "exclude_security_types": None,
         "excluded_security_type_count": 0,
     }
+
+
+
+
+def _nasdaq_row_symbol(row: dict) -> str:
+    return str(
+        row.get("Symbol")
+        or row.get("symbol")
+        or row.get("Code")
+        or row.get("code")
+        or ""
+    ).strip()
+
+
+def normalise_nasdaq_universe_rows(
+    rows: list[dict],
+    source_url: str,
+    retrieved_at: str,
+    source_sha256: str,
+) -> tuple[list[dict], dict]:
+    """Normalize a bounded NASDAQ-100/QQQ-class source into v1 seed entries.
+
+    NASDAQ keeps explicit user-facing exchange semantics while reusing the EODHD
+    US fundamentals symbol contract: provider tickers are still ``{symbol}.US``
+    and dual-class symbols use the inherited hyphen form. This seed is a bounded
+    NASDAQ-100 constituent list, not a full NASDAQ exchange directory.
+    """
+    entries: list[dict] = []
+    excluded: list[dict] = []
+    seen_codes: set[str] = set()
+    seen_tickers: set[str] = set()
+    row_count = len(rows)
+    public_source_url = redact_url_secrets(source_url)
+    source = {
+        "name": "NASDAQ-100 constituents from Nasdaq API",
+        "url": public_source_url,
+        "retrieved_at": retrieved_at,
+        "sha256": source_sha256,
+        "row_count": row_count,
+    }
+    for row in rows:
+        if not isinstance(row, dict):
+            excluded.append({"reason": "row is not an object"})
+            continue
+        raw_code = _nasdaq_row_symbol(row).upper()
+        if not raw_code or not US_CODE_RE.match(raw_code):
+            excluded.append({"code": raw_code, "reason": "missing or invalid NASDAQ symbol"})
+            continue
+        ticker = normalise_us_ticker(raw_code)
+        us_code = _us_code_from_ticker(ticker)
+        if us_code in seen_codes:
+            raise ValueError(f"Duplicate NASDAQ symbol in universe source: {us_code}")
+        if ticker in seen_tickers:
+            raise ValueError(f"Duplicate EODHD ticker in NASDAQ universe source: {ticker}")
+        seen_codes.add(us_code)
+        seen_tickers.add(ticker)
+        name_raw = str(row.get("Company Name") or row.get("companyName") or row.get("Name") or row.get("Company") or us_code).strip() or us_code
+        sector = _titlecase_us_classification(row.get("Sector")) or _titlecase_us_classification(row.get("GicSector"))
+        industry = _titlecase_us_classification(row.get("Industry")) or _titlecase_us_classification(row.get("GicIndustry"))
+        entry = {
+            "company_id": _nasdaq_company_id(us_code),
+            "ticker": ticker,
+            "us_code": us_code,
+            "name": name_raw,
+            "name_raw": name_raw,
+            "name_normalized": _normalise_us_company_name(name_raw),
+            "market": "NASDAQ",
+            "exchange": "NASDAQ",
+            "region": "US",
+            "sector": sector,
+            "industry": industry,
+            "market_cap": _parse_market_cap(row.get("Market Cap") or row.get("marketCap")),
+            "currency": "USD",
+            "security_type": US_DEFAULT_SECURITY_TYPE,
+            "active": True,
+            "suspended": False,
+            "delisted": False,
+            "source": source,
+        }
+        entries.append(entry)
+    entries.sort(key=lambda entry: (entry["market_cap"] is None, -(entry["market_cap"] or 0), str(entry["us_code"])))
+    for index, entry in enumerate(entries, start=1):
+        entry["universe_rank"] = index
+    metadata = {
+        "schema_version": NASDAQ_UNIVERSE_SEED_SCHEMA_VERSION,
+        "source_name": source["name"],
+        "source_url": public_source_url,
+        "retrieved_at": retrieved_at,
+        "source_sha256": source_sha256,
+        "sha256": source_sha256,
+        "source_row_count": row_count,
+        "row_count": row_count,
+        "normalized_active_count": len(entries),
+        "excluded_count": len(excluded),
+        "excluded": excluded,
+        "sort_rule": "market_cap_desc_nulls_last_then_symbol_asc",
+        "identity_rule": NASDAQ_IDENTITY_RULE,
+        "denominator_label": NASDAQ_DENOMINATOR_LABEL,
+        "denominator_status": "known_sample_universe",
+        "security_type_source": "NASDAQ seed does not carry security type; entries default to unknown_from_eodhd_general",
+        "generated_by": "investment-screener/screener.py normalise_nasdaq_universe_rows",
+    }
+    return entries, metadata
+
+
+def load_nasdaq_universe_seed(path: Path) -> dict:
+    """Load a wrapped reviewed NASDAQ universe seed, with legacy array support."""
+    with open(path, encoding="utf8") as fh:
+        data = json.load(fh)
+    if isinstance(data, list):
+        return {"metadata": {"seed_path": str(path)}, "entries": data}
+    if not isinstance(data, dict) or not isinstance(data.get("entries"), list):
+        raise ValueError(f"NASDAQ universe seed at {path} must contain an entries array")
+    metadata = dict(data.get("metadata") or {})
+    metadata.setdefault("seed_path", str(path))
+    return {"metadata": metadata, "entries": data["entries"]}
+
+
+def select_nasdaq_universe_batch(
+    entries: list[dict],
+    batch_offset: int = 0,
+    max_tickers: Optional[int] = None,
+    denominator_label: Optional[str] = None,
+) -> dict:
+    """Select a deterministic active NASDAQ-100 slice and return accounting metadata."""
+    selected = select_us_universe_batch(entries, batch_offset=batch_offset, max_tickers=max_tickers, denominator_label=denominator_label or NASDAQ_DENOMINATOR_LABEL)
+    selected["denominator_label"] = denominator_label or NASDAQ_DENOMINATOR_LABEL
+    if selected["denominator_status"] == "complete_exchange_listing":
+        selected["denominator_status"] = "known_sample_universe"
+        selected["complete_exchange_listing"] = False
+    return selected
+
+
+def apply_nasdaq_seed_identity(companies: list[dict], seed_entries: list[dict]) -> list[dict]:
+    """Overlay NASDAQ seed exchange identity while preserving EODHD fundamentals."""
+    by_ticker = {normalise_us_ticker(str(entry.get("ticker"))): entry for entry in seed_entries if entry.get("ticker")}
+    identity_fields = (
+        "company_id", "us_code", "market", "exchange", "region", "security_type", "active", "suspended", "delisted",
+    )
+    enriched: list[dict] = []
+    for company in companies:
+        merged = dict(company)
+        seed = by_ticker.get(normalise_us_ticker(str(company.get("ticker") or "")))
+        for field in identity_fields:
+            value = seed.get(field) if seed else None
+            if value is not None:
+                merged[field] = value
+        merged["market"] = "NASDAQ"
+        merged["exchange"] = "NASDAQ"
+        merged["region"] = "US"
+        merged["currency"] = merged.get("currency") or "USD"
+        enriched.append(merged)
+    return enriched
 
 
 def apply_us_seed_identity(companies: list[dict], seed_entries: list[dict]) -> list[dict]:
@@ -3508,13 +3678,14 @@ def build_file_first_run_payload(
     else:
         denominator_label = universe_source
     complete_listing = bool(batch_metadata.get("complete_exchange_listing", False))
-    market = "US" if mode == "us-eodhd-fundamentals" else "ASX"
+    market = _market_for_mode(mode)
     source_caveats = [
         "Yahoo Finance public endpoints are unofficial; verify against ASX announcements/company reports before acting."
     ] if source == "yahoo-finance" or mode == "asx-yahoo-timeseries" else []
-    if market == "US":
+    if market in ("US", "NASDAQ"):
+        label = "NASDAQ" if market == "NASDAQ" else "US"
         source_caveats.append(
-            "US fundamentals from EODHD (licensed); live price from Yahoo chart. "
+            f"{label} fundamentals from EODHD (licensed); live price from Yahoo chart. "
             "USD values are NOT comparable to ASX AUD values without FX normalization."
         )
     return {
@@ -3759,7 +3930,7 @@ def _stable_run_key(source: str, mode: str, universe: list[str], metadata: Optio
         "universe": sorted(str(item) for item in universe),
         "metadata": metadata or {},
     }
-    market = "US" if mode == "us-eodhd-fundamentals" else "ASX"
+    market = _market_for_mode(mode)
     digest = __import__("hashlib").sha256(_json_param(payload).encode()).hexdigest()[:16]
     return f"investment-screener:{market}:{mode}:{digest}"
 
@@ -4078,7 +4249,7 @@ def insert_screener_run(
     the same run/company/observation/score rows instead of inserting mystery twins.
     """
     run_key = run_key or _stable_run_key(source, mode, universe, metadata)
-    market = "US" if mode == "us-eodhd-fundamentals" else "ASX"
+    market = _market_for_mode(mode)
     universe_metadata_payload = _json_param(universe_metadata or {})
     provider_failures_payload = _json_param(sanitize_provider_failures(provider_failures))
     cur = conn.cursor()
@@ -4120,7 +4291,8 @@ def insert_screener_run(
     run_id = cur.fetchone()[0]
     for row in ranked:
         ticker = row.get("ticker")
-        asx_code = (str(ticker).upper().replace(".AX", "") if ticker else None)
+        ticker_upper = str(ticker).upper() if ticker else ""
+        asx_code = row.get("asx_code") or (ticker_upper.replace(".AX", "") if ticker_upper.endswith(".AX") else None)
         cur.execute(
             """
             INSERT INTO investment_screener_companies(
@@ -4287,6 +4459,15 @@ def parse_args(argv=None):
     ap.add_argument(
         "--us-tickers", nargs="*", metavar="TICKER",
         help="Hydrate specific US tickers via EODHD fundamentals (appends .US when omitted).",
+    )
+    ap.add_argument(
+        "--nasdaq-universe-seed",
+        default=None,
+        help="Reviewed bounded NASDAQ-100/QQQ-class seed JSON. Hydrates via the EODHD fundamentals path with explicit NASDAQ exchange semantics.",
+    )
+    ap.add_argument(
+        "--nasdaq-tickers", nargs="*", metavar="TICKER",
+        help="Hydrate specific NASDAQ tickers via EODHD fundamentals (appends .US when omitted; market/exchange stay NASDAQ).",
     )
     ap.add_argument(
         "--fixture", action="store_true", default=False,
@@ -4509,6 +4690,59 @@ def main(argv=None):
         for w in warnings:
             print(w, file=sys.stderr)
         mode = "asx-yahoo-timeseries"
+    elif args.nasdaq_universe_seed:
+        seed_path = Path(args.nasdaq_universe_seed)
+        watchlist_path_str = str(seed_path)
+        seed = load_nasdaq_universe_seed(seed_path)
+        selected = select_nasdaq_universe_batch(
+            seed["entries"],
+            batch_offset=args.batch_offset,
+            max_tickers=args.max_tickers,
+            denominator_label=args.denominator_label,
+        )
+        universe_tickers = list(selected["tickers"])
+        cache_dir = Path(args.cache_dir) if args.cache_dir else None
+        universe_source = NASDAQ_DENOMINATOR_LABEL
+        universe_version = build_universe_version(seed["metadata"])
+        universe_metadata = dict(seed["metadata"])
+        batch_metadata = dict(selected)
+        batch_metadata.pop("entries", None)
+        batch_metadata.pop("tickers", None)
+        bound = f"offset={args.batch_offset}, size={args.max_tickers or selected['selected_count']}"
+        print(f"Hydrating {len(universe_tickers)} NASDAQ tickers via EODHD fundamentals from universe seed ({bound}); sleep_seconds={args.sleep_seconds}.", file=sys.stderr)
+        eodhd = EodhdAdapter()
+        companies = _fetch_us_eodhd_companies(
+            universe_tickers,
+            eodhd,
+            cache_dir=cache_dir,
+            sleep_seconds=args.sleep_seconds,
+            failure_sink=hydration_failures.append,
+        )
+        companies = apply_nasdaq_seed_identity(companies, selected["entries"])
+        mode = NASDAQ_MODE
+        universe_source = NASDAQ_DENOMINATOR_LABEL
+    elif args.nasdaq_tickers:
+        print(f"Hydrating NASDAQ tickers via EODHD fundamentals: {', '.join(args.nasdaq_tickers)}", file=sys.stderr)
+        universe_tickers = [normalise_us_ticker(ticker) for ticker in args.nasdaq_tickers]
+        cache_dir = Path(args.cache_dir) if args.cache_dir else None
+        universe_source = "explicit NASDAQ ticker list"
+        eodhd = EodhdAdapter()
+        companies = _fetch_us_eodhd_companies(
+            universe_tickers,
+            eodhd,
+            cache_dir=cache_dir,
+            sleep_seconds=args.sleep_seconds,
+            failure_sink=hydration_failures.append,
+        )
+        companies = apply_nasdaq_seed_identity(companies, [])
+        batch_metadata = {
+            "eligible_count": len(universe_tickers),
+            "selected_count": len(universe_tickers),
+            "full_count": len(universe_tickers),
+            "denominator_status": "known_sample_universe",
+            "denominator_label": "explicit NASDAQ ticker list",
+        }
+        mode = NASDAQ_MODE
     elif args.us_universe_seed:
         seed_path = Path(args.us_universe_seed)
         watchlist_path_str = str(seed_path)
@@ -4562,7 +4796,7 @@ def main(argv=None):
         }
         mode = "us-eodhd-fundamentals"
     else:
-        print("No input specified. Use --fixture, --asx-watchlist, --asx-tickers, --us-universe-seed, or --us-tickers.", file=sys.stderr)
+        print("No input specified. Use --fixture, --asx-watchlist, --asx-tickers, --us-universe-seed, --us-tickers, --nasdaq-universe-seed, or --nasdaq-tickers.", file=sys.stderr)
         sys.exit(1)
 
     if not companies:
@@ -4588,7 +4822,7 @@ def main(argv=None):
     if args.file_first_run_json:
         payload = build_file_first_run_payload(
             ranked,
-            source="yahoo-finance" if mode == "asx-yahoo-timeseries" else ("eodhd" if mode == "us-eodhd-fundamentals" else mode),
+            source="yahoo-finance" if mode == "asx-yahoo-timeseries" else ("eodhd" if mode in {US_EODHD_MODE, NASDAQ_MODE} else mode),
             mode=mode,
             universe=universe_tickers,
             universe_source=universe_source,
@@ -4616,7 +4850,11 @@ def main(argv=None):
                 "max_tickers": args.max_tickers,
                 "sleep_seconds": args.sleep_seconds,
                 "cache_enabled": bool(args.cache_dir),
-                "source_caveat": "Yahoo Finance public endpoints are unofficial; verify against ASX filings before use.",
+                "source_caveat": (
+                    "Yahoo Finance public endpoints are unofficial; verify against ASX filings before use."
+                    if mode == "asx-yahoo-timeseries"
+                    else "EODHD fundamentals are licensed provider data; verify against company filings before use."
+                ),
             },
             run_key=args.run_key,
             score_version=args.score_version,
