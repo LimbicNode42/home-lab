@@ -1,0 +1,8 @@
+[Unit]
+Description=Publish Android emulator status for Home Dashboard
+After=android-emulator.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/android-emulator/scripts/publish-dashboard-status.sh

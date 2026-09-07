@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh Android emulator status for Home Dashboard every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=10s
+Persistent=true
+Unit=android-dashboard-status.service
+
+[Install]
+WantedBy=timers.target

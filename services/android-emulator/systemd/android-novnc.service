@@ -1,0 +1,13 @@
+[Unit]
+Description=noVNC web/WebSocket proxy (token auth) for headless Android emulator
+After=android-vnc.service
+Requires=android-vnc.service
+
+[Service]
+Type=simple
+ExecStart=/opt/android-emulator/scripts/start-novnc.sh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
