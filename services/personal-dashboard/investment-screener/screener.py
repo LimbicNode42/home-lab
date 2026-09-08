@@ -1355,19 +1355,27 @@ def _present_raw_fields(company: dict) -> set[str]:
 
 
 def classify_hydration_tier(company: dict, cfg: dict) -> str:
-    """Classify a company as 'full', 'partial', or 'excluded'.
+    """Classify a company as 'full', 'partial', or 'missing'.
 
     - 'full': all RAW_FIELDS present.
     - 'partial': all CORE_INCOME_FIELDS present AND >=1 BALANCE_CASHFLOW_FIELD missing.
-    - 'excluded': missing a core income field (price/shares/revenue/prior_revenue/net_income)
+    - 'missing': missing a core income field (price/shares/revenue/prior_revenue/net_income)
       or missing everything. Hard-exclusion/freshness gating is a separate concern
       (apply_hard_exclusions); this classifier only decides hydration completeness.
+
+    ``missing`` (formerly ``excluded``) marks a name whose provider returned
+    identity and some statements but left at least one core income field absent
+    (e.g. ``prior_revenue`` for a SPAC shell with a single annual row). It is
+    deliberately a distinct tier from a hard exclusion (freshness/price-gate), so
+    the caller can account it by its true hydration origin rather than dropping it
+    silently and letting the seed-universe sweep re-derive it as a synthetic
+    reconcile-only failure.
 
     Never imputes: absence is measured directly against the field set.
     """
     if not cfg.get("partial_scoring", {}).get("enabled", True):
         present = _present_raw_fields(company)
-        return "full" if len(present) == len(RAW_FIELDS) else "excluded"
+        return "full" if len(present) == len(RAW_FIELDS) else "missing"
 
     present = _present_raw_fields(company)
     core_present = present & set(CORE_INCOME_FIELDS)
@@ -1378,7 +1386,7 @@ def classify_hydration_tier(company: dict, cfg: dict) -> str:
         return "partial"
     if len(present) == len(RAW_FIELDS):
         return "full"
-    return "excluded"
+    return "missing"
 
 
 def hydration_completeness(company: dict, cfg: dict) -> dict:
@@ -1554,7 +1562,23 @@ def rank_companies(companies: list[dict], cfg: dict) -> list[dict]:
                 "rank": None,
             })
         else:
-            scored.append(score_company(company, cfg))
+            row = score_company(company, cfg)
+            # A name that the provider hydrated but with a missing *core income*
+            # field (price/shares/revenue/prior_revenue/net_income) cannot be
+            # scored at all. ``score_company`` reports this as tier "missing"
+            # with ``excluded`` still False, which used to fall through every
+            # ranked bucket and be silently dropped — so the seed-universe
+            # reconcile sweep later re-derived it as a synthetic "no company,
+            # failure, or exclusion record" failure. Give it a concrete reason
+            # and account it as an exclusion here, from its true origin.
+            if row.get("hydration_tier") == "missing":
+                missing_core = [f for f in CORE_INCOME_FIELDS if f not in _present_raw_fields(company)]
+                reason = "missing required core income field(s): " + ", ".join(missing_core)
+                row["excluded"] = True
+                row["exclusion_reasons"] = [reason]
+                row["caveats"] = [reason]
+                row["composite_score"] = None
+            scored.append(row)
 
     fully_scored = [r for r in scored if not r.get("excluded") and r.get("hydration_tier") == "full"]
     partial = [r for r in scored if not r.get("excluded") and r.get("hydration_tier") == "partial"]
@@ -3817,8 +3841,8 @@ def build_file_first_run_payload(
             accounted_failures,
             ticker,
             "seed symbol produced no company, failure, or exclusion record",
-            "eodhd" if mode in {US_EODHD_MODE, NASDAQ_MODE} else "unknown",
-            "eodhd" if mode in {US_EODHD_MODE, NASDAQ_MODE} else "unknown",
+            "no-provider",
+            "reconcile-unmatched",
             failed_at=completed,
             recoverable=True,
         )

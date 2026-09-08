@@ -2589,6 +2589,10 @@ class TestNasdaqFileFirstPayload(unittest.TestCase):
         failures = {failure["ticker"]: failure for failure in payload["failures"]}
         self.assertEqual(set(failures), {"NOFIN.US", "NOPAY.US"})
         self.assertEqual(failures["NOPAY.US"]["reason"], "seed symbol produced no company, failure, or exclusion record")
+        # Reconcile-only no-record symbols must NOT be misattributed to eodhd —
+        # the provider produced nothing for them.
+        self.assertEqual(failures["NOPAY.US"]["provider"], "no-provider")
+        self.assertEqual(failures["NOPAY.US"]["source_family"], "reconcile-unmatched")
         self.assertEqual(payload["coverage"]["denominator"], 3)
         self.assertEqual(payload["coverage"]["scraped"], 1)
         self.assertEqual(payload["coverage"]["failed"], 2)
@@ -2626,6 +2630,40 @@ class TestNasdaqFileFirstPayload(unittest.TestCase):
         self.assertEqual(payload["coverage"]["unaccounted"], 0)
         self.assertEqual(payload["failures"], [])
         self.assertEqual(payload["exclusions"], [{"ticker": "MISS.US", "reason": "missing required fields: price"}])
+
+    def test_missing_core_income_field_becomes_concrete_exclusion_not_reconcile_failure(self):
+        # Regression for t_43bbc04f: a provider-hydrated name missing one core
+        # income field (here prior_revenue) must be surfaced as a concrete
+        # exclusion with a real reason, NOT a synthetic reconcile-only failure
+        # with a generic reason and synthetic failed_at. This is the NASDAQ SPAC
+        # shell case (e.g. AACI.US) that produced 182 weak "no company, failure,
+        # or exclusion record" entries.
+        company = asx_company(ticker="SPAC.US", market="NASDAQ", exchange="NASDAQ", region="US", currency="USD")
+        company["prior_revenue"] = None
+        cfg = load_config(CONFIG_PATH)
+        ranked = rank_companies([company], cfg)
+        self.assertEqual(len(ranked), 1)
+        row = ranked[0]
+        self.assertTrue(row["excluded"])
+        self.assertIn("prior_revenue", row["exclusion_reasons"][0])
+
+        payload = build_file_first_run_payload(
+            ranked,
+            source="eodhd",
+            mode=scr.NASDAQ_MODE,
+            universe=["SPAC.US"],
+            universe_source=scr.NASDAQ_DENOMINATOR_LABEL,
+            batch_metadata={"eligible_count": 1, "selected_count": 1, "denominator_status": "complete_security_type_filtered_listing"},
+        )
+        # The name is accounted as an exclusion, not a synthetic reconcile failure.
+        self.assertEqual(payload["coverage"]["excluded"], 1)
+        self.assertEqual(payload["coverage"]["failed"], 0)
+        self.assertEqual(payload["coverage"]["unaccounted"], 0)
+        self.assertEqual(payload["exclusions"][0]["ticker"], "SPAC.US")
+        self.assertNotIn(
+            "no company, failure, or exclusion record",
+            [e["reason"] for e in payload["exclusions"]],
+        )
 
 
 class TestNasdaqCliArgs(unittest.TestCase):
