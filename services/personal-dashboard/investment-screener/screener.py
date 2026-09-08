@@ -2291,20 +2291,35 @@ def hydrate_companies_from_asx_eodhd_primary(
     for index, ticker in enumerate(tickers):
         symbol = normalise_asx_ticker(ticker)
         eodhd_failure_reason: Optional[str] = None
+        payload: Optional[dict] = None
         try:
             payload = eodhd.fetch_payload(symbol)
+        except Exception as exc:
+            # EODHD fetch itself raised (network/parse). Record as an EODHD
+            # failure and fall back to Yahoo for this ticker.
+            eodhd_failure_reason = str(exc)
+
+        if eodhd_failure_reason is None:
             if not payload:
                 eodhd_failure_reason = str(eodhd.last_error) if getattr(eodhd, "last_error", None) else "EODHD fundamentals returned no payload"
             elif not _eodhd_payload_has_annual_fundamentals(payload):
                 eodhd_failure_reason = "EODHD fundamentals returned no annual statement rows"
-            else:
-                quote = quote_fetcher(symbol)
-                quote["exchange"] = quote.get("exchange") or "ASX"
-                companies.append(build_company_from_eodhd_fundamentals(symbol, payload, quote))
-        except Exception as exc:
-            eodhd_failure_reason = str(exc)
 
-        if eodhd_failure_reason:
+        if eodhd_failure_reason is None:
+            # EODHD fundamentals are healthy. The Yahoo chart quote is a
+            # best-effort price source only: a quote outage must never discard
+            # valid licensed fundamentals or be misattributed as an EODHD
+            # failure. Build the row with whatever quote we can get (possibly
+            # none -> price=None) and never fall back to a full Yahoo row here.
+            quote: dict = {}
+            try:
+                quote = quote_fetcher(symbol) or {}
+                quote = dict(quote)
+                quote["exchange"] = quote.get("exchange") or "ASX"
+            except Exception:
+                quote = {}
+            companies.append(build_company_from_eodhd_fundamentals(symbol, payload, quote))
+        else:
             eodhd_failure = {
                 "ticker": symbol,
                 "reason": _redact_secrets_in_text(eodhd_failure_reason),

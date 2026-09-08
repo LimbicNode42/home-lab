@@ -2413,6 +2413,43 @@ class TestBuildCompanyFromEodhd(unittest.TestCase):
         self.assertIn("yahoo-finance", payload["source_mix"])
         self.assertTrue(any("ASX fundamentals from EODHD" in caveat for caveat in payload["source_caveats"]))
 
+    def test_asx_eodhd_primary_keeps_fundamentals_when_quote_fails(self):
+        class HealthyEodhd:
+            name = "eodhd"
+            last_error = None
+            def fetch_payload(self, ticker):
+                payload = _eodhd_payload_fixture()
+                payload["General"] = {
+                    "Code": "BHP", "Name": "BHP Group Limited", "CurrencyCode": "AUD",
+                    "Exchange": "AU", "CountryISO": "AU", "Sector": "Basic Materials",
+                    "Industry": "Metals",
+                }
+                return payload
+
+        failures = []
+        warnings = []
+
+        def broken_quote(ticker):
+            raise RuntimeError("yahoo 429 quote down")
+
+        companies = scr.hydrate_companies_from_asx_eodhd_primary(
+            ["BHP"],
+            HealthyEodhd(),
+            quote_fetcher=broken_quote,
+            timeseries_fetcher=lambda ticker: None,
+            sleep_seconds=0,
+            failure_sink=failures.append,
+            warning_sink=warnings.append,
+        )
+
+        # The licensed EODHD fundamentals row survives a quote outage; the quote
+        # is best-effort only and its failure is NOT misattributed to EODHD.
+        self.assertEqual(len(companies), 1)
+        self.assertEqual(companies[0]["ticker"], "BHP.AX")
+        self.assertEqual(companies[0]["revenue"].provenance["provider"], "eodhd")
+        self.assertIsNone(companies[0]["price"].value if companies[0].get("price") else None)
+        self.assertEqual(failures, [])
+
 
 class TestCommaContainingClassification(unittest.TestCase):
 
