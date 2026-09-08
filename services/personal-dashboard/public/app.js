@@ -979,6 +979,15 @@ function updateInvestmentPaginationControls(payload) {
   }
 }
 
+
+function humanizeInvestmentDenominatorStatus(status) {
+  if (status === 'complete_security_type_filtered_listing') return 'security-type-filtered full listing';
+  if (status === 'complete_exchange_listing') return 'full exchange listing';
+  if (status === 'known_sample_universe') return 'known sample universe';
+  if (status === 'sample') return 'fixture/sample universe';
+  return status || 'unknown';
+}
+
 function renderInvestmentSourceCoveragePanel(payload) {
   const sourceSummary = payload?.source_summary;
   const coverage = payload?.coverage;
@@ -1001,8 +1010,9 @@ function renderInvestmentSourceCoveragePanel(payload) {
   ].filter(Boolean).join(' · ') || 'Freshness: unknown';
   const caveats = [
     ...(Array.isArray(sourceSummary?.caveats) ? sourceSummary.caveats : []),
-    ...(Array.isArray(coverage?.caveats) ? coverage.caveats : [])
-  ].filter(Boolean).slice(0, 6);
+    ...(Array.isArray(coverage?.caveats) ? coverage.caveats : []),
+    ...(Array.isArray(coverage?.warnings) ? coverage.warnings : [])
+  ].filter(Boolean).slice(0, 8);
   if (payload?.status === 'degraded' || payload?.source === 'ranked_artifact') {
     caveats.unshift('Coverage degraded — Postgres history is unavailable; coverage is inferred from the sanitized ranked artifact.');
   }
@@ -1012,7 +1022,9 @@ function renderInvestmentSourceCoveragePanel(payload) {
   const rows = [
     el('div', { className: 'investment-source-row', text: `Source: ${sourceLine || 'Unknown source mode'}` }),
     el('div', { className: 'investment-source-row', text: `Coverage: ${coverageText}` }),
-    el('div', { className: 'investment-source-row', text: `Freshness: ${freshness}` })
+    el('div', { className: 'investment-source-row', text: `Coverage basis: ${humanizeInvestmentDenominatorStatus(coverage?.denominator_status)}.` }),
+    el('div', { className: 'investment-source-row', text: `Freshness: ${freshness}` }),
+    el('div', { className: 'investment-source-row', text: `Run results: scraped ${coverage?.scraped ?? 'unknown'}, scored ${coverage?.scored ?? 'unknown'}, usable ${coverage?.usable ?? 'unknown'}, failed ${coverage?.failed ?? 'unknown'}, excluded ${coverage?.excluded ?? 'unknown'}.` })
   ];
   if (caveats.length) {
     rows.push(el('ul', { className: 'investment-source-caveats' }, caveats.map((item) => el('li', { text: item }))));

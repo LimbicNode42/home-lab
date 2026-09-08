@@ -62,7 +62,7 @@ Do not use it as the final reason to buy, sell, hold, size, or time a position. 
 
 ## Inputs
 
-The product is ASX-first but now also has an explicit NASDAQ bucket. ASX input can come from the small committed watchlist or reviewed ASX company-directory seed. NASDAQ input comes from the bounded `universe/nasdaq100-constituents.seed.json` seed: `market=NASDAQ`, `exchange=NASDAQ`, `region=US`, `currency=USD`, and EODHD provider tickers still use `{symbol}.US`. That denominator is **NASDAQ-100 constituents (reviewed static seed)**, not full NASDAQ exchange coverage.
+The product is ASX-first but now also has an explicit NASDAQ bucket. ASX input can come from the small committed watchlist or reviewed ASX company-directory seed. NASDAQ input comes from `universe/nasdaq-listed-equities.seed.json`: a reviewed NASDAQ Trader listed-equity seed with `market=NASDAQ`, `exchange=NASDAQ`, `region=US`, `currency=USD`, and EODHD provider tickers using `{symbol}.US`. That denominator is **complete_security_type_filtered_listing** — full NASDAQ listed-equity coverage after excluding ETFs/test issues/non-equity securities, not the old NASDAQ-100 sample.
 
 Input quality matters more than UI polish. If the watchlist or ASX seed is stale, sparse, sector-skewed, or missing metadata, the output will inherit those limits with a nicer hat.
 

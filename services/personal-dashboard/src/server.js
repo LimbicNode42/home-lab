@@ -1357,6 +1357,7 @@ const INVESTMENT_SCREENER_METRIC_VALUES = new Set(['composite', 'quality', 'valu
 const INVESTMENT_SCREENER_WEIGHT_VALUES = new Set(['balanced', 'quality', 'valuation', 'growth', 'graham_safety', 'durability', 'risk_adjustments']);
 const INVESTMENT_SCREENER_QUERY_KEYS = new Set(['market', 'exchange', 'region', 'sector', 'industry', 'metric', 'weight', 'topN', 'q', 'limit', 'offset']);
 const INVESTMENT_SCREENER_ASX_UNIVERSE_FILE = resolve(__dirname, '..', 'investment-screener', 'universe', 'asx-watchlist.json');
+const INVESTMENT_SCREENER_NASDAQ_UNIVERSE_FILE = resolve(__dirname, '..', 'investment-screener', 'universe', 'nasdaq-listed-equities.seed.json');
 const INVESTMENT_SCREENER_MODE_LABELS = {
   fixture: 'Fixture/sample data',
   'asx-yahoo-timeseries': 'Yahoo Finance ASX bootstrap scrape',
@@ -1421,7 +1422,9 @@ function safeMarket(value, fallback = 'ASX') {
 }
 
 function investmentSourceForMarket(market) {
-  return safeMarket(market) === 'NASDAQ' ? 'eodhd' : 'yahoo-finance';
+  const safe = safeMarket(market);
+  if (safe === 'NASDAQ' || safe === 'US') return 'eodhd';
+  return 'yahoo-finance';
 }
 
 // GICS-style sector/industry labels are free-text ("Health Care Equipment & Services",
@@ -1458,23 +1461,42 @@ function isoDateOnly(value) {
 
 async function configuredInvestmentUniverse(market = 'ASX') {
   const safe = safeMarket(market);
-  if (safe !== 'ASX') {
-    return { count: null, label: 'unknown', status: 'unknown', version: null };
+  if (safe === 'ASX') {
+    try {
+      const parsed = JSON.parse(await readFile(INVESTMENT_SCREENER_ASX_UNIVERSE_FILE, 'utf8'));
+      const active = Array.isArray(parsed)
+        ? parsed.filter((entry) => entry && entry.active !== false && safeMarket(entry.market, 'ASX') === 'ASX')
+        : [];
+      return {
+        count: active.length,
+        label: 'configured ASX bootstrap watchlist',
+        status: 'known_sample_universe',
+        version: null
+      };
+    } catch {
+      return { count: null, label: 'unknown', status: 'unknown', version: null };
+    }
   }
-  try {
-    const parsed = JSON.parse(await readFile(INVESTMENT_SCREENER_ASX_UNIVERSE_FILE, 'utf8'));
-    const active = Array.isArray(parsed)
-      ? parsed.filter((entry) => entry && entry.active !== false && safeMarket(entry.market, 'ASX') === 'ASX')
-      : [];
-    return {
-      count: active.length,
-      label: 'configured ASX bootstrap watchlist',
-      status: 'known_sample_universe',
-      version: null
-    };
-  } catch {
-    return { count: null, label: 'unknown', status: 'unknown', version: null };
+  if (safe === 'NASDAQ') {
+    try {
+      const parsed = JSON.parse(await readFile(INVESTMENT_SCREENER_NASDAQ_UNIVERSE_FILE, 'utf8'));
+      const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
+      const metadata = parsed?.metadata && typeof parsed.metadata === 'object' && !Array.isArray(parsed.metadata) ? parsed.metadata : {};
+      const active = entries.filter((entry) => entry && entry.active !== false && safeMarket(entry.market, 'NASDAQ') === 'NASDAQ');
+      const sourceSha = safeText(metadata.source_sha256 ?? active[0]?.source?.sha256, null, 80);
+      const retrievedAt = safeText(metadata.source_retrieved_at ?? active[0]?.source?.retrieved_at, null, 40);
+      const label = safeText(metadata.denominator_label, 'NASDAQ listed equities (security-type-filtered, reviewed static seed)', 120);
+      return {
+        count: safeInteger(metadata.normalized_active_count) ?? active.length,
+        label,
+        status: safeText(metadata.denominator_status, 'complete_security_type_filtered_listing', 80),
+        version: [label, sourceSha ? `sha256:${sourceSha}` : null, retrievedAt ? `retrieved_at:${retrievedAt}` : null].filter(Boolean).join(' ')
+      };
+    } catch {
+      return { count: null, label: 'unknown', status: 'unknown', version: null };
+    }
   }
+  return { count: null, label: 'unknown', status: 'unknown', version: null };
 }
 
 function countArtifactCandidates(payload, market) {
@@ -1760,6 +1782,7 @@ async function coverageFromPostgres(pool, market = 'ASX') {
     )
     SELECT
       r.run_key, r.mode, r.market, r.started_at, r.completed_at, r.universe_version, r.source_mix,
+      r.metadata, r.universe_metadata, r.provider_failures,
       scored.usable, scored.scored, scored.excluded,
       observed.scraped, observed.latest_observed_at, observed.data_as_of, observed.missing_required_fields,
       provenance.provenance_rows, provenance.provenance_fields, provenance.source_families,
@@ -1770,13 +1793,27 @@ async function coverageFromPostgres(pool, market = 'ASX') {
   const mode = safeMode(row.mode);
   const configuredUniverse = await configuredInvestmentUniverse(selectedMarket);
   const sourceMix = parseMaybeJson(row.source_mix, {});
+  const runMetadata = parseMaybeJson(row.metadata, {});
+  const universeMetadata = parseMaybeJson(row.universe_metadata, {});
+  const providerFailures = parseMaybeJson(row.provider_failures, []);
   const sourceFamilies = safeTextArray(row.source_families, 8, 80);
   const providers = safeTextArray(sourceMix?.providers, 8, 80);
   const denominator = mode === 'fixture'
     ? (Array.isArray(sourceMix?.universe) ? sourceMix.universe.length : safeInteger(row.usable))
-    : configuredUniverse.count;
-  const denominatorLabel = mode === 'fixture' ? 'fixture sample universe' : configuredUniverse.label;
-  const denominatorStatus = mode === 'fixture' ? 'sample' : configuredUniverse.status;
+    : (safeInteger(universeMetadata.denominator)
+      ?? safeInteger(universeMetadata.selected_count)
+      ?? safeInteger(universeMetadata.normalized_active_count)
+      ?? safeInteger(universeMetadata.full_count)
+      ?? safeInteger(universeMetadata.count)
+      ?? safeInteger(sourceMix?.denominator)
+      ?? configuredUniverse.count);
+  const denominatorLabel = mode === 'fixture'
+    ? 'fixture sample universe'
+    : (safeText(universeMetadata.denominator_label ?? runMetadata.denominator_label, configuredUniverse.label, 120));
+  const denominatorStatus = mode === 'fixture'
+    ? 'sample'
+    : (safeText(universeMetadata.denominator_status ?? runMetadata.denominator_status, configuredUniverse.status, 80));
+  const providerFailureCount = Array.isArray(providerFailures) ? providerFailures.length : (safeInteger(providerFailures) ?? 0);
   const postgresFreshness = freshnessFromTimestamps({
     generatedAt: row.completed_at,
     latestRetrievedAt: row.latest_retrieved_at,
@@ -1795,13 +1832,24 @@ async function coverageFromPostgres(pool, market = 'ASX') {
       scraped: row.scraped,
       scored: row.scored,
       excluded: row.excluded,
+      failed: providerFailureCount,
       stale: staleCount,
       missing_required_fields: row.missing_required_fields,
       freshness: postgresFreshness.freshness,
       warnings: postgresFreshness.warnings,
       caveats: mode === 'fixture'
         ? ['Coverage is against the fixture sample universe, not all ASX-listed companies.']
-        : ['Coverage is for the configured bootstrap watchlist, not the full ASX exchange.']
+        : [
+            denominatorStatus === 'complete_security_type_filtered_listing'
+              ? 'Coverage denominator is a reviewed security-type-filtered full listing; excluded security types are not counted as companies.'
+              : (denominatorStatus === 'complete_exchange_listing'
+                ? 'Coverage denominator is the reviewed full exchange listing.'
+                : (selectedMarket === 'ASX'
+                  ? 'Coverage is for the configured bootstrap watchlist, not the full ASX exchange.'
+                  : 'Coverage denominator comes from the latest reviewed market universe metadata.')),
+            providerFailureCount > 0 ? `${providerFailureCount} provider failure${providerFailureCount === 1 ? '' : 's'} reported for the latest run.` : null,
+            safeInteger(row.excluded) > 0 ? `${safeInteger(row.excluded)} scored row${safeInteger(row.excluded) === 1 ? '' : 's'} excluded from usable coverage.` : null
+          ].filter(Boolean)
     },
     fallbackUsable: safeInteger(row.usable) ?? 0,
     window: {

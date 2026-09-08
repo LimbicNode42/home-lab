@@ -79,7 +79,8 @@ test('dashboard investment screener market selector exposes ASX and NASDAQ witho
   assert.match(indexSource, /<option value="ASX">Australia \/ ASX<\/option>/);
   assert.match(indexSource, /<option value="NASDAQ">United States \/ NASDAQ<\/option>/);
   assert.doesNotMatch(indexSource, /<option value="US">US<\/option>/);
-  assert.match(indexSource, /NASDAQ-100 constituents \(reviewed static seed\)/i);
+  assert.match(indexSource, /security-type-filtered full listed-equity universe/i);
+  assert.doesNotMatch(indexSource, /NASDAQ-100 constituents/i);
 });
 
 
@@ -177,6 +178,9 @@ test('dashboard investment screener renders source and coverage panel details', 
   assert.match(appSource, /Coverage:/);
   assert.match(appSource, /Freshness:/);
   assert.match(appSource, /denominator_label/);
+  assert.match(appSource, /humanizeInvestmentDenominatorStatus/);
+  assert.match(appSource, /Coverage basis:/);
+  assert.match(appSource, /Run results:/);
 });
 
 

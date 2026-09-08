@@ -258,7 +258,7 @@
             </label>
             <button id="reset-investment-screener-filters" type="button">Reset filters</button>
           </form>
-          <p class="muted investment-control-note">Search, market, exchange, region, sector, industry, score focus, weight sort preset, and page size are applied to already-sanitized ranked data. ASX and NASDAQ are separate exchange buckets; NASDAQ uses a bounded NASDAQ-100 constituents (reviewed static seed) universe, not full NASDAQ exchange coverage. Sector and industry values come from the active market export; hold Ctrl/Cmd to select more than one.</p>
+          <p class="muted investment-control-note">Search, market, exchange, region, sector, industry, score focus, weight sort preset, and page size are applied to already-sanitized ranked data. ASX and NASDAQ are separate exchange buckets; NASDAQ uses the reviewed security-type-filtered full listed-equity universe; coverage is shown against the latest denominator_status, freshness, failures, and exclusions. Sector and industry values come from the active market export; hold Ctrl/Cmd to select more than one.</p>
           <div class="investment-pagination" aria-label="Investment screener pagination">
             <button id="investment-prev-page" type="button" disabled>Previous</button>
             <span id="investment-page-summary" class="muted">Showing latest page</span>
