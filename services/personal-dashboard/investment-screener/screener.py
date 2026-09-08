@@ -185,6 +185,7 @@ ASX_DIRECTORY_SOURCE_URL = "https://asx.api.markitdigital.com/asx-research/1.0/c
 ASX_CODE_RE = re.compile(r"^[A-Z0-9]{2,6}$")
 ASX_UNIVERSE_SEED_SCHEMA_VERSION = "investment-screener-asx-universe-seed/v2"
 ASX_IDENTITY_RULE = "company_id=asx:{asx_code}; yahoo_ticker={asx_code}.AX"
+ASX_EODHD_MODE = "asx-eodhd-fundamentals"
 
 # --- US (first non-ASX market) identity constants -------------------------------------------
 # Ticker suffix is `.US` for EODHD (unlike Yahoo's bare NASDAQ/NYSE symbols). A
@@ -474,11 +475,19 @@ def select_active_asx_tickers(watchlist: list[dict], max_tickers: Optional[int] 
 # ---------------------------------------------------------------------------
 
 def normalise_asx_ticker(ticker: str) -> str:
-    """Append .AX to bare ASX codes; normalise existing .AX tickers to uppercase."""
-    upper = ticker.upper()
+    """Append .AX to bare ASX codes; normalise existing .AX/.AU tickers."""
+    upper = str(ticker or "").strip().upper()
     if upper.endswith(".AX"):
         return upper
+    if upper.endswith(".AU"):
+        return upper[:-3] + ".AX"
     return upper + ".AX"
+
+
+def _asx_code_from_ticker(ticker: str) -> str:
+    """Return the bare ASX code from .AX/.AU/bare input."""
+    symbol = normalise_asx_ticker(ticker)
+    return symbol[:-3] if symbol.endswith(".AX") else symbol
 
 
 def normalise_us_ticker(ticker: str) -> str:
@@ -2099,8 +2108,30 @@ def build_company_from_eodhd_fundamentals(ticker: str, payload: dict, quote: Opt
     identity = adapter._extract_identity(payload)
     depth = EodhdAdapter._statement_depth(payload)
     financials = payload.get("Financials") if isinstance(payload.get("Financials"), dict) else {}
-    currency = identity.get("currency") or "USD"
-    fields = adapter._shared_row_fields(financials, "", currency)
+    ticker_upper = str(ticker or "").strip().upper()
+    is_asx = ticker_upper.endswith(".AX") or ticker_upper.endswith(".AU")
+    internal_ticker = normalise_asx_ticker(ticker_upper) if is_asx else normalise_us_ticker(ticker_upper)
+    general = payload.get("General") if isinstance(payload.get("General"), dict) else {}
+    if is_asx:
+        asx_code = str(general.get("Code") or _asx_code_from_ticker(internal_ticker)).strip().upper()
+        identity = {
+            "company_id": _asx_company_id(asx_code),
+            "asx_code": asx_code,
+            "name": str(general.get("Name") or "").strip() or None,
+            "name_raw": str(general.get("Name") or "").strip() or None,
+            "name_normalized": _normalise_asx_company_name(general.get("Name")) if general.get("Name") else None,
+            "currency": str(general.get("CurrencyCode") or "AUD").strip().upper(),
+            "exchange": "ASX",
+            "region": "AU",
+            "sector": _titlecase_us_classification(general.get("Sector") or general.get("GicSector")),
+            "industry": _titlecase_us_classification(general.get("Industry") or general.get("GicIndustry")),
+            "security_type": "unknown_from_eodhd_general",
+            "market": "ASX",
+        }
+    currency = identity.get("currency") or ("AUD" if is_asx else "USD")
+    eodhd_symbol = adapter._normalise_symbol(internal_ticker)
+    eodhd_source_url = f"{adapter.base_url}/{urllib.parse.quote(eodhd_symbol)}?fmt=json"
+    fields = adapter._shared_row_fields(financials, eodhd_source_url, currency)
 
     # Price from the quote (chart), provenance yahoo-finance, currency = market.
     now = _now_iso()
@@ -2129,7 +2160,7 @@ def build_company_from_eodhd_fundamentals(ticker: str, payload: dict, quote: Opt
             provenance={
                 "source_family": "eodhd",
                 "provider": "eodhd",
-                "source_url": "",
+                "source_url": eodhd_source_url,
                 "retrieved_at": now,
                 "retrieved_from_source_at": now,
                 "data_as_of": None,
@@ -2146,19 +2177,20 @@ def build_company_from_eodhd_fundamentals(ticker: str, payload: dict, quote: Opt
         )
 
     company = {
-        "ticker": ticker,
-        "name": identity.get("name") or quote.get("name") or ticker,
-        "market": "US",
-        "exchange": identity.get("exchange") or quote.get("exchange") or "UNKNOWN",
-        "region": identity.get("region") or "US",
+        "ticker": internal_ticker,
+        "name": identity.get("name") or quote.get("name") or internal_ticker,
+        "market": identity.get("market") or ("ASX" if is_asx else "US"),
+        "exchange": identity.get("exchange") or quote.get("exchange") or ("ASX" if is_asx else "UNKNOWN"),
+        "region": identity.get("region") or ("AU" if is_asx else "US"),
         "currency": currency,
         "company_id": identity.get("company_id"),
+        "asx_code": identity.get("asx_code"),
         "us_code": identity.get("us_code"),
         "name_raw": identity.get("name_raw"),
         "name_normalized": identity.get("name_normalized"),
         "sector": identity.get("sector"),
         "industry": identity.get("industry"),
-        "security_type": identity.get("security_type") or US_DEFAULT_SECURITY_TYPE,
+        "security_type": identity.get("security_type") or ("unknown_from_eodhd_general" if is_asx else US_DEFAULT_SECURITY_TYPE),
         "active": True,
         "suspended": False,
         "delisted": False,
@@ -2228,6 +2260,83 @@ def hydrate_companies_from_us_eodhd(
 def _eodhd_payload_has_annual_fundamentals(payload: dict) -> bool:
     depth = EodhdAdapter._statement_depth(payload)
     return any(int(depth.get(section) or 0) > 0 for section in ("income", "balance_sheet", "cash_flow"))
+
+
+def hydrate_companies_from_asx_eodhd_primary(
+    tickers: list[str],
+    eodhd: "EodhdAdapter",
+    quote_fetcher: Optional[Callable[[str], dict]] = None,
+    timeseries_fetcher: Optional[Callable[[str], dict]] = None,
+    warning_sink: Optional[Callable[[str], None]] = None,
+    sleep_seconds: float = 0.3,
+    cache_dir: Optional[Path] = None,
+    failure_sink: Optional[Callable[[dict], None]] = None,
+) -> list[dict]:
+    """Hydrate ASX companies via EODHD first, with Yahoo per-ticker fallback.
+
+    EODHD supplies the primary fundamentals payload for ASX (`.AU` provider
+    symbol, `.AX` internal bucket). Yahoo remains the automatic fallback for
+    EODHD credential absence, rate limits, outages, and empty/non-fundamental
+    payloads. No fields are imputed: the selected provider row is built from
+    whichever provider actually returns data, and failures are recorded with
+    redacted reasons for honest coverage/source reporting.
+    """
+    warning_sink = warning_sink or (lambda message: print(message, file=sys.stderr))
+    if quote_fetcher is None:
+        quote_fetcher = lambda symbol: fetch_yahoo_chart_quote(symbol, cache_dir=cache_dir)
+    if timeseries_fetcher is None:
+        timeseries_fetcher = lambda symbol: fetch_yahoo_timeseries(symbol, cache_dir=cache_dir)
+
+    companies: list[dict] = []
+    for index, ticker in enumerate(tickers):
+        symbol = normalise_asx_ticker(ticker)
+        eodhd_failure_reason: Optional[str] = None
+        try:
+            payload = eodhd.fetch_payload(symbol)
+            if not payload:
+                eodhd_failure_reason = str(eodhd.last_error) if getattr(eodhd, "last_error", None) else "EODHD fundamentals returned no payload"
+            elif not _eodhd_payload_has_annual_fundamentals(payload):
+                eodhd_failure_reason = "EODHD fundamentals returned no annual statement rows"
+            else:
+                quote = quote_fetcher(symbol)
+                quote["exchange"] = quote.get("exchange") or "ASX"
+                companies.append(build_company_from_eodhd_fundamentals(symbol, payload, quote))
+        except Exception as exc:
+            eodhd_failure_reason = str(exc)
+
+        if eodhd_failure_reason:
+            eodhd_failure = {
+                "ticker": symbol,
+                "reason": _redact_secrets_in_text(eodhd_failure_reason),
+                "recoverable": True,
+                "provider": "eodhd",
+                "source_family": "eodhd",
+                "failed_at": _now_iso(),
+                "provider_failure_only": True,
+            }
+            if failure_sink:
+                failure_sink(eodhd_failure)
+            warning_sink(f"WARNING: EODHD primary failed for {symbol}; falling back to Yahoo Finance: {eodhd_failure['reason']}")
+            try:
+                quote = quote_fetcher(symbol)
+                quote["exchange"] = quote.get("exchange") or "ASX"
+                ts = timeseries_fetcher(symbol)
+                companies.append(build_company_from_yahoo_timeseries(symbol, ts, quote))
+            except Exception as exc:
+                failure = {
+                    "ticker": symbol,
+                    "reason": _redact_secrets_in_text(str(exc)),
+                    "recoverable": True,
+                    "provider": "yahoo-finance",
+                    "source_family": "yahoo-finance",
+                    "failed_at": _now_iso(),
+                }
+                if failure_sink:
+                    failure_sink(failure)
+                warning_sink(f"WARNING: failed to hydrate {symbol} ASX Yahoo fallback data: {failure['reason']}")
+        if sleep_seconds and index != len(tickers) - 1:
+            time.sleep(sleep_seconds)
+    return companies
 
 
 def _fetch_us_eodhd_companies(
@@ -3727,11 +3836,21 @@ def build_file_first_run_payload(
     provenance: list[dict] = []
     scores: list[dict] = []
     failures: list[dict] = []
+    provider_failure_notes: list[dict] = []
     exclusions: list[dict] = []
     accounted_failures: set[str] = set()
     accounted_exclusions: set[str] = set()
     accounted_companies: set[str] = set()
     for failure in hydration_failures or []:
+        if failure.get("provider_failure_only"):
+            provider_failure_notes.append({
+                "provider": failure.get("provider"),
+                "source_family": failure.get("source_family"),
+                "ticker": _normalise_accounting_ticker(failure.get("ticker"), mode),
+                "reason": _redact_secrets_in_text(str(failure.get("reason") or "provider failure"))[:160],
+                "recoverable": failure.get("recoverable") is not False,
+            })
+            continue
         ticker = _normalise_accounting_ticker(failure.get("ticker"), mode)
         _append_unique_accounting_failure(
             failures,
@@ -3856,7 +3975,12 @@ def build_file_first_run_payload(
     market = _market_for_mode(mode)
     source_caveats = [
         "Yahoo Finance public endpoints are unofficial; verify against ASX announcements/company reports before acting."
-    ] if source == "yahoo-finance" or mode == "asx-yahoo-timeseries" else []
+    ] if source == "yahoo-finance" or (mode == "asx-yahoo-timeseries" and source != "eodhd") else []
+    if mode == ASX_EODHD_MODE:
+        source_caveats.append(
+            "ASX fundamentals from EODHD (licensed); Yahoo Finance remains the price source and automatic fallback for EODHD rate limits/outages. "
+            "AUD values stay isolated from US/NASDAQ USD buckets."
+        )
     if market in ("US", "NASDAQ"):
         label = "NASDAQ" if market == "NASDAQ" else "US"
         source_caveats.append(
@@ -3932,7 +4056,7 @@ def build_file_first_run_payload(
             }
             for failure in failures
             if failure.get("provider") not in (None, "yahoo-finance")
-        ],
+        ] + provider_failure_notes,
         "field_quality": {
             "filled_fields": sorted({field for row in ranked for field in ((row.get("field_quality") or {}).get("filled_fields") or [])}),
             "conflicted_fields": sorted({field for row in ranked for field in ((row.get("field_quality") or {}).get("conflicted_fields") or [])}),
@@ -4367,6 +4491,23 @@ def _multi_source_confidence(multi: dict) -> dict:
     return confidence
 
 
+def build_run_source_mix(ranked: list[dict], source: str, universe: list[str]) -> dict:
+    """Build run-level source/provider summary for Postgres history.
+
+    The run's label source (e.g. ``eodhd``) is not enough once an ASX EODHD
+    primary run can include Yahoo quote/fallback fields and optional fill-only
+    adapters. Keep a compact provider list derived from persisted provenance so
+    dashboard/history consumers can tell which sources actually contributed.
+    """
+    providers = sorted({
+        str(row.get("provider") or row.get("source_family"))
+        for ranked_row in ranked
+        for row in _row_file_first_provenance(ranked_row)
+        if row.get("provider") or row.get("source_family")
+    })
+    return {"source": source, "providers": providers, "universe": universe}
+
+
 def project_consolidated_fields_sanitized(multi: dict) -> dict:
     """Dashboard-safe projection of consolidated fields.
 
@@ -4460,7 +4601,7 @@ def insert_screener_run(
             market,
             mode,
             universe_version,
-            _json_param({"source": source, "universe": universe}),
+            _json_param(build_run_source_mix(ranked, source, universe)),
             code_version,
             config_hash,
             _json_param(metadata or {}),
@@ -4629,7 +4770,7 @@ def parse_args(argv=None):
     )
     ap.add_argument(
         "--asx-tickers", nargs="*", metavar="TICKER",
-        help="Hydrate specific ASX tickers via Yahoo (appends .AX when omitted).",
+        help="Hydrate specific ASX tickers via EODHD fundamentals primary with Yahoo fallback (appends .AX when omitted).",
     )
     ap.add_argument(
         "--us-universe-seed",
@@ -4834,8 +4975,10 @@ def main(argv=None):
         bound = f"offset={args.batch_offset}, size={args.max_tickers or selected['selected_count']}"
         print(f"Hydrating {len(universe_tickers)} active ASX tickers from universe seed ({bound}); sleep_seconds={args.sleep_seconds}.", file=sys.stderr)
         warnings: list[str] = []
-        companies = hydrate_companies_from_asx_tickers(
+        eodhd = EodhdAdapter()
+        companies = hydrate_companies_from_asx_eodhd_primary(
             universe_tickers,
+            eodhd,
             warning_sink=warnings.append,
             sleep_seconds=args.sleep_seconds,
             cache_dir=cache_dir,
@@ -4844,7 +4987,7 @@ def main(argv=None):
         companies = apply_asx_seed_identity(companies, selected["entries"])
         for w in warnings:
             print(w, file=sys.stderr)
-        mode = "asx-yahoo-timeseries"
+        mode = ASX_EODHD_MODE
     elif args.asx_watchlist:
         watchlist_path = Path(args.asx_watchlist)
         watchlist_path_str = str(watchlist_path)
@@ -4856,20 +4999,36 @@ def main(argv=None):
         bound = f" (bounded to {args.max_tickers})" if args.max_tickers else ""
         print(f"Hydrating {len(tickers)} active ASX tickers from watchlist{bound}; sleep_seconds={args.sleep_seconds}.", file=sys.stderr)
         warnings: list[str] = []
-        companies = hydrate_companies_from_asx_tickers(tickers, warning_sink=warnings.append, sleep_seconds=args.sleep_seconds, cache_dir=cache_dir, failure_sink=hydration_failures.append)
+        eodhd = EodhdAdapter()
+        companies = hydrate_companies_from_asx_eodhd_primary(
+            tickers,
+            eodhd,
+            warning_sink=warnings.append,
+            sleep_seconds=args.sleep_seconds,
+            cache_dir=cache_dir,
+            failure_sink=hydration_failures.append,
+        )
         for w in warnings:
             print(w, file=sys.stderr)
-        mode = "asx-yahoo-timeseries"
+        mode = ASX_EODHD_MODE
     elif args.asx_tickers:
         print(f"Hydrating ASX tickers: {', '.join(args.asx_tickers)}", file=sys.stderr)
         universe_tickers = [normalise_asx_ticker(ticker) for ticker in args.asx_tickers]
         warnings: list[str] = []
         cache_dir = Path(args.cache_dir) if args.cache_dir else None
         universe_source = "explicit ASX ticker list"
-        companies = hydrate_companies_from_asx_tickers(args.asx_tickers, warning_sink=warnings.append, sleep_seconds=args.sleep_seconds, cache_dir=cache_dir, failure_sink=hydration_failures.append)
+        eodhd = EodhdAdapter()
+        companies = hydrate_companies_from_asx_eodhd_primary(
+            args.asx_tickers,
+            eodhd,
+            warning_sink=warnings.append,
+            sleep_seconds=args.sleep_seconds,
+            cache_dir=cache_dir,
+            failure_sink=hydration_failures.append,
+        )
         for w in warnings:
             print(w, file=sys.stderr)
-        mode = "asx-yahoo-timeseries"
+        mode = ASX_EODHD_MODE
     elif args.nasdaq_universe_seed:
         seed_path = Path(args.nasdaq_universe_seed)
         watchlist_path_str = str(seed_path)
@@ -4984,6 +5143,11 @@ def main(argv=None):
         sys.exit(1)
 
     fallback_adapters = build_fallback_adapters()
+    if mode == ASX_EODHD_MODE:
+        # EODHD has already been attempted as ASX primary per ticker. Keep the
+        # proven fallback chain (Yahoo base fallback above, then FMP/Alpha/ASX
+        # optional fills here) without making a second EODHD pass.
+        fallback_adapters = [adapter for adapter in fallback_adapters if adapter.name != "eodhd"]
     companies, fallback_failures = apply_provider_fallbacks_to_companies(companies, fallback_adapters)
     hydration_failures.extend(fallback_failures)
     if fallback_adapters:
@@ -5002,7 +5166,7 @@ def main(argv=None):
     if args.file_first_run_json:
         payload = build_file_first_run_payload(
             ranked,
-            source="yahoo-finance" if mode == "asx-yahoo-timeseries" else ("eodhd" if mode in {US_EODHD_MODE, NASDAQ_MODE} else mode),
+            source="eodhd" if mode in {ASX_EODHD_MODE, US_EODHD_MODE, NASDAQ_MODE} else ("yahoo-finance" if mode == "asx-yahoo-timeseries" else mode),
             mode=mode,
             universe=universe_tickers,
             universe_source=universe_source,

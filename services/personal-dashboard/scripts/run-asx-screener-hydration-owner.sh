@@ -59,7 +59,7 @@ export ASX_BATCH_SIZE="$BATCH_SIZE"
 export ASX_SLEEP_SECONDS="$SLEEP_SECONDS"
 export DRY_RUN=${DRY_RUN:-0}
 
-POINTER_PATH="$DATA_ROOT/investment-screener/manifests/market=ASX/source=yahoo-finance/latest.json"
+POINTER_PATH="$DATA_ROOT/investment-screener/manifests/market=ASX/source=eodhd/latest.json"
 
 # Safety guard: do not let an approved bounded recurring run silently replace
 # a full-universe latest pointer. Any cadence/batch-size migration needs an

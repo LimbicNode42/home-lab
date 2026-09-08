@@ -14,6 +14,7 @@ _SCREENER_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_SCREENER_DIR))
 
 from screener import (  # noqa: E402
+    ASX_EODHD_MODE,
     FieldValue,
     POSTGRES_SCHEMA_SQL,
     insert_screener_run,
@@ -245,6 +246,30 @@ class TestInsertScreenerRunIdempotent(unittest.TestCase):
         run_sql, run_params = conn.cursor_obj.statements[0]
         self.assertEqual(run_params[3], "asx-yahoo-timeseries")
         self.assertEqual(json.loads(run_params[5])["source"], "asx-yahoo-timeseries")
+
+    def test_insert_source_mix_tracks_selected_asx_eodhd_and_yahoo_quote_providers(self):
+        eodhd_company = company_fixture(
+            revenue=FieldValue(60_000_000_000, {"provider": "eodhd", "source_family": "eodhd", "field_name": "revenue", "retrieved_at": "2026-01-01T00:00:00Z", "data_as_of": "2025-06-30", "unit": "currency", "currency": "AUD"}),
+            price=FieldValue(45.0, {"provider": "yahoo-finance", "source_family": "yahoo-finance", "field_name": "price", "retrieved_at": "2026-01-01T00:00:00Z", "data_as_of": "2026-01-01", "unit": "currency", "currency": "AUD"}),
+        )
+        ranked = rank_companies([eodhd_company], load_config(CONFIG_PATH))
+        conn = RecordingConnection()
+
+        insert_screener_run(
+            conn,
+            ranked,
+            source="eodhd",
+            mode=ASX_EODHD_MODE,
+            universe=["BHP.AX"],
+            run_key="investment-screener:ASX:asx-eodhd-fundamentals:2026-09",
+            score_version="asx-bootstrap-v1",
+        )
+
+        run_params = conn.cursor_obj.statements[0][1]
+        source_mix = json.loads(run_params[5])
+        self.assertEqual(source_mix["source"], "eodhd")
+        self.assertIn("eodhd", source_mix["providers"])
+        self.assertIn("yahoo-finance", source_mix["providers"])
 
 
 class TestPostgresCliFlags(unittest.TestCase):

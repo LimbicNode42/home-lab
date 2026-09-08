@@ -2325,6 +2325,94 @@ class TestBuildCompanyFromEodhd(unittest.TestCase):
         self.assertAlmostEqual(company["shares_outstanding"].value, 14_594_180_000.0)
         self.assertAlmostEqual(company["revenue"].value, 416_161_000_000.0)
 
+    def test_build_company_from_eodhd_keeps_asx_bucket_identity(self):
+        payload = _eodhd_payload_fixture()
+        payload["General"] = {
+            "Code": "BHP",
+            "Name": "BHP Group Limited",
+            "CurrencyCode": "AUD",
+            "Exchange": "AU",
+            "CountryISO": "AU",
+            "Sector": "Basic Materials",
+            "Industry": "Other Industrial Metals & Mining",
+        }
+        quote = {"price": 45.0, "currency": "AUD", "exchange": "ASX", "name": "BHP Group Limited"}
+
+        company = scr.build_company_from_eodhd_fundamentals("BHP.AX", payload, quote)
+
+        self.assertEqual(company["ticker"], "BHP.AX")
+        self.assertEqual(company["market"], "ASX")
+        self.assertEqual(company["exchange"], "ASX")
+        self.assertEqual(company["region"], "AU")
+        self.assertEqual(company["currency"], "AUD")
+        self.assertEqual(company["company_id"], "asx:BHP")
+        self.assertEqual(company["asx_code"], "BHP")
+        self.assertEqual(company["revenue"].provenance["provider"], "eodhd")
+        self.assertEqual(company["revenue"].provenance["currency"], "AUD")
+
+    def test_asx_eodhd_primary_falls_back_to_yahoo_per_ticker_on_provider_outage(self):
+        class OutageEodhd:
+            name = "eodhd"
+            last_error = RuntimeError("429 Too Many Requests api_token=SECRET")
+            def fetch_payload(self, ticker):
+                return None
+
+        failures = []
+        warnings = []
+
+        companies = scr.hydrate_companies_from_asx_eodhd_primary(
+            ["BHP"],
+            OutageEodhd(),
+            quote_fetcher=lambda ticker: {"price": 45.0, "currency": "AUD", "exchange": "ASX", "name": "BHP Group"},
+            timeseries_fetcher=lambda ticker: bhp_timeseries_fixture(),
+            sleep_seconds=0,
+            failure_sink=failures.append,
+            warning_sink=warnings.append,
+        )
+
+        self.assertEqual(len(companies), 1)
+        self.assertEqual(companies[0]["ticker"], "BHP.AX")
+        self.assertEqual(companies[0]["revenue"].provenance["provider"], "yahoo-finance")
+        self.assertEqual(failures[0]["provider"], "eodhd")
+        self.assertNotIn("SECRET", failures[0]["reason"])
+        self.assertTrue(failures[0]["provider_failure_only"])
+        self.assertEqual(len(failures), 1)
+
+        ranked = scr.rank_companies(companies, scr.load_config(CONFIG_PATH))
+        payload = scr.build_file_first_run_payload(
+            ranked,
+            source="eodhd",
+            mode=scr.ASX_EODHD_MODE,
+            universe=["BHP.AX"],
+            hydration_failures=failures,
+        )
+        self.assertEqual(payload["coverage"]["failed"], 0)
+        self.assertEqual(payload["coverage"]["accounted"], 1)
+        self.assertEqual(payload["provider_failures"][0]["provider"], "eodhd")
+
+    def test_asx_eodhd_primary_file_first_payload_tracks_eodhd_source_mix(self):
+        company = scr.build_company_from_eodhd_fundamentals(
+            "BHP.AX",
+            _eodhd_payload_fixture(),
+            {"price": 45.0, "currency": "AUD", "exchange": "ASX", "name": "BHP Group"},
+        )
+        ranked = scr.rank_companies([company], scr.load_config(CONFIG_PATH))
+
+        payload = scr.build_file_first_run_payload(
+            ranked,
+            source="eodhd",
+            mode=scr.ASX_EODHD_MODE,
+            universe=["BHP.AX"],
+            universe_source="explicit ASX ticker list",
+        )
+
+        self.assertEqual(payload["market"], "ASX")
+        self.assertEqual(payload["source"], "eodhd")
+        self.assertEqual(payload["mode"], scr.ASX_EODHD_MODE)
+        self.assertIn("eodhd", payload["source_mix"])
+        self.assertIn("yahoo-finance", payload["source_mix"])
+        self.assertTrue(any("ASX fundamentals from EODHD" in caveat for caveat in payload["source_caveats"]))
+
 
 class TestCommaContainingClassification(unittest.TestCase):
 

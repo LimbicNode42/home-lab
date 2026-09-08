@@ -2,6 +2,8 @@
 set -euo pipefail
 
 # Canonical ASX screener hydration workflow.
+# Uses EODHD fundamentals as the ASX primary source; Yahoo Finance remains the
+# automatic fallback for EODHD rate limits/outages/credential absence.
 # Publishes immutable file-first artifacts, then validates the latest pointer.
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
@@ -55,5 +57,5 @@ node "$APP_DIR/scripts/publish-investment-screener-run.mjs" \
 node "$APP_DIR/scripts/preflight-investment-screener-artifacts.mjs" \
   --data-root "$DATA_ROOT" \
   --market ASX \
-  --source yahoo-finance \
+  --source eodhd \
   --max-generated-age-hours "$MAX_GENERATED_AGE_HOURS"

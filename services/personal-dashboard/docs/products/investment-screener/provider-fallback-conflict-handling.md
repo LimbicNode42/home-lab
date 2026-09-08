@@ -10,9 +10,9 @@ Nothing here is active until credentials exist. With the default empty environme
 
 ## Default (no-credential) behavior
 
-- `build_fallback_adapters()` inspects `FMP_API_KEY` and `ALPHA_VANTAGE_API_KEY` only. With neither present, it returns an empty list.
+- `build_fallback_adapters()` inspects configured optional providers (FMP, Alpha Vantage, EODHD, ASX MarkitDigital). In the ASX EODHD-primary CLI path, EODHD is attempted before Yahoo and then removed from the post-hydration fill-only fallback pass to avoid a duplicate call.
 - `apply_provider_fallbacks_to_companies(companies, [])` returns the companies unchanged and performs no network calls.
-- The existing Yahoo `asx-yahoo-timeseries` path is unchanged. Missing fields remain missing with an explicit `missing_reason`, never imputed.
+- The legacy Yahoo `asx-yahoo-timeseries` parser remains as the automatic ASX fallback path. Missing fields remain missing with an explicit `missing_reason`, never imputed.
 
 ## Credentialed adapters (optional, behind approval)
 

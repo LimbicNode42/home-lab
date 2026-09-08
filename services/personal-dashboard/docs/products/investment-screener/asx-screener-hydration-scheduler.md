@@ -19,8 +19,8 @@
 ### Current approved scheduler state
 
 - **Monthly full-universe fundamentals refresh:** `0 8 1 * *` — the first day of each month at 08:00 AEST/tori-local (job `6bffd5f6fff6`). Runs the full reviewed seed (`ASX_BATCH_OFFSET=0`, `ASX_BATCH_SIZE=<full seed count, currently 1838>`), so the dashboard latest pointer carries `denominator_status=complete_exchange_listing`.
-- **Weekly provider smoke:** `0 8 * * 6` — Saturday 08:00 AEST/tori-local (job `1c56a487f8da`). Runs the canonical workflow in `DRY_RUN=1` against a tiny bounded slice (`ASX_BATCH_SIZE=4`), so it exercises real Yahoo/provider connectivity (429s, SSL failures, shape changes) **without publishing `latest.json`** — the dashboard denominator is never touched.
-- **Mode:** non-fixture (`asx-yahoo-timeseries`) — real Yahoo Finance hydration, never `--fixture`.
+- **Weekly provider smoke:** `0 8 * * 6` — Saturday 08:00 AEST/tori-local (job `1c56a487f8da`). Runs the canonical workflow in `DRY_RUN=1` against a tiny bounded slice (`ASX_BATCH_SIZE=4`), so it exercises real EODHD-primary/Yahoo-fallback provider connectivity (429s, SSL failures, shape changes) **without publishing `latest.json`** — the dashboard denominator is never touched.
+- **Mode:** non-fixture (`asx-eodhd-fundamentals`) — real EODHD ASX fundamentals primary with Yahoo Finance fallback, never `--fixture`.
 - **Regression guard (still active):** the shared owner wrapper refuses an unattended bounded publish when the live latest pointer is already full-universe. This protects the monthly full run's `1838` denominator against any accidental bounded overwrite.
 
 > Approved by Ben 2026-09-01 (kanban `t_c344ba1c`): monthly full-universe hydration + separate weekly no-publish smoke, replacing the prior weekly top-50 job. Quarterly-only was explicitly rejected (too stale for the 26-hour freshness preflight).
@@ -37,6 +37,11 @@ The monthly job hydrates the **full reviewed ASX company-directory seed**; the w
   - **top-N batch** = `ranked_market_cap_batch` — legacy bounded default, no longer the recurring production mode.
   - **watchlist** = the 10-name `asx-watchlist.json` (smoke runs only, not production).
 - The wrapper's summary line emits a 12-char `universe_hash` (sha256 of the seed file) so a seed change is visible in logs even though the full hash stays in the manifest.
+
+
+### Provider priority (ASX)
+
+ASX hydration now uses EODHD as the primary fundamentals source (`EODHD_API_KEY`, injected from Vaultwarden/env only). If EODHD is unavailable, rate-limited, missing credentials, or returns no annual statements for a ticker, the workflow falls back to the prior Yahoo chart + fundamentals-timeseries path for that ticker and records the provider event in sanitized run provenance. Optional FMP / Alpha Vantage / ASX MarkitDigital adapters remain fill-only fallbacks after the base row is hydrated.
 
 ## Failure notification path
 
@@ -82,14 +87,14 @@ Broad hydration approval gates:
 
 - Ben approval is required before any manual batch against `/mnt/pve/NAS/services/personal-dashboard` that would change the dashboard denominator (e.g. a bounded slice publish, or a seed change).
 - Ben approval is required before changing the scheduler batch size, cadence, delivery target, provider priority, cache pruning, latest-pointer rollback, or any recurring all-ASX/slice job.
-- Do not lower `ASX_SLEEP_SECONDS` below `0.75`; if Yahoo throttles or shape-changes, stop rather than tightening the loop like a tiny denial-of-service goblin.
+- Do not lower `ASX_SLEEP_SECONDS` below `0.75`; if EODHD/Yahoo throttles or shape-changes, stop rather than tightening the loop like a tiny denial-of-service goblin.
 
 ### Normal operation
 
 1. On the first day of each month, the scheduler fires `run-asx-screener-full-hydration-owner.sh`, which resolves the full seed count and runs the canonical workflow, which:
-   - hydrates the full universe via Yahoo (throttled by `ASX_SLEEP_SECONDS`),
-   - writes an immutable per-run tree under `investment-screener/runs/market=ASX/source=yahoo-finance/mode=asx-yahoo-timeseries/run_date=…/<run_id>/`,
-   - atomically updates `manifests/market=ASX/source=yahoo-finance/latest.json` and appends `runs.jsonl`,
+   - hydrates the full universe via EODHD ASX fundamentals primary, with Yahoo Finance fallback, throttled by `ASX_SLEEP_SECONDS`,
+   - writes an immutable per-run tree under `investment-screener/runs/market=ASX/source=eodhd/mode=asx-eodhd-fundamentals/run_date=…/<run_id>/`,
+   - atomically updates `manifests/market=ASX/source=eodhd/latest.json` and appends `runs.jsonl`,
    - publishes `exports/dashboard/market=ASX/latest_{ranked,coverage,report}.*`,
    - runs preflight (checksum + required-artifact + generated-age validation).
 2. The wrapper reduces output to one sanitized summary line (run_id, mode, universe_hash, usable/failed/excluded, pointer path) and exits 0.
@@ -99,10 +104,10 @@ Broad hydration approval gates:
 
 ```bash
 cd /root/work/home-lab/services/personal-dashboard
-cat /mnt/pve/NAS/services/personal-dashboard/investment-screener/manifests/market=ASX/source=yahoo-finance/latest.json
+cat /mnt/pve/NAS/services/personal-dashboard/investment-screener/manifests/market=ASX/source=eodhd/latest.json
 ```
 
-Confirm `mode=asx-yahoo-timeseries`, `fixture=false`, a recent `completed_at`, and `coverage.usable` > 0.
+Confirm `mode=asx-eodhd-fundamentals`, `source=eodhd`, `fixture=false`, a recent `completed_at`, and `coverage.usable` > 0. Inspect `source_mix`/`provider_failures` to see whether Yahoo fallback was used.
 
 ### Dry-run the monthly wrapper before enabling
 
@@ -144,8 +149,8 @@ wrapper and owner script must not print provider key material.
 
 ### Failure / stale-data triage
 
-- **Stale dashboard (`stale:true` / old generated_at):** check the latest pointer's `completed_at`; if > 26h old, the last scheduled run failed. Inspect the scheduler's stderr (the `[asx-screener-owner] FAILED:` block) for the underlying canonical error (e.g. Yahoo `429`, missing required artifact).
-- **Yahoo `429`/throttling:** Yahoo endpoints are unofficial. Back off and re-run; do not tighten `ASX_SLEEP_SECONDS` below 0.75 to work around a throttle.
+- **Stale dashboard (`stale:true` / old generated_at):** check the latest pointer's `completed_at`; if > 26h old, the last scheduled run failed. Inspect the scheduler's stderr (the `[asx-screener-owner] FAILED:` block) for the underlying canonical error (e.g. EODHD/Yahoo `429`, missing required artifact).
+- **EODHD/Yahoo `429`/throttling:** EODHD is the licensed primary fundamentals source; Yahoo remains the fallback/price source and is unofficial. Back off and re-run; do not tighten `ASX_SLEEP_SECONDS` below 0.75 to work around a throttle.
 - **Checksum mismatch:** a failed publish leaves the prior latest intact (atomic writes); re-run rather than hand-editing artifacts.
 
 ## Environment variables

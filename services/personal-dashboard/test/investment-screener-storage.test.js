@@ -585,6 +585,7 @@ test('run-asx-screener-hydration.sh uses canonical non-fixture file-first public
   assert.match(script, /--file-first-run-json/);
   assert.match(script, /publish-investment-screener-run\.mjs/);
   assert.match(script, /preflight-investment-screener-artifacts\.mjs/);
+  assert.match(script, /--source eodhd/);
   assert.doesNotMatch(script, /--fixture/);
 });
 

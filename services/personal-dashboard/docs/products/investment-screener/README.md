@@ -62,11 +62,11 @@ Do not use it as the final reason to buy, sell, hold, size, or time a position. 
 
 ## Inputs
 
-The product is ASX-first but now also has an explicit NASDAQ bucket. ASX input can come from the small committed watchlist or reviewed ASX company-directory seed. NASDAQ input comes from `universe/nasdaq-listed-equities.seed.json`: a reviewed NASDAQ Trader listed-equity seed with `market=NASDAQ`, `exchange=NASDAQ`, `region=US`, `currency=USD`, and EODHD provider tickers using `{symbol}.US`. That denominator is **complete_security_type_filtered_listing** — full NASDAQ listed-equity coverage after excluding ETFs/test issues/non-equity securities, not the old NASDAQ-100 sample.
+The product is ASX-first but now also has an explicit NASDAQ bucket. ASX input can come from the small committed watchlist or reviewed ASX company-directory seed; ASX hydration now uses EODHD fundamentals as the primary source (`asx-eodhd-fundamentals`, source `eodhd`) with Yahoo Finance as the per-ticker automatic fallback for EODHD outages/rate limits/credential absence. NASDAQ input comes from `universe/nasdaq-listed-equities.seed.json`: a reviewed NASDAQ Trader listed-equity seed with `market=NASDAQ`, `exchange=NASDAQ`, `region=US`, `currency=USD`, and EODHD provider tickers using `{symbol}.US`. That denominator is **complete_security_type_filtered_listing** — full NASDAQ listed-equity coverage after excluding ETFs/test issues/non-equity securities, not the old NASDAQ-100 sample.
 
 Input quality matters more than UI polish. If the watchlist or ASX seed is stale, sparse, sector-skewed, or missing metadata, the output will inherit those limits with a nicer hat.
 
-First-cut hydration uses explicitly labeled bootstrap data sources. Yahoo-derived chart and fundamentals-timeseries values are useful for recurring shape checks and shortlisting, but they are not ASX filings and must not be treated as source-of-record data. Interesting candidates still need verification against company reports, ASX announcements, or another authorized source.
+Hydration uses explicitly labeled provider data. EODHD is the licensed primary fundamentals source for ASX/NASDAQ/US paths; Yahoo-derived chart and fundamentals-timeseries values remain useful as ASX fallback and quote evidence, but they are not ASX filings and must not be treated as source-of-record data. Interesting candidates still need verification against company reports, ASX announcements, or another authorized source.
 
 The dashboard does not fetch fresh market data. It reads only sanitized exports or rebuildable DuckDB summaries generated from NAS-backed artifacts mounted into the dashboard runtime. Historical data is written by the generator/storage lane, not by the browser.
 
@@ -97,7 +97,7 @@ The useful workflow is:
 
 - The screener can only score fields present in the input data.
 - The ASX-first bootstrap universe is only as complete as the reviewed watchlist or seed; partial batches must be read with their denominator labels.
-- Yahoo-derived values are bootstrap evidence, not authoritative filings data.
+- EODHD provider values and Yahoo fallback values are decision-support evidence, not authoritative filings data; verify candidates against company reports/announcements before acting.
 - Cross-market and cross-sector comparisons may be distorted by accounting, currency, reporting cadence, and data-provider differences; banks and financials are especially easy to misread with industrial-company metrics.
 - Dashboard filters operate on the latest exported data; they do not recompute the model.
 - Historical trends are useful for direction and recurrence, but only when run cadence, universe, source quality, storage manifest, and scoring version are considered together.

@@ -104,10 +104,10 @@ python3 screener.py --asx-watchlist universe/asx-watchlist.json \
   --cache-dir "$SCREENER_OUTPUT_DIR/provider-cache" \
   --output-dir "$SCREENER_OUTPUT_DIR" \
   --write-postgres-history \
-  --run-key investment-screener:ASX:asx-yahoo-timeseries:YYYY-MM:<universe-hash>:<config-hash>:<code-version>
+  --run-key investment-screener:ASX:asx-eodhd-fundamentals:YYYY-MM:<universe-hash>:<config-hash>:<code-version>
 ```
 
-Use `--max-tickers` for bounded/manual backfills, `--sleep-seconds` for provider throttling, and `--cache-dir` to avoid refetching the same provider JSON during a run or retry. Use `--database-url-env NAME` only to change which runtime variable holds the Postgres URL; do not place the URL itself in the command, docs, or Git. Render both the output directory and database URL from the deployment environment or secret manager, not from committed examples. Real ASX Yahoo bootstrap output is labeled `asx-yahoo-timeseries`, not `fixture`, so the dashboard/API and Postgres can distinguish it from sample data.
+Use `--max-tickers` for bounded/manual backfills, `--sleep-seconds` for provider throttling, and `--cache-dir` to avoid refetching the same provider JSON during a run or retry. Use `--database-url-env NAME` only to change which runtime variable holds the Postgres URL; do not place the URL itself in the command, docs, or Git. Render both the output directory and database URL from the deployment environment or secret manager, not from committed examples. Real ASX EODHD-primary output is labeled `asx-eodhd-fundamentals` with source `eodhd`, not `fixture`; `source_mix` and provider-failure metadata show whether Yahoo fallback or optional fill providers contributed.
 
 ## Filter behavior
 
