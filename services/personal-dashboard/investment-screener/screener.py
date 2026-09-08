@@ -203,20 +203,19 @@ NASDAQ_SOURCE_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.tx
 NASDAQ_EQUITY_SECURITY_TYPE = "nasdaq_listed_equity"
 # Security-type filter for the reviewed FULL NASDAQ listing (not a bounded
 # top-N sample). Excludes ETFs, exchange test/simulator symbols, and non-equity
-# instruments (warrants, rights, SPAC units, preferred/depositary shares, notes,
-# ETNs). Word-bounded so company names like ``United``/``Unit``/``Notion`` are
-# NOT misread as ``Unit``/``Note`` securities. Matches the reviewed source's
-# documented denominator (~3,432 equity listings of 5,592 rows; 1,258 ETF,
-# 8 test, 894 other non-equity).
+# instruments (warrants, rights, SPAC/SPAC-like units, preferred/depositary
+# shares, notes, ETNs). Word-bounded so company names like ``United``/``Unit``/
+# ``Notion`` are NOT misread as ``Unit``/``Note`` securities.
 #
-# NOTE (sentinel review): ``\bUnits?\b`` also matches "Common Units" on the ~4
-# NASDAQ-listed MLP/partnership issuers (ARLP/DMLP/MMLP/PAA). The reviewed
-# source prose mentions keeping MLPs, but its measured 3,432 denominator counts
-# those rows as ``non_equity:units``. We reproduce the documented count exactly
-# rather than silently reclassifying a handful of issuers; the sentinel gate
-# (t_befb8628) can reconcile the 4-symbol delta as a follow-up.
+# Legitimate operating MLP/partnership common units are kept as listed equity per
+# the NASDAQ denominator prose. Generic acquisition-company ``Units`` remain
+# excluded; this avoids hiding the MLP delta in an undocumented count mismatch.
 NASDAQ_NON_EQUITY_TOKEN_RE = re.compile(
     r"\b(Warrants?|Rights?|Units?|Preferred|Notes?|ETN)\b", re.IGNORECASE
+)
+NASDAQ_OPERATING_PARTNERSHIP_COMMON_UNITS_RE = re.compile(
+    r"\bCommon Units?\b.*\b(L\.?P\.?|Limited Partners?|Limited Partnership|Partners|Partnership)\b",
+    re.IGNORECASE,
 )
 US_EODHD_MODE = "us-eodhd-fundamentals"
 
@@ -758,13 +757,17 @@ def classify_nasdaq_listed_row(row: dict) -> str:
     ``"equity_kept"``. Order and semantics follow the reviewed source spec
     (t_e4b82658): drop ETFs and exchange test/simulator symbols, then drop
     non-equity security types (warrants, rights, units, preferred, notes, ETNs)
-    via a word-bounded token match so issuer names are not misread.
+    via a word-bounded token match so issuer names are not misread. A name
+    carrying operating MLP/partnership Common Units is kept as listed equity.
     """
     if str(row.get("ETF") or "").strip().upper() == "Y":
         return "etf"
     if str(row.get("Test Issue") or "").strip().upper() == "Y":
         return "test_issue"
-    match = NASDAQ_NON_EQUITY_TOKEN_RE.search(str(row.get("Security Name") or ""))
+    security_name = str(row.get("Security Name") or "")
+    if NASDAQ_OPERATING_PARTNERSHIP_COMMON_UNITS_RE.search(security_name):
+        return "equity_kept"
+    match = NASDAQ_NON_EQUITY_TOKEN_RE.search(security_name)
     if match:
         return f"non_equity:{match.group(1).lower()}"
     return "equity_kept"
@@ -785,9 +788,10 @@ def normalise_nasdaq_universe_rows(
 
     This is the full ``nasdaqlisted.txt`` directory, security-type filtered to
     equity: ETFs, exchange test/simulator symbols, and non-equity instruments
-    (warrants/rights/units/preferred/notes/ETNs) are excluded, so the emitted
-    denominator is honestly ``complete_security_type_filtered_listing`` rather
-    than a bounded/sample label. ``nasdaqlisted.txt`` carries no sector/industry
+    (warrants/rights/units/preferred/notes/ETNs) are excluded, while legitimate
+    operating MLP/partnership Common Units are kept, so the emitted denominator
+    is honestly ``complete_security_type_filtered_listing`` rather than a
+    bounded/sample label. ``nasdaqlisted.txt`` carries no sector/industry
     columns — those arrive from EODHD ``General`` at hydration time — so entries
     leave them ``None`` and carry the listing's ``Financial Status`` flag.
     """
@@ -873,7 +877,7 @@ def normalise_nasdaq_universe_rows(
         "complete_exchange_listing": False,
         "complete_security_type_filtered_listing": True,
         "security_type_filter": ["etf", "test_issue", "warrant", "warrants", "right", "rights", "unit", "units", "preferred", "notes", "etn"],
-        "security_type_source": "NASDAQ Trader listing ETF/Test-Issue flags + security-name token match (warrant/right/unit/preferred/note/ETN); sector/industry deferred to EODHD at hydration",
+        "security_type_source": "NASDAQ Trader listing ETF/Test-Issue flags + security-name token match (warrant/right/unit/preferred/note/ETN), except operating MLP/partnership Common Units which are kept as listed equity; sector/industry deferred to EODHD at hydration",
         "generated_by": "investment-screener/screener.py normalise_nasdaq_universe_rows",
     }
     return entries, metadata
@@ -2221,6 +2225,11 @@ def hydrate_companies_from_us_eodhd(
     return companies
 
 
+def _eodhd_payload_has_annual_fundamentals(payload: dict) -> bool:
+    depth = EodhdAdapter._statement_depth(payload)
+    return any(int(depth.get(section) or 0) > 0 for section in ("income", "balance_sheet", "cash_flow"))
+
+
 def _fetch_us_eodhd_companies(
     tickers: list[str],
     eodhd: "EodhdAdapter",
@@ -2245,6 +2254,17 @@ def _fetch_us_eodhd_companies(
                     failure_sink({
                         "ticker": ticker,
                         "reason": "EODHD fundamentals returned no payload (0 statement rows)",
+                        "recoverable": True,
+                        "provider": "eodhd",
+                        "source_family": "eodhd",
+                        "failed_at": _now_iso(),
+                    })
+                continue
+            if not _eodhd_payload_has_annual_fundamentals(payload):
+                if failure_sink:
+                    failure_sink({
+                        "ticker": ticker,
+                        "reason": "EODHD fundamentals returned no annual statement rows",
                         "recoverable": True,
                         "provider": "eodhd",
                         "source_family": "eodhd",
@@ -3649,6 +3669,43 @@ def _ranked_data_as_of_latest(rows: list[dict]) -> Optional[str]:
     return sorted(set(values))[-1] if values else None
 
 
+def _normalise_accounting_ticker(raw_ticker: Any, mode: str) -> str:
+    """Normalize a run-accounting ticker without leaking local path/provider state."""
+    ticker_text = str(raw_ticker or "").strip()
+    if not ticker_text:
+        return "UNKNOWN"
+    upper = ticker_text.upper()
+    if upper.endswith(".AX") or upper.endswith(".AU"):
+        return normalise_asx_ticker(ticker_text)
+    if mode in {US_EODHD_MODE, NASDAQ_MODE} or ".US" in upper:
+        return normalise_us_ticker(ticker_text)
+    return normalise_asx_ticker(ticker_text)
+
+
+def _append_unique_accounting_failure(
+    failures: list[dict],
+    accounted_failures: set[str],
+    ticker: str,
+    reason: str,
+    provider: str,
+    source_family: str,
+    failed_at: Optional[str] = None,
+    recoverable: bool = True,
+) -> None:
+    """Append one durable failure record per ticker for denominator accounting."""
+    if ticker in accounted_failures:
+        return
+    accounted_failures.add(ticker)
+    failures.append({
+        "ticker": ticker,
+        "reason": _redact_secrets_in_text(str(reason or "provider hydration failed")),
+        "recoverable": recoverable,
+        "provider": provider or "unknown",
+        "source_family": source_family or provider or "unknown",
+        "failed_at": failed_at,
+    })
+
+
 def build_file_first_run_payload(
     ranked: list[dict],
     source: str,
@@ -3671,28 +3728,26 @@ def build_file_first_run_payload(
     scores: list[dict] = []
     failures: list[dict] = []
     exclusions: list[dict] = []
+    accounted_failures: set[str] = set()
+    accounted_exclusions: set[str] = set()
+    accounted_companies: set[str] = set()
     for failure in hydration_failures or []:
-        raw_ticker = str(failure.get("ticker") or "")
-        if not raw_ticker:
-            ticker = "UNKNOWN"
-        elif ".US" in raw_ticker.upper():
-            # US hydration runs emit ``.US`` tickers (and dual-class ``BF-B.US``);
-            # they must never be mangled by the ASX normalizer, which would append a
-            # spurious ``.AX`` (the exact failure mode of the BF.B/BRK.B dual-class 404s).
-            ticker = normalise_us_ticker(raw_ticker)
-        else:
-            ticker = normalise_asx_ticker(raw_ticker)
-        failures.append({
-            "ticker": ticker,
-            "reason": str(failure.get("reason") or "provider hydration failed"),
-            "recoverable": failure.get("recoverable") is not False,
-            "provider": failure.get("provider") or failure.get("source_family") or "unknown",
-            "source_family": failure.get("source_family") or failure.get("provider") or "unknown",
-            "failed_at": failure.get("failed_at"),
-        })
+        ticker = _normalise_accounting_ticker(failure.get("ticker"), mode)
+        _append_unique_accounting_failure(
+            failures,
+            accounted_failures,
+            ticker,
+            str(failure.get("reason") or "provider hydration failed"),
+            failure.get("provider") or failure.get("source_family") or "unknown",
+            failure.get("source_family") or failure.get("provider") or "unknown",
+            failed_at=failure.get("failed_at"),
+            recoverable=failure.get("recoverable") is not False,
+        )
 
     for index, row in enumerate(ranked, start=1):
         ticker = row.get("ticker")
+        accounting_ticker = _normalise_accounting_ticker(ticker, mode)
+        accounted_companies.add(accounting_ticker)
         companies.append({
             "ticker": ticker,
             "company_id": row.get("company_id"),
@@ -3747,8 +3802,26 @@ def build_file_first_run_payload(
         provenance.extend(_row_file_first_provenance(row))
         if excluded:
             item = {"ticker": ticker, "reason": exclusion_reason or "excluded from ranking", "recoverable": True}
-            failures.append(item)
-            exclusions.append({"ticker": ticker, "reason": item["reason"]})
+            if accounting_ticker not in accounted_exclusions:
+                accounted_exclusions.add(accounting_ticker)
+                exclusions.append({"ticker": accounting_ticker, "reason": item["reason"]})
+
+    universe_accounting = {
+        _normalise_accounting_ticker(ticker, mode)
+        for ticker in universe
+        if str(ticker or "").strip()
+    }
+    for ticker in sorted(universe_accounting - accounted_companies - accounted_failures - accounted_exclusions):
+        _append_unique_accounting_failure(
+            failures,
+            accounted_failures,
+            ticker,
+            "seed symbol produced no company, failure, or exclusion record",
+            "eodhd" if mode in {US_EODHD_MODE, NASDAQ_MODE} else "unknown",
+            "eodhd" if mode in {US_EODHD_MODE, NASDAQ_MODE} else "unknown",
+            failed_at=completed,
+            recoverable=True,
+        )
 
     fully_scored = [row for row in scores if not row["excluded"] and row.get("hydration_tier") != "partial" and row["composite_score"] is not None]
     partially_hydrated = [row for row in scores if not row["excluded"] and row.get("hydration_tier") == "partial" and row["composite_score"] is not None]
@@ -3790,6 +3863,9 @@ def build_file_first_run_payload(
             f"{label} fundamentals from EODHD (licensed); live price from Yahoo chart. "
             "USD values are NOT comparable to ASX AUD values without FX normalization."
         )
+    accounted_symbols = set(accounted_companies) | set(accounted_failures) | set(accounted_exclusions)
+    accounted = len(accounted_symbols)
+    unaccounted = max(denominator - accounted, 0) if denominator is not None else 0
     return {
         "market": market,
         "source": source,
@@ -3836,6 +3912,8 @@ def build_file_first_run_payload(
             "partially_hydrated": len(partially_hydrated),
             "excluded": len(exclusions),
             "failed": len(failures),
+            "accounted": accounted,
+            "unaccounted": unaccounted,
             "stale": 0,
             "missing_required_fields": len(exclusions),
             "percent": round((usable / denominator) * 100, 1) if denominator else None,

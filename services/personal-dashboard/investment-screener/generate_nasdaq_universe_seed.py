@@ -11,7 +11,8 @@ Unlike the prior bounded NASDAQ-100/QQQ-class seed, this enumerates the whole
 active listing and labels the denominator honestly as
 ``complete_security_type_filtered_listing``. ETFs, exchange test/simulator
 symbols, and non-equity instruments (warrants/rights/units/preferred/notes/ETNs)
-are excluded; sector/industry are deferred to EODHD ``General`` at hydration.
+are excluded; legitimate operating MLP/partnership Common Units are kept as
+listed equity. Sector/industry are deferred to EODHD ``General`` at hydration.
 
 Provenance is path-free: the seed carries a content sha256 of the raw upstream
 file and the parsed ``File Creation Time`` footer as the refresh-date signal.

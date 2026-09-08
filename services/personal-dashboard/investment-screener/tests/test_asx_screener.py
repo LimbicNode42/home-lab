@@ -2286,6 +2286,25 @@ class TestEodhdAdapterMapping(unittest.TestCase):
         self.assertIsNone(ident["name_normalized"])
         self.assertEqual(ident["company_id"], "us:ZZZ")
 
+    def test_fetch_us_eodhd_records_no_fundamentals_as_failure(self):
+        adapter = scr.EodhdAdapter(env={"EODHD_API_KEY": "k"})
+        adapter.fetch_payload = MagicMock(return_value={
+            "General": {"Code": "NOFIN", "CurrencyCode": "USD", "Name": "No Fundamentals Corp"},
+            "Financials": {},
+        })
+        failures = []
+
+        with patch.object(scr, "fetch_yahoo_chart_quote", return_value={"price": 1.0, "currency": "USD"}) as quote_fetch:
+            companies = scr._fetch_us_eodhd_companies(["NOFIN.US"], adapter, sleep_seconds=0, failure_sink=failures.append)
+
+        self.assertEqual(companies, [])
+        quote_fetch.assert_not_called()
+        self.assertEqual(failures[0]["ticker"], "NOFIN.US")
+        self.assertEqual(failures[0]["provider"], "eodhd")
+        self.assertIn("no annual statement rows", failures[0]["reason"])
+        self.assertNotIn("/root/", failures[0]["reason"])
+        self.assertNotIn("api_token", failures[0]["reason"])
+
 
 class TestBuildCompanyFromEodhd(unittest.TestCase):
 
@@ -2495,8 +2514,19 @@ class TestNasdaqUniverseRows(unittest.TestCase):
     def test_classify_nasdaq_listed_row(self):
         self.assertEqual(scr.classify_nasdaq_listed_row(self._row("AAPL", "Apple Inc.")), "equity_kept")
         self.assertEqual(scr.classify_nasdaq_listed_row(self._row("SPY", "SPY ETF Trust", etf="Y")), "etf")
-        self.assertEqual(scr.classify_nasdaq_listed_row(self._row("ZXYZ.A", "Test", test="Y")), "test_issue")
+        self.assertEqual(scr.classify_nasdaq_listed_row(self._row("ZXYZ.A", "Test", etf="N", test="Y")), "test_issue")
         self.assertEqual(scr.classify_nasdaq_listed_row(self._row("AACIW", "Warrant")), "non_equity:warrant")
+
+    def test_operating_partnership_common_units_are_kept_as_equity(self):
+        rows = [
+            self._row("ARLP", "Alliance Resource Partners, L.P. - Common Units Representing Limited Partners Interests"),
+            self._row("AACIU", "Armada Acquisition Corp. III - Units"),
+        ]
+        entries, metadata = scr.normalise_nasdaq_universe_rows(rows, "https://example.com", "2026-09-08", "abc")
+        self.assertEqual([entry["us_code"] for entry in entries], ["ARLP"])
+        reasons = {ex["code"]: ex["reason"] for ex in metadata["excluded"]}
+        self.assertEqual(reasons["AACIU"], "non_equity:units")
+        self.assertNotIn("ARLP", reasons)
 
 
 class TestNasdaqFileFirstPayload(unittest.TestCase):
@@ -2532,6 +2562,70 @@ class TestNasdaqFileFirstPayload(unittest.TestCase):
         self.assertEqual(payload["universe"]["market"], "NASDAQ")
         self.assertEqual(payload["companies"][0]["exchange"], "NASDAQ")
         self.assertEqual(payload["coverage"]["denominator_label"], scr.NASDAQ_DENOMINATOR_LABEL)
+
+    def test_nasdaq_payload_accounts_for_silent_seed_omissions(self):
+        row = {
+            "rank": 1,
+            "ticker": "AAPL.US",
+            "company_id": "nasdaq:AAPL",
+            "name": "Apple Inc.",
+            "market": "NASDAQ",
+            "exchange": "NASDAQ",
+            "region": "US",
+            "currency": "USD",
+            "composite_score": 88.0,
+            "sub_scores": {"quality": 25},
+            "fields": {},
+        }
+        payload = scr.build_file_first_run_payload(
+            [row],
+            source="eodhd",
+            mode=scr.NASDAQ_MODE,
+            universe=["AAPL.US", "NOFIN.US", "NOPAY.US"],
+            universe_source=scr.NASDAQ_DENOMINATOR_LABEL,
+            batch_metadata={"eligible_count": 3, "selected_count": 3, "denominator_status": "complete_security_type_filtered_listing", "denominator_label": scr.NASDAQ_DENOMINATOR_LABEL},
+            hydration_failures=[{"ticker": "NOFIN.US", "reason": "EODHD fundamentals returned no annual statement rows", "provider": "eodhd", "recoverable": True}],
+        )
+        failures = {failure["ticker"]: failure for failure in payload["failures"]}
+        self.assertEqual(set(failures), {"NOFIN.US", "NOPAY.US"})
+        self.assertEqual(failures["NOPAY.US"]["reason"], "seed symbol produced no company, failure, or exclusion record")
+        self.assertEqual(payload["coverage"]["denominator"], 3)
+        self.assertEqual(payload["coverage"]["scraped"], 1)
+        self.assertEqual(payload["coverage"]["failed"], 2)
+        self.assertEqual(payload["coverage"]["excluded"], 0)
+        self.assertEqual(payload["coverage"]["accounted"], 3)
+        self.assertEqual(payload["coverage"]["unaccounted"], 0)
+
+    def test_nasdaq_payload_does_not_double_count_ranked_exclusions_as_failures(self):
+        excluded_row = {
+            "rank": 1,
+            "ticker": "MISS.US",
+            "company_id": "nasdaq:MISS",
+            "name": "Missing Fields Corp.",
+            "market": "NASDAQ",
+            "exchange": "NASDAQ",
+            "region": "US",
+            "currency": "USD",
+            "excluded": True,
+            "composite_score": None,
+            "exclusion_reasons": ["missing required fields: price"],
+            "fields": {},
+        }
+        payload = scr.build_file_first_run_payload(
+            [excluded_row],
+            source="eodhd",
+            mode=scr.NASDAQ_MODE,
+            universe=["MISS.US"],
+            universe_source=scr.NASDAQ_DENOMINATOR_LABEL,
+            batch_metadata={"eligible_count": 1, "selected_count": 1, "denominator_status": "complete_security_type_filtered_listing"},
+        )
+        self.assertEqual(payload["coverage"]["scraped"], 1)
+        self.assertEqual(payload["coverage"]["excluded"], 1)
+        self.assertEqual(payload["coverage"]["failed"], 0)
+        self.assertEqual(payload["coverage"]["accounted"], 1)
+        self.assertEqual(payload["coverage"]["unaccounted"], 0)
+        self.assertEqual(payload["failures"], [])
+        self.assertEqual(payload["exclusions"], [{"ticker": "MISS.US", "reason": "missing required fields: price"}])
 
 
 class TestNasdaqCliArgs(unittest.TestCase):
