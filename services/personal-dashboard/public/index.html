@@ -192,18 +192,23 @@
               <select id="investment-market-filter" name="market">
                 <option value="">All markets</option>
                 <option value="ASX">Australia / ASX</option>
+                <option value="NASDAQ">United States / NASDAQ</option>
               </select>
             </label>
-            <label class="investment-unavailable-control">
+            <label>
               Exchange
-              <select id="investment-exchange-filter" name="exchange" disabled>
-                <option value="">Coming later: unavailable in current ASX export</option>
+              <select id="investment-exchange-filter" name="exchange">
+                <option value="">All exchanges</option>
+                <option value="ASX">ASX</option>
+                <option value="NASDAQ">NASDAQ</option>
               </select>
             </label>
-            <label class="investment-unavailable-control">
+            <label>
               Region
-              <select id="investment-region-filter" name="region" disabled>
-                <option value="">Coming later: unavailable in current ASX export</option>
+              <select id="investment-region-filter" name="region">
+                <option value="">All regions</option>
+                <option value="AU">Australia</option>
+                <option value="US">United States</option>
               </select>
             </label>
             <label>
@@ -253,7 +258,7 @@
             </label>
             <button id="reset-investment-screener-filters" type="button">Reset filters</button>
           </form>
-          <p class="muted investment-control-note">Search, market, sector, industry, score focus, weight sort preset, and page size are applied to already-sanitized ranked data. US, Japan, and Switzerland are not populated in the current dashboard export, so Australia / ASX is the only active market option. Sector and industry values come from the ASX directory GICS industry group; hold Ctrl/Cmd to select more than one. Exchange and region are disabled until the screener exports those fields safely.</p>
+          <p class="muted investment-control-note">Search, market, exchange, region, sector, industry, score focus, weight sort preset, and page size are applied to already-sanitized ranked data. ASX and NASDAQ are separate exchange buckets; NASDAQ uses the reviewed security-type-filtered full listed-equity universe; coverage is shown against the latest denominator_status, freshness, failures, and exclusions. Sector and industry values come from the active market export; hold Ctrl/Cmd to select more than one.</p>
           <div class="investment-pagination" aria-label="Investment screener pagination">
             <button id="investment-prev-page" type="button" disabled>Previous</button>
             <span id="investment-page-summary" class="muted">Showing latest page</span>

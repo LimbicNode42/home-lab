@@ -181,7 +181,7 @@ services/personal-dashboard/docs/products/diary-goals/merged-tab-spec.md
 services/personal-dashboard/docs/products/home-lab/service-catalog.md
 services/personal-dashboard/docs/products/investment-screener/README.md
 services/personal-dashboard/docs/products/investment-screener/asx-hydration-audit-plan.md
-services/personal-dashboard/docs/products/investment-screener/asx-screener-hydration-scheduler.md
+services/personal-dashboard/docs/products/investment-screener/investment-screener-hydration-scheduler.md
 services/personal-dashboard/docs/products/investment-screener/cli-generator.md
 services/personal-dashboard/docs/products/investment-screener/dashboard-panel.md
 services/personal-dashboard/docs/products/investment-screener/data-source-coverage.md
@@ -197,11 +197,14 @@ services/personal-dashboard/investment-screener/config.yaml
 services/personal-dashboard/investment-screener/generate_asx_universe_seed.py
 services/personal-dashboard/investment-screener/migrations/001_investment_screener_history.sql
 services/personal-dashboard/investment-screener/screener.py
+services/personal-dashboard/investment-screener/recurring_markets.py
 services/personal-dashboard/investment-screener/tests/__init__.py
 services/personal-dashboard/investment-screener/tests/test_asx_screener.py
 services/personal-dashboard/investment-screener/tests/test_postgres_history_storage.py
+services/personal-dashboard/investment-screener/tests/test_recurring_markets.py
 services/personal-dashboard/investment-screener/universe/asx-listed-companies.seed.json
 services/personal-dashboard/investment-screener/universe/asx-watchlist.json
+services/personal-dashboard/investment-screener/universe/recurring-markets.json
 services/personal-dashboard/kanban-state-bridge-plan.md
 services/personal-dashboard/package-lock.json
 services/personal-dashboard/package.json
@@ -215,6 +218,13 @@ services/personal-dashboard/scripts/generate-asx-universe-seed.mjs
 services/personal-dashboard/scripts/preflight-investment-screener-artifacts.mjs
 services/personal-dashboard/scripts/publish-investment-screener-run.mjs
 services/personal-dashboard/scripts/run-asx-screener-hydration.sh
+services/personal-dashboard/scripts/run-asx-screener-hydration-owner.sh
+services/personal-dashboard/scripts/run-asx-screener-full-hydration-owner.sh
+services/personal-dashboard/scripts/run-asx-screener-smoke-owner.sh
+services/personal-dashboard/scripts/run-investment-screener-hydration.sh
+services/personal-dashboard/scripts/run-investment-screener-hydration-owner.sh
+services/personal-dashboard/scripts/run-investment-screener-full-hydration-owner.sh
+services/personal-dashboard/scripts/run-investment-screener-smoke-owner.sh
 services/personal-dashboard/scripts/run-critical-docker.sh
 services/personal-dashboard/scripts/sync-runtime-snapshots.sh
 services/personal-dashboard/scripts/test-node22.mjs

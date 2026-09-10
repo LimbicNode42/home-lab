@@ -160,3 +160,19 @@ For a generator run:
 - Add a machine-readable generation summary with input universe count, filtered count, excluded count, and top-level warnings.
 - Add a schema check for the ranked JSON object before publication.
 - Preserve safe historical snapshots for comparison via the Postgres contract in [Historical pipeline architecture](./historical-pipeline-architecture.md).
+
+### NASDAQ full-universe EODHD hydration
+
+NASDAQ uses explicit market/exchange semantics while reusing the EODHD US fundamentals symbol contract. The seed is now the full NASDAQ listed-equity universe (security-type-filtered `nasdaqlisted.txt`), not a bounded top-N sample:
+
+```bash
+python3 investment-screener/generate_nasdaq_universe_seed.py \
+  --output investment-screener/universe/nasdaq-listed-equities.seed.json
+
+python3 investment-screener/screener.py \
+  --nasdaq-universe-seed investment-screener/universe/nasdaq-listed-equities.seed.json \
+  --max-tickers 3 \
+  --file-first-run-json /tmp/nasdaq-smoke-run.json
+```
+
+The mode is `nasdaq-eodhd-fundamentals`; provider symbols use `.US`; dual-class symbols inherit the US hyphen contract (`BRK.B` -> `BRK-B.US`). The denominator is `complete_security_type_filtered_listing` (excludes ETFs, exchange test symbols, and non-equity instruments: warrants/rights/units/preferred/notes/ETNs) and must never be mislabeled `known_sample_universe`. Sector/industry arrive from EODHD `General` at hydration, not the listing. Provenance is path-free (content sha256 + `File Creation Time` footer). Secrets come only from runtime environment/Vaultwarden and must not be written into seed files, run JSON, logs, or Git.

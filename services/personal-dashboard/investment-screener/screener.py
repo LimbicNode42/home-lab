@@ -194,6 +194,38 @@ US_UNIVERSE_SEED_SCHEMA_VERSION = "investment-screener-us-universe-seed/v1"
 US_IDENTITY_RULE = "company_id=us:{us_code}; eodhd_ticker={us_code}.US"
 US_DEFAULT_SECURITY_TYPE = "unknown_from_eodhd_general"
 US_DENOMINATOR_LABEL = "S&P 500 constituents (reviewed static seed)"
+NASDAQ_UNIVERSE_SEED_SCHEMA_VERSION = "investment-screener-nasdaq-universe-seed/v2"
+NASDAQ_IDENTITY_RULE = "company_id=nasdaq:{us_code}; eodhd_ticker={us_code}.US; exchange=NASDAQ"
+NASDAQ_DENOMINATOR_LABEL = "NASDAQ listed equities (security-type-filtered, reviewed static seed)"
+NASDAQ_MODE = "nasdaq-eodhd-fundamentals"
+NASDAQ_SOURCE_NAME = "NASDAQ Trader listed securities (nasdaqlisted.txt)"
+NASDAQ_SOURCE_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
+NASDAQ_EQUITY_SECURITY_TYPE = "nasdaq_listed_equity"
+# Security-type filter for the reviewed FULL NASDAQ listing (not a bounded
+# top-N sample). Excludes ETFs, exchange test/simulator symbols, and non-equity
+# instruments (warrants, rights, SPAC/SPAC-like units, preferred/depositary
+# shares, notes, ETNs). Word-bounded so company names like ``United``/``Unit``/
+# ``Notion`` are NOT misread as ``Unit``/``Note`` securities.
+#
+# Legitimate operating MLP/partnership common units are kept as listed equity per
+# the NASDAQ denominator prose. Generic acquisition-company ``Units`` remain
+# excluded; this avoids hiding the MLP delta in an undocumented count mismatch.
+NASDAQ_NON_EQUITY_TOKEN_RE = re.compile(
+    r"\b(Warrants?|Rights?|Units?|Preferred|Notes?|ETN)\b", re.IGNORECASE
+)
+NASDAQ_OPERATING_PARTNERSHIP_COMMON_UNITS_RE = re.compile(
+    r"\bCommon Units?\b.*\b(L\.?P\.?|Limited Partners?|Limited Partnership|Partners|Partnership)\b",
+    re.IGNORECASE,
+)
+US_EODHD_MODE = "us-eodhd-fundamentals"
+
+
+def _market_for_mode(mode: str) -> str:
+    if mode == NASDAQ_MODE:
+        return "NASDAQ"
+    if mode == US_EODHD_MODE:
+        return "US"
+    return "ASX"
 
 
 def _parse_market_cap(value: Any) -> Optional[int]:
@@ -385,11 +417,19 @@ def select_asx_universe_batch(
     }
 
 
-def build_universe_version(seed_path: Path, metadata: dict) -> str:
-    """Build a public, path-safe seed version label."""
+def build_universe_version(metadata: dict) -> str:
+    """Build a public, path-free seed version label.
+
+    Embeds only the content hash and a human-readable source label, never a
+    filesystem path, so published provenance stays machine-independent and
+    reproducible. The label comes from the seed's own ``denominator_label``
+    (e.g. "S&P 500 constituents (reviewed static seed)") with ``source_name``
+    as an honest fallback for seeds that carry no explicit denominator label.
+    """
     sha = metadata.get("sha256") or metadata.get("source_sha256") or "unknown"
     retrieved = metadata.get("retrieved_at") or "unknown"
-    return f"{seed_path.as_posix()} sha256:{sha} retrieved_at:{retrieved}"
+    label = metadata.get("denominator_label") or metadata.get("source_name") or "reviewed static seed"
+    return f"{label} sha256:{sha} retrieved_at:{retrieved}"
 
 
 def parse_security_type_list(value: Optional[str]) -> Optional[list[str]]:
@@ -484,6 +524,10 @@ def _us_company_id(code: str) -> str:
     return f"us:{code}"
 
 
+def _nasdaq_company_id(code: str) -> str:
+    return f"nasdaq:{code}"
+
+
 def _normalise_us_company_name(value: Any) -> str:
     """Return a stable display/match form for US company names (mirrors ASX rule)."""
     text = str(value or "").strip()
@@ -510,6 +554,12 @@ def _titlecase_us_classification(value: Any) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 US_CODE_RE = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,9}$")
+# Exchange test/simulator symbols with a dot/hyphen suffix (e.g. NASDAQ
+# ``ZXYZ.A``, ``ZXYZ-$``). Mirrors the reviewed source spec's ``^Z[A-Z]{3}[.$]``
+# guard; bare ``Z``-prefixed operating names (``ZION``, ``ZTS``, ``ZYME``) are NOT
+# matched. The primary test-issue filter is the ``Test Issue`` flag; this only
+# defensively drops dotted/suffixed test symbols.
+US_TEST_SYMBOL_RE = re.compile(r"^Z[A-Z]{3}[.$]")
 
 
 def normalise_us_universe_rows(
@@ -653,6 +703,240 @@ def select_us_universe_batch(
         "exclude_security_types": None,
         "excluded_security_type_count": 0,
     }
+
+
+
+
+def _nasdaq_row_symbol(row: dict) -> str:
+    return str(
+        row.get("Symbol")
+        or row.get("symbol")
+        or row.get("Code")
+        or row.get("code")
+        or ""
+    ).strip()
+
+
+def parse_nasdaq_listed_file(body: bytes) -> tuple[list[dict], dict]:
+    """Parse the pipe-delimited ``nasdaqlisted.txt`` listing into rows + provenance.
+
+    The file is ``Symbol|Security Name|Market Category|Test Issue|Financial
+    Status|Round Lot Size|ETF|NextShares`` with a trailing ``File Creation Time``
+    footer. Returns ``(rows, file_meta)`` where ``file_meta`` carries the parsed
+    refresh timestamp (the ``File Creation Time`` footer) rather than any host
+    path, so provenance stays machine-independent.
+    """
+    text = body.decode("utf-8-sig")
+    lines = [line for line in text.replace("\r\n", "\n").split("\n")]
+    if not lines:
+        raise ValueError("NASDAQ Trader listing is empty")
+    header = lines[0].split("|")
+    columns = ["Symbol", "Security Name", "Market Category", "Test Issue", "Financial Status", "Round Lot Size", "ETF", "NextShares"]
+    if header != columns:
+        raise ValueError(f"Unexpected NASDAQ Trader header: {header!r}")
+    file_creation_time = None
+    rows: list[dict] = []
+    for line in lines[1:]:
+        if not line.strip():
+            continue
+        if line.startswith("File Creation Time"):
+            value = line.split(":", 1)[1].split("|", 1)[0].strip()
+            file_creation_time = value or None
+            continue
+        parts = line.split("|")
+        if len(parts) != len(columns):
+            raise ValueError(f"Malformed NASDAQ Trader row (expected {len(columns)} fields): {line[:80]!r}")
+        rows.append(dict(zip(columns, parts)))
+    return rows, {"file_creation_time": file_creation_time}
+
+
+def classify_nasdaq_listed_row(row: dict) -> str:
+    """Classify a ``nasdaqlisted.txt`` row for the full-universe equity filter.
+
+    Returns ``"etf"``, ``"test_issue"``, a ``non_equity:<token>`` reason, or
+    ``"equity_kept"``. Order and semantics follow the reviewed source spec
+    (t_e4b82658): drop ETFs and exchange test/simulator symbols, then drop
+    non-equity security types (warrants, rights, units, preferred, notes, ETNs)
+    via a word-bounded token match so issuer names are not misread. A name
+    carrying operating MLP/partnership Common Units is kept as listed equity.
+    """
+    if str(row.get("ETF") or "").strip().upper() == "Y":
+        return "etf"
+    if str(row.get("Test Issue") or "").strip().upper() == "Y":
+        return "test_issue"
+    security_name = str(row.get("Security Name") or "")
+    if NASDAQ_OPERATING_PARTNERSHIP_COMMON_UNITS_RE.search(security_name):
+        return "equity_kept"
+    match = NASDAQ_NON_EQUITY_TOKEN_RE.search(security_name)
+    if match:
+        return f"non_equity:{match.group(1).lower()}"
+    return "equity_kept"
+
+
+def normalise_nasdaq_universe_rows(
+    rows: list[dict],
+    source_url: str,
+    retrieved_at: str,
+    source_sha256: str,
+    file_creation_time: Optional[str] = None,
+) -> tuple[list[dict], dict]:
+    """Normalize the reviewed FULL NASDAQ listed-securities listing into v2 entries.
+
+    NASDAQ keeps explicit user-facing exchange semantics while reusing the EODHD
+    US fundamentals symbol contract: provider tickers are ``{symbol}.US`` and the
+    inherited hyphen form applies to any (currently-nonexistent) dotted symbol.
+
+    This is the full ``nasdaqlisted.txt`` directory, security-type filtered to
+    equity: ETFs, exchange test/simulator symbols, and non-equity instruments
+    (warrants/rights/units/preferred/notes/ETNs) are excluded, while legitimate
+    operating MLP/partnership Common Units are kept, so the emitted denominator
+    is honestly ``complete_security_type_filtered_listing`` rather than a
+    bounded/sample label. ``nasdaqlisted.txt`` carries no sector/industry
+    columns — those arrive from EODHD ``General`` at hydration time — so entries
+    leave them ``None`` and carry the listing's ``Financial Status`` flag.
+    """
+    entries: list[dict] = []
+    excluded: list[dict] = []
+    seen_codes: set[str] = set()
+    seen_tickers: set[str] = set()
+    row_count = len(rows)
+    public_source_url = redact_url_secrets(source_url)
+    source = {
+        "name": NASDAQ_SOURCE_NAME,
+        "url": public_source_url,
+        "retrieved_at": retrieved_at,
+        "sha256": source_sha256,
+        "row_count": row_count,
+    }
+    for row in rows:
+        if not isinstance(row, dict):
+            excluded.append({"reason": "row is not an object"})
+            continue
+        classification = classify_nasdaq_listed_row(row)
+        if classification != "equity_kept":
+            excluded.append({"code": _nasdaq_row_symbol(row), "reason": classification})
+            continue
+        raw_code = _nasdaq_row_symbol(row).upper()
+        if not raw_code or not US_CODE_RE.match(raw_code):
+            excluded.append({"code": raw_code, "reason": "missing or invalid NASDAQ symbol"})
+            continue
+        if US_TEST_SYMBOL_RE.search(raw_code):
+            excluded.append({"code": raw_code, "reason": "exchange test/simulator symbol prefix"})
+            continue
+        ticker = normalise_us_ticker(raw_code)
+        us_code = _us_code_from_ticker(ticker)
+        if us_code in seen_codes:
+            raise ValueError(f"Duplicate NASDAQ symbol in universe source: {us_code}")
+        if ticker in seen_tickers:
+            raise ValueError(f"Duplicate EODHD ticker in NASDAQ universe source: {ticker}")
+        seen_codes.add(us_code)
+        seen_tickers.add(ticker)
+        name_raw = str(row.get("Security Name") or row.get("Company Name") or row.get("companyName") or us_code).strip() or us_code
+        financial_status = str(row.get("Financial Status") or "").strip().upper() or None
+        entry = {
+            "company_id": _nasdaq_company_id(us_code),
+            "ticker": ticker,
+            "us_code": us_code,
+            "name": name_raw,
+            "name_raw": name_raw,
+            "name_normalized": _normalise_us_company_name(name_raw),
+            "market": "NASDAQ",
+            "exchange": "NASDAQ",
+            "region": "US",
+            "sector": None,
+            "industry": None,
+            "currency": "USD",
+            "security_type": NASDAQ_EQUITY_SECURITY_TYPE,
+            "financial_status": financial_status,
+            "active": True,
+            "suspended": False,
+            "delisted": False,
+            "source": source,
+        }
+        entries.append(entry)
+    entries.sort(key=lambda entry: str(entry["us_code"]))
+    for index, entry in enumerate(entries, start=1):
+        entry["universe_rank"] = index
+    metadata = {
+        "schema_version": NASDAQ_UNIVERSE_SEED_SCHEMA_VERSION,
+        "source_name": source["name"],
+        "source_url": public_source_url,
+        "retrieved_at": retrieved_at,
+        "source_sha256": source_sha256,
+        "sha256": source_sha256,
+        "source_row_count": row_count,
+        "row_count": row_count,
+        "normalized_active_count": len(entries),
+        "excluded_count": len(excluded),
+        "excluded": excluded,
+        "file_creation_time": file_creation_time,
+        "sort_rule": "symbol_asc",
+        "identity_rule": NASDAQ_IDENTITY_RULE,
+        "denominator_label": NASDAQ_DENOMINATOR_LABEL,
+        "denominator_status": "complete_security_type_filtered_listing",
+        "complete_exchange_listing": False,
+        "complete_security_type_filtered_listing": True,
+        "security_type_filter": ["etf", "test_issue", "warrant", "warrants", "right", "rights", "unit", "units", "preferred", "notes", "etn"],
+        "security_type_source": "NASDAQ Trader listing ETF/Test-Issue flags + security-name token match (warrant/right/unit/preferred/note/ETN), except operating MLP/partnership Common Units which are kept as listed equity; sector/industry deferred to EODHD at hydration",
+        "generated_by": "investment-screener/screener.py normalise_nasdaq_universe_rows",
+    }
+    return entries, metadata
+
+
+def load_nasdaq_universe_seed(path: Path) -> dict:
+    """Load a wrapped reviewed NASDAQ universe seed, with legacy array support."""
+    with open(path, encoding="utf8") as fh:
+        data = json.load(fh)
+    if isinstance(data, list):
+        return {"metadata": {"seed_path": str(path)}, "entries": data}
+    if not isinstance(data, dict) or not isinstance(data.get("entries"), list):
+        raise ValueError(f"NASDAQ universe seed at {path} must contain an entries array")
+    metadata = dict(data.get("metadata") or {})
+    metadata.setdefault("seed_path", str(path))
+    return {"metadata": metadata, "entries": data["entries"]}
+
+
+def select_nasdaq_universe_batch(
+    entries: list[dict],
+    batch_offset: int = 0,
+    max_tickers: Optional[int] = None,
+    denominator_label: Optional[str] = None,
+) -> dict:
+    """Select a deterministic full-universe slice and return accounting metadata.
+
+    The reviewed full NASDAQ seed is a security-type-filtered exchange listing,
+    so a complete (unbounded) selection is honestly labeled
+    ``complete_security_type_filtered_listing``, never ``known_sample_universe``.
+    """
+    selected = select_us_universe_batch(entries, batch_offset=batch_offset, max_tickers=max_tickers, denominator_label=denominator_label or NASDAQ_DENOMINATOR_LABEL)
+    selected["denominator_label"] = denominator_label or NASDAQ_DENOMINATOR_LABEL
+    if selected["denominator_status"] == "complete_exchange_listing":
+        selected["denominator_status"] = "complete_security_type_filtered_listing"
+        selected["complete_exchange_listing"] = False
+        selected["complete_security_type_filtered_listing"] = True
+    return selected
+
+
+def apply_nasdaq_seed_identity(companies: list[dict], seed_entries: list[dict]) -> list[dict]:
+    """Overlay NASDAQ seed exchange identity while preserving EODHD fundamentals."""
+    by_ticker = {normalise_us_ticker(str(entry.get("ticker"))): entry for entry in seed_entries if entry.get("ticker")}
+    identity_fields = (
+        "company_id", "us_code", "market", "exchange", "region", "security_type", "active", "suspended", "delisted",
+    )
+    enriched: list[dict] = []
+    for company in companies:
+        merged = dict(company)
+        seed = by_ticker.get(normalise_us_ticker(str(company.get("ticker") or "")))
+        for field in identity_fields:
+            value = seed.get(field) if seed else None
+            if value is not None:
+                merged[field] = value
+        merged["market"] = "NASDAQ"
+        merged["exchange"] = "NASDAQ"
+        merged["region"] = "US"
+        merged["currency"] = merged.get("currency") or "USD"
+        enriched.append(merged)
+    return enriched
 
 
 def apply_us_seed_identity(companies: list[dict], seed_entries: list[dict]) -> list[dict]:
@@ -1071,19 +1355,27 @@ def _present_raw_fields(company: dict) -> set[str]:
 
 
 def classify_hydration_tier(company: dict, cfg: dict) -> str:
-    """Classify a company as 'full', 'partial', or 'excluded'.
+    """Classify a company as 'full', 'partial', or 'missing'.
 
     - 'full': all RAW_FIELDS present.
     - 'partial': all CORE_INCOME_FIELDS present AND >=1 BALANCE_CASHFLOW_FIELD missing.
-    - 'excluded': missing a core income field (price/shares/revenue/prior_revenue/net_income)
+    - 'missing': missing a core income field (price/shares/revenue/prior_revenue/net_income)
       or missing everything. Hard-exclusion/freshness gating is a separate concern
       (apply_hard_exclusions); this classifier only decides hydration completeness.
+
+    ``missing`` (formerly ``excluded``) marks a name whose provider returned
+    identity and some statements but left at least one core income field absent
+    (e.g. ``prior_revenue`` for a SPAC shell with a single annual row). It is
+    deliberately a distinct tier from a hard exclusion (freshness/price-gate), so
+    the caller can account it by its true hydration origin rather than dropping it
+    silently and letting the seed-universe sweep re-derive it as a synthetic
+    reconcile-only failure.
 
     Never imputes: absence is measured directly against the field set.
     """
     if not cfg.get("partial_scoring", {}).get("enabled", True):
         present = _present_raw_fields(company)
-        return "full" if len(present) == len(RAW_FIELDS) else "excluded"
+        return "full" if len(present) == len(RAW_FIELDS) else "missing"
 
     present = _present_raw_fields(company)
     core_present = present & set(CORE_INCOME_FIELDS)
@@ -1094,7 +1386,7 @@ def classify_hydration_tier(company: dict, cfg: dict) -> str:
         return "partial"
     if len(present) == len(RAW_FIELDS):
         return "full"
-    return "excluded"
+    return "missing"
 
 
 def hydration_completeness(company: dict, cfg: dict) -> dict:
@@ -1270,7 +1562,23 @@ def rank_companies(companies: list[dict], cfg: dict) -> list[dict]:
                 "rank": None,
             })
         else:
-            scored.append(score_company(company, cfg))
+            row = score_company(company, cfg)
+            # A name that the provider hydrated but with a missing *core income*
+            # field (price/shares/revenue/prior_revenue/net_income) cannot be
+            # scored at all. ``score_company`` reports this as tier "missing"
+            # with ``excluded`` still False, which used to fall through every
+            # ranked bucket and be silently dropped — so the seed-universe
+            # reconcile sweep later re-derived it as a synthetic "no company,
+            # failure, or exclusion record" failure. Give it a concrete reason
+            # and account it as an exclusion here, from its true origin.
+            if row.get("hydration_tier") == "missing":
+                missing_core = [f for f in CORE_INCOME_FIELDS if f not in _present_raw_fields(company)]
+                reason = "missing required core income field(s): " + ", ".join(missing_core)
+                row["excluded"] = True
+                row["exclusion_reasons"] = [reason]
+                row["caveats"] = [reason]
+                row["composite_score"] = None
+            scored.append(row)
 
     fully_scored = [r for r in scored if not r.get("excluded") and r.get("hydration_tier") == "full"]
     partial = [r for r in scored if not r.get("excluded") and r.get("hydration_tier") == "partial"]
@@ -1941,6 +2249,11 @@ def hydrate_companies_from_us_eodhd(
     return companies
 
 
+def _eodhd_payload_has_annual_fundamentals(payload: dict) -> bool:
+    depth = EodhdAdapter._statement_depth(payload)
+    return any(int(depth.get(section) or 0) > 0 for section in ("income", "balance_sheet", "cash_flow"))
+
+
 def _fetch_us_eodhd_companies(
     tickers: list[str],
     eodhd: "EodhdAdapter",
@@ -1965,6 +2278,17 @@ def _fetch_us_eodhd_companies(
                     failure_sink({
                         "ticker": ticker,
                         "reason": "EODHD fundamentals returned no payload (0 statement rows)",
+                        "recoverable": True,
+                        "provider": "eodhd",
+                        "source_family": "eodhd",
+                        "failed_at": _now_iso(),
+                    })
+                continue
+            if not _eodhd_payload_has_annual_fundamentals(payload):
+                if failure_sink:
+                    failure_sink({
+                        "ticker": ticker,
+                        "reason": "EODHD fundamentals returned no annual statement rows",
                         "recoverable": True,
                         "provider": "eodhd",
                         "source_family": "eodhd",
@@ -3369,6 +3693,43 @@ def _ranked_data_as_of_latest(rows: list[dict]) -> Optional[str]:
     return sorted(set(values))[-1] if values else None
 
 
+def _normalise_accounting_ticker(raw_ticker: Any, mode: str) -> str:
+    """Normalize a run-accounting ticker without leaking local path/provider state."""
+    ticker_text = str(raw_ticker or "").strip()
+    if not ticker_text:
+        return "UNKNOWN"
+    upper = ticker_text.upper()
+    if upper.endswith(".AX") or upper.endswith(".AU"):
+        return normalise_asx_ticker(ticker_text)
+    if mode in {US_EODHD_MODE, NASDAQ_MODE} or ".US" in upper:
+        return normalise_us_ticker(ticker_text)
+    return normalise_asx_ticker(ticker_text)
+
+
+def _append_unique_accounting_failure(
+    failures: list[dict],
+    accounted_failures: set[str],
+    ticker: str,
+    reason: str,
+    provider: str,
+    source_family: str,
+    failed_at: Optional[str] = None,
+    recoverable: bool = True,
+) -> None:
+    """Append one durable failure record per ticker for denominator accounting."""
+    if ticker in accounted_failures:
+        return
+    accounted_failures.add(ticker)
+    failures.append({
+        "ticker": ticker,
+        "reason": _redact_secrets_in_text(str(reason or "provider hydration failed")),
+        "recoverable": recoverable,
+        "provider": provider or "unknown",
+        "source_family": source_family or provider or "unknown",
+        "failed_at": failed_at,
+    })
+
+
 def build_file_first_run_payload(
     ranked: list[dict],
     source: str,
@@ -3391,28 +3752,26 @@ def build_file_first_run_payload(
     scores: list[dict] = []
     failures: list[dict] = []
     exclusions: list[dict] = []
+    accounted_failures: set[str] = set()
+    accounted_exclusions: set[str] = set()
+    accounted_companies: set[str] = set()
     for failure in hydration_failures or []:
-        raw_ticker = str(failure.get("ticker") or "")
-        if not raw_ticker:
-            ticker = "UNKNOWN"
-        elif ".US" in raw_ticker.upper():
-            # US hydration runs emit ``.US`` tickers (and dual-class ``BF-B.US``);
-            # they must never be mangled by the ASX normalizer, which would append a
-            # spurious ``.AX`` (the exact failure mode of the BF.B/BRK.B dual-class 404s).
-            ticker = normalise_us_ticker(raw_ticker)
-        else:
-            ticker = normalise_asx_ticker(raw_ticker)
-        failures.append({
-            "ticker": ticker,
-            "reason": str(failure.get("reason") or "provider hydration failed"),
-            "recoverable": failure.get("recoverable") is not False,
-            "provider": failure.get("provider") or failure.get("source_family") or "unknown",
-            "source_family": failure.get("source_family") or failure.get("provider") or "unknown",
-            "failed_at": failure.get("failed_at"),
-        })
+        ticker = _normalise_accounting_ticker(failure.get("ticker"), mode)
+        _append_unique_accounting_failure(
+            failures,
+            accounted_failures,
+            ticker,
+            str(failure.get("reason") or "provider hydration failed"),
+            failure.get("provider") or failure.get("source_family") or "unknown",
+            failure.get("source_family") or failure.get("provider") or "unknown",
+            failed_at=failure.get("failed_at"),
+            recoverable=failure.get("recoverable") is not False,
+        )
 
     for index, row in enumerate(ranked, start=1):
         ticker = row.get("ticker")
+        accounting_ticker = _normalise_accounting_ticker(ticker, mode)
+        accounted_companies.add(accounting_ticker)
         companies.append({
             "ticker": ticker,
             "company_id": row.get("company_id"),
@@ -3467,8 +3826,26 @@ def build_file_first_run_payload(
         provenance.extend(_row_file_first_provenance(row))
         if excluded:
             item = {"ticker": ticker, "reason": exclusion_reason or "excluded from ranking", "recoverable": True}
-            failures.append(item)
-            exclusions.append({"ticker": ticker, "reason": item["reason"]})
+            if accounting_ticker not in accounted_exclusions:
+                accounted_exclusions.add(accounting_ticker)
+                exclusions.append({"ticker": accounting_ticker, "reason": item["reason"]})
+
+    universe_accounting = {
+        _normalise_accounting_ticker(ticker, mode)
+        for ticker in universe
+        if str(ticker or "").strip()
+    }
+    for ticker in sorted(universe_accounting - accounted_companies - accounted_failures - accounted_exclusions):
+        _append_unique_accounting_failure(
+            failures,
+            accounted_failures,
+            ticker,
+            "seed symbol produced no company, failure, or exclusion record",
+            "no-provider",
+            "reconcile-unmatched",
+            failed_at=completed,
+            recoverable=True,
+        )
 
     fully_scored = [row for row in scores if not row["excluded"] and row.get("hydration_tier") != "partial" and row["composite_score"] is not None]
     partially_hydrated = [row for row in scores if not row["excluded"] and row.get("hydration_tier") == "partial" and row["composite_score"] is not None]
@@ -3500,15 +3877,19 @@ def build_file_first_run_payload(
     else:
         denominator_label = universe_source
     complete_listing = bool(batch_metadata.get("complete_exchange_listing", False))
-    market = "US" if mode == "us-eodhd-fundamentals" else "ASX"
+    market = _market_for_mode(mode)
     source_caveats = [
         "Yahoo Finance public endpoints are unofficial; verify against ASX announcements/company reports before acting."
     ] if source == "yahoo-finance" or mode == "asx-yahoo-timeseries" else []
-    if market == "US":
+    if market in ("US", "NASDAQ"):
+        label = "NASDAQ" if market == "NASDAQ" else "US"
         source_caveats.append(
-            "US fundamentals from EODHD (licensed); live price from Yahoo chart. "
+            f"{label} fundamentals from EODHD (licensed); live price from Yahoo chart. "
             "USD values are NOT comparable to ASX AUD values without FX normalization."
         )
+    accounted_symbols = set(accounted_companies) | set(accounted_failures) | set(accounted_exclusions)
+    accounted = len(accounted_symbols)
+    unaccounted = max(denominator - accounted, 0) if denominator is not None else 0
     return {
         "market": market,
         "source": source,
@@ -3555,6 +3936,8 @@ def build_file_first_run_payload(
             "partially_hydrated": len(partially_hydrated),
             "excluded": len(exclusions),
             "failed": len(failures),
+            "accounted": accounted,
+            "unaccounted": unaccounted,
             "stale": 0,
             "missing_required_fields": len(exclusions),
             "percent": round((usable / denominator) * 100, 1) if denominator else None,
@@ -3751,7 +4134,7 @@ def _stable_run_key(source: str, mode: str, universe: list[str], metadata: Optio
         "universe": sorted(str(item) for item in universe),
         "metadata": metadata or {},
     }
-    market = "US" if mode == "us-eodhd-fundamentals" else "ASX"
+    market = _market_for_mode(mode)
     digest = __import__("hashlib").sha256(_json_param(payload).encode()).hexdigest()[:16]
     return f"investment-screener:{market}:{mode}:{digest}"
 
@@ -4070,7 +4453,7 @@ def insert_screener_run(
     the same run/company/observation/score rows instead of inserting mystery twins.
     """
     run_key = run_key or _stable_run_key(source, mode, universe, metadata)
-    market = "US" if mode == "us-eodhd-fundamentals" else "ASX"
+    market = _market_for_mode(mode)
     universe_metadata_payload = _json_param(universe_metadata or {})
     provider_failures_payload = _json_param(sanitize_provider_failures(provider_failures))
     cur = conn.cursor()
@@ -4112,7 +4495,8 @@ def insert_screener_run(
     run_id = cur.fetchone()[0]
     for row in ranked:
         ticker = row.get("ticker")
-        asx_code = (str(ticker).upper().replace(".AX", "") if ticker else None)
+        ticker_upper = str(ticker).upper() if ticker else ""
+        asx_code = row.get("asx_code") or (ticker_upper.replace(".AX", "") if ticker_upper.endswith(".AX") else None)
         cur.execute(
             """
             INSERT INTO investment_screener_companies(
@@ -4279,6 +4663,15 @@ def parse_args(argv=None):
     ap.add_argument(
         "--us-tickers", nargs="*", metavar="TICKER",
         help="Hydrate specific US tickers via EODHD fundamentals (appends .US when omitted).",
+    )
+    ap.add_argument(
+        "--nasdaq-universe-seed",
+        default=None,
+        help="Reviewed full NASDAQ listed-equity seed JSON (security-type-filtered nasdaqlisted.txt). Hydrates via the EODHD fundamentals path with explicit NASDAQ exchange semantics.",
+    )
+    ap.add_argument(
+        "--nasdaq-tickers", nargs="*", metavar="TICKER",
+        help="Hydrate specific NASDAQ tickers via EODHD fundamentals (appends .US when omitted; market/exchange stay NASDAQ).",
     )
     ap.add_argument(
         "--fixture", action="store_true", default=False,
@@ -4457,7 +4850,7 @@ def main(argv=None):
         universe_tickers = list(selected["tickers"])
         cache_dir = Path(args.cache_dir) if args.cache_dir else None
         universe_source = "ASX company directory CSV via reviewed static seed"
-        universe_version = build_universe_version(seed_path, seed["metadata"])
+        universe_version = build_universe_version(seed["metadata"])
         universe_metadata = dict(seed["metadata"])
         batch_metadata = dict(selected)
         batch_metadata.pop("entries", None)
@@ -4501,6 +4894,59 @@ def main(argv=None):
         for w in warnings:
             print(w, file=sys.stderr)
         mode = "asx-yahoo-timeseries"
+    elif args.nasdaq_universe_seed:
+        seed_path = Path(args.nasdaq_universe_seed)
+        watchlist_path_str = str(seed_path)
+        seed = load_nasdaq_universe_seed(seed_path)
+        selected = select_nasdaq_universe_batch(
+            seed["entries"],
+            batch_offset=args.batch_offset,
+            max_tickers=args.max_tickers,
+            denominator_label=args.denominator_label,
+        )
+        universe_tickers = list(selected["tickers"])
+        cache_dir = Path(args.cache_dir) if args.cache_dir else None
+        universe_source = NASDAQ_DENOMINATOR_LABEL
+        universe_version = build_universe_version(seed["metadata"])
+        universe_metadata = dict(seed["metadata"])
+        batch_metadata = dict(selected)
+        batch_metadata.pop("entries", None)
+        batch_metadata.pop("tickers", None)
+        bound = f"offset={args.batch_offset}, size={args.max_tickers or selected['selected_count']}"
+        print(f"Hydrating {len(universe_tickers)} NASDAQ tickers via EODHD fundamentals from universe seed ({bound}); sleep_seconds={args.sleep_seconds}.", file=sys.stderr)
+        eodhd = EodhdAdapter()
+        companies = _fetch_us_eodhd_companies(
+            universe_tickers,
+            eodhd,
+            cache_dir=cache_dir,
+            sleep_seconds=args.sleep_seconds,
+            failure_sink=hydration_failures.append,
+        )
+        companies = apply_nasdaq_seed_identity(companies, selected["entries"])
+        mode = NASDAQ_MODE
+        universe_source = NASDAQ_DENOMINATOR_LABEL
+    elif args.nasdaq_tickers:
+        print(f"Hydrating NASDAQ tickers via EODHD fundamentals: {', '.join(args.nasdaq_tickers)}", file=sys.stderr)
+        universe_tickers = [normalise_us_ticker(ticker) for ticker in args.nasdaq_tickers]
+        cache_dir = Path(args.cache_dir) if args.cache_dir else None
+        universe_source = "explicit NASDAQ ticker list"
+        eodhd = EodhdAdapter()
+        companies = _fetch_us_eodhd_companies(
+            universe_tickers,
+            eodhd,
+            cache_dir=cache_dir,
+            sleep_seconds=args.sleep_seconds,
+            failure_sink=hydration_failures.append,
+        )
+        companies = apply_nasdaq_seed_identity(companies, [])
+        batch_metadata = {
+            "eligible_count": len(universe_tickers),
+            "selected_count": len(universe_tickers),
+            "full_count": len(universe_tickers),
+            "denominator_status": "known_sample_universe",
+            "denominator_label": "explicit NASDAQ ticker list",
+        }
+        mode = NASDAQ_MODE
     elif args.us_universe_seed:
         seed_path = Path(args.us_universe_seed)
         watchlist_path_str = str(seed_path)
@@ -4514,7 +4960,7 @@ def main(argv=None):
         universe_tickers = list(selected["tickers"])
         cache_dir = Path(args.cache_dir) if args.cache_dir else None
         universe_source = US_DENOMINATOR_LABEL
-        universe_version = build_universe_version(seed_path, seed["metadata"])
+        universe_version = build_universe_version(seed["metadata"])
         universe_metadata = dict(seed["metadata"])
         batch_metadata = dict(selected)
         batch_metadata.pop("entries", None)
@@ -4554,7 +5000,7 @@ def main(argv=None):
         }
         mode = "us-eodhd-fundamentals"
     else:
-        print("No input specified. Use --fixture, --asx-watchlist, --asx-tickers, --us-universe-seed, or --us-tickers.", file=sys.stderr)
+        print("No input specified. Use --fixture, --asx-watchlist, --asx-tickers, --us-universe-seed, --us-tickers, --nasdaq-universe-seed, or --nasdaq-tickers.", file=sys.stderr)
         sys.exit(1)
 
     if not companies:
@@ -4580,7 +5026,7 @@ def main(argv=None):
     if args.file_first_run_json:
         payload = build_file_first_run_payload(
             ranked,
-            source="yahoo-finance" if mode == "asx-yahoo-timeseries" else ("eodhd" if mode == "us-eodhd-fundamentals" else mode),
+            source="yahoo-finance" if mode == "asx-yahoo-timeseries" else ("eodhd" if mode in {US_EODHD_MODE, NASDAQ_MODE} else mode),
             mode=mode,
             universe=universe_tickers,
             universe_source=universe_source,
@@ -4608,7 +5054,11 @@ def main(argv=None):
                 "max_tickers": args.max_tickers,
                 "sleep_seconds": args.sleep_seconds,
                 "cache_enabled": bool(args.cache_dir),
-                "source_caveat": "Yahoo Finance public endpoints are unofficial; verify against ASX filings before use.",
+                "source_caveat": (
+                    "Yahoo Finance public endpoints are unofficial; verify against ASX filings before use."
+                    if mode == "asx-yahoo-timeseries"
+                    else "EODHD fundamentals are licensed provider data; verify against company filings before use."
+                ),
             },
             run_key=args.run_key,
             score_version=args.score_version,
