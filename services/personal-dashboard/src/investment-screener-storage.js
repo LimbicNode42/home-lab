@@ -18,6 +18,8 @@ const COMPANY_PARQUET_SCHEMA = new ParquetSchema({
   ticker: { type: 'UTF8' },
   name: { type: 'UTF8' },
   market: { type: 'UTF8' },
+  exchange: { type: 'UTF8', optional: true },
+  region: { type: 'UTF8', optional: true },
   currency: { type: 'UTF8', optional: true },
   sector: { type: 'UTF8', optional: true },
   industry: { type: 'UTF8', optional: true }
@@ -28,6 +30,8 @@ const SCORE_PARQUET_SCHEMA = new ParquetSchema({
   ticker: { type: 'UTF8' },
   name: { type: 'UTF8', optional: true },
   market: { type: 'UTF8' },
+  exchange: { type: 'UTF8', optional: true },
+  region: { type: 'UTF8', optional: true },
   currency: { type: 'UTF8', optional: true },
   sector: { type: 'UTF8', optional: true },
   industry: { type: 'UTF8', optional: true },
@@ -118,6 +122,8 @@ function sanitizeCompany(row, fallbackMarket) {
     ticker,
     name: name ?? ticker,
     market: assertSafeSlug(String(row?.market ?? fallbackMarket).toUpperCase(), 'company market'),
+    exchange: sanitizeText(row?.exchange, null, 32),
+    region: sanitizeText(row?.region, null, 32),
     currency: sanitizeText(row?.currency, null, 16),
     sector: sanitizeText(row?.sector, null, 80),
     industry: sanitizeText(row?.industry, null, 80)
@@ -134,6 +140,8 @@ function sanitizeScore(row, fallbackMarket, index) {
     ticker,
     name: sanitizeText(row?.name, ticker, 180),
     market: assertSafeSlug(String(row?.market ?? fallbackMarket).toUpperCase(), 'score market'),
+    exchange: sanitizeText(row?.exchange, null, 32),
+    region: sanitizeText(row?.region, null, 32),
     currency: sanitizeText(row?.currency, null, 16),
     sector: sanitizeText(row?.sector, null, 80),
     industry: sanitizeText(row?.industry, null, 80),
@@ -379,6 +387,8 @@ function rankedCandidates(run) {
       ticker: score.ticker,
       name: score.name,
       market: score.market,
+      exchange: score.exchange ?? null,
+      region: score.region ?? null,
       currency: score.currency,
       sector: score.sector ?? null,
       industry: score.industry ?? null,
@@ -503,6 +513,8 @@ export async function publishInvestmentScreenerRun({ dataRoot, run, now = new Da
       ticker: candidate.ticker,
       name: candidate.name,
       market: candidate.market,
+      exchange: candidate.exchange ?? null,
+      region: candidate.region ?? null,
       currency: candidate.currency,
       sector: candidate.sector ?? null,
       industry: candidate.industry ?? null,
@@ -847,7 +859,12 @@ export async function readInvestmentScreenerCompanyDetail({ dataRoot, ticker, ma
   const provenanceValues = [...provenance.values()];
   const providerNames = [...new Set(provenanceValues.map((row) => row.provider).filter(Boolean))];
   const sourceFamilies = [...new Set(provenanceValues.map((row) => row.source_family).filter(Boolean))];
-  const identityUnavailable = ['exchange', 'region'];
+  const identityExchange = sanitizeText(company?.exchange ?? score?.exchange, null, 32);
+  const identityRegion = sanitizeText(company?.region ?? score?.region, null, 32);
+  const identityUnavailable = [
+    ...(!identityExchange ? ['exchange'] : []),
+    ...(!identityRegion ? ['region'] : [])
+  ];
   return {
     schema_version: 'investment-screener-company-detail/v1',
     ticker: wantedTicker,
@@ -858,8 +875,8 @@ export async function readInvestmentScreenerCompanyDetail({ dataRoot, ticker, ma
       ticker: wantedTicker,
       name: sanitizeText(company?.name ?? score?.name, wantedTicker, 180),
       market: sanitizeText(company?.market ?? score?.market, safeMarket, 32),
-      exchange: null,
-      region: null,
+      exchange: identityExchange,
+      region: identityRegion,
       sector: sanitizeText(company?.sector ?? score?.sector, null, 80),
       industry: sanitizeText(company?.industry ?? score?.industry, null, 80),
       currency,
@@ -881,7 +898,9 @@ export async function readInvestmentScreenerCompanyDetail({ dataRoot, ticker, ma
       source_families: sourceFamilies,
       caveats: manifest.fixture
         ? ['Fixture/sample data only — not a real ASX scrape/backfill.']
-        : ['Yahoo Finance public endpoints are unofficial bootstrap evidence; verify against ASX filings before acting.'],
+        : (manifest.source === 'eodhd'
+          ? ['EODHD fundamentals are licensed provider data; verify against company filings before acting.']
+          : ['Yahoo Finance public endpoints are unofficial bootstrap evidence; verify against ASX filings before acting.']),
       provenance_rows: provenanceValues.length
     },
     unavailable_data: [
@@ -896,6 +915,12 @@ async function duckRows(connection, sql) {
   return reader.getRowObjectsJS();
 }
 
+async function duckTableColumns(connection, tableName) {
+  const safeTable = String(tableName).replaceAll("'", "''");
+  const rows = await duckRows(connection, `PRAGMA table_info('${safeTable}')`);
+  return new Set(rows.map((row) => String(row.name ?? row.column_name ?? '')));
+}
+
 export async function buildInvestmentScreenerDuckDbSummary({ dataRoot, market = 'ASX', source = 'yahoo-finance' }) {
   const safeMarket = assertSafeSlug(String(market).toUpperCase(), 'market');
   const safeSource = assertSafeSlug(String(source), 'source');
@@ -907,8 +932,11 @@ export async function buildInvestmentScreenerDuckDbSummary({ dataRoot, market = 
   try {
     const rankedParquet = join(runDir, manifest.artifacts.ranked_candidates_parquet.path).replaceAll("'", "''");
     await connection.run(`CREATE OR REPLACE TABLE ranked_candidates AS SELECT * FROM read_parquet('${rankedParquet}')`);
+    const rankedColumns = await duckTableColumns(connection, 'ranked_candidates');
+    const exchangeSelect = rankedColumns.has('exchange') ? 'exchange' : 'NULL AS exchange';
+    const regionSelect = rankedColumns.has('region') ? 'region' : 'NULL AS region';
     const rankedRows = await duckRows(connection, `
-      SELECT rank, ticker, name, market, currency, sector, industry, composite_score AS score, sub_scores_json
+      SELECT rank, ticker, name, market, ${exchangeSelect}, ${regionSelect}, currency, sector, industry, composite_score AS score, sub_scores_json
       FROM ranked_candidates
       WHERE market = '${safeMarket}' AND excluded = false AND composite_score IS NOT NULL
       ORDER BY composite_score DESC, rank ASC
@@ -919,6 +947,8 @@ export async function buildInvestmentScreenerDuckDbSummary({ dataRoot, market = 
       ticker: row.ticker,
       name: row.name,
       market: row.market,
+      exchange: row.exchange ?? null,
+      region: row.region ?? null,
       currency: row.currency,
       sector: row.sector ?? null,
       industry: row.industry ?? null,

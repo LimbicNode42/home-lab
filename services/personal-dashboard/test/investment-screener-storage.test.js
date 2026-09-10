@@ -578,14 +578,17 @@ test('preflight-investment-screener-artifacts validates canonical latest pointer
 });
 
 
-test('run-asx-screener-hydration.sh uses canonical non-fixture file-first publication workflow', async () => {
+test('run-asx-screener-hydration.sh delegates to canonical non-fixture file-first publication workflow', async () => {
   const script = await readFile(new URL('../scripts/run-asx-screener-hydration.sh', import.meta.url), 'utf8');
+  const canonicalScript = await readFile(new URL('../scripts/run-investment-screener-hydration.sh', import.meta.url), 'utf8');
 
   assert.match(script, /--asx-universe-seed/);
-  assert.match(script, /--file-first-run-json/);
-  assert.match(script, /publish-investment-screener-run\.mjs/);
-  assert.match(script, /preflight-investment-screener-artifacts\.mjs/);
+  assert.match(script, /run-investment-screener-hydration\.sh/);
+  assert.match(canonicalScript, /--file-first-run-json/);
+  assert.match(canonicalScript, /publish-investment-screener-run\.mjs/);
+  assert.match(canonicalScript, /preflight-investment-screener-artifacts\.mjs/);
   assert.doesNotMatch(script, /--fixture/);
+  assert.doesNotMatch(canonicalScript, /--fixture/);
 });
 
 

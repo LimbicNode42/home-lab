@@ -64,3 +64,6 @@ vaultwarden-session
 *.pem
 id_rsa
 id_ed25519
+
+# Node.js dependencies
+services/personal-dashboard/node_modules/

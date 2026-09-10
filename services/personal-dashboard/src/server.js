@@ -1350,16 +1350,19 @@ const INVESTMENT_SCREENER_DOC_LINKS = [
   { label: 'Interpreting screener results', url: '/api/docs/investment-screener-interpreting-results', doc_id: 'investment-screener-interpreting-results' },
   { label: 'Investment screener operations', url: '/api/docs/investment-screener-operations-limitations', doc_id: 'investment-screener-operations-limitations' }
 ];
-const INVESTMENT_SCREENER_MODE_VALUES = new Set(['fixture', 'live', 'asx-yahoo-timeseries', 'unknown']);
-const INVESTMENT_SCREENER_FILTERABLE_FIELDS = new Set(['market', 'sector', 'industry']);
-const INVESTMENT_SCREENER_UNAVAILABLE_FIELDS = new Set(['exchange', 'region']);
+const INVESTMENT_SCREENER_MODE_VALUES = new Set(['fixture', 'live', 'asx-yahoo-timeseries', 'us-eodhd-fundamentals', 'nasdaq-eodhd-fundamentals', 'unknown']);
+const INVESTMENT_SCREENER_FILTERABLE_FIELDS = new Set(['market', 'exchange', 'region', 'sector', 'industry']);
+const INVESTMENT_SCREENER_UNAVAILABLE_FIELDS = new Set([]);
 const INVESTMENT_SCREENER_METRIC_VALUES = new Set(['composite', 'quality', 'valuation', 'growth', 'graham_safety', 'durability', 'risk_adjustments']);
 const INVESTMENT_SCREENER_WEIGHT_VALUES = new Set(['balanced', 'quality', 'valuation', 'growth', 'graham_safety', 'durability', 'risk_adjustments']);
 const INVESTMENT_SCREENER_QUERY_KEYS = new Set(['market', 'exchange', 'region', 'sector', 'industry', 'metric', 'weight', 'topN', 'q', 'limit', 'offset']);
 const INVESTMENT_SCREENER_ASX_UNIVERSE_FILE = resolve(__dirname, '..', 'investment-screener', 'universe', 'asx-watchlist.json');
+const INVESTMENT_SCREENER_NASDAQ_UNIVERSE_FILE = resolve(__dirname, '..', 'investment-screener', 'universe', 'nasdaq-listed-equities.seed.json');
 const INVESTMENT_SCREENER_MODE_LABELS = {
   fixture: 'Fixture/sample data',
   'asx-yahoo-timeseries': 'Yahoo Finance ASX bootstrap scrape',
+  'us-eodhd-fundamentals': 'EODHD US fundamentals',
+  'nasdaq-eodhd-fundamentals': 'EODHD NASDAQ fundamentals',
   live: 'Live scrape/export',
   cached: 'Cached provider data',
   'manual-seed': 'Manual universe seed',
@@ -1418,6 +1421,12 @@ function safeMarket(value, fallback = 'ASX') {
   return text.toUpperCase();
 }
 
+function investmentSourceForMarket(market) {
+  const safe = safeMarket(market);
+  if (safe === 'NASDAQ' || safe === 'US') return 'eodhd';
+  return 'yahoo-finance';
+}
+
 // GICS-style sector/industry labels are free-text ("Health Care Equipment & Services",
 // "Pharmaceuticals, Biotechnology & Life Sciences"). They may contain letters, digits,
 // spaces, ampersands, commas, periods, parentheses, apostrophes, and hyphens.
@@ -1452,23 +1461,42 @@ function isoDateOnly(value) {
 
 async function configuredInvestmentUniverse(market = 'ASX') {
   const safe = safeMarket(market);
-  if (safe !== 'ASX') {
-    return { count: null, label: 'unknown', status: 'unknown', version: null };
+  if (safe === 'ASX') {
+    try {
+      const parsed = JSON.parse(await readFile(INVESTMENT_SCREENER_ASX_UNIVERSE_FILE, 'utf8'));
+      const active = Array.isArray(parsed)
+        ? parsed.filter((entry) => entry && entry.active !== false && safeMarket(entry.market, 'ASX') === 'ASX')
+        : [];
+      return {
+        count: active.length,
+        label: 'configured ASX bootstrap watchlist',
+        status: 'known_sample_universe',
+        version: null
+      };
+    } catch {
+      return { count: null, label: 'unknown', status: 'unknown', version: null };
+    }
   }
-  try {
-    const parsed = JSON.parse(await readFile(INVESTMENT_SCREENER_ASX_UNIVERSE_FILE, 'utf8'));
-    const active = Array.isArray(parsed)
-      ? parsed.filter((entry) => entry && entry.active !== false && safeMarket(entry.market, 'ASX') === 'ASX')
-      : [];
-    return {
-      count: active.length,
-      label: 'configured ASX bootstrap watchlist',
-      status: 'known_sample_universe',
-      version: null
-    };
-  } catch {
-    return { count: null, label: 'unknown', status: 'unknown', version: null };
+  if (safe === 'NASDAQ') {
+    try {
+      const parsed = JSON.parse(await readFile(INVESTMENT_SCREENER_NASDAQ_UNIVERSE_FILE, 'utf8'));
+      const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
+      const metadata = parsed?.metadata && typeof parsed.metadata === 'object' && !Array.isArray(parsed.metadata) ? parsed.metadata : {};
+      const active = entries.filter((entry) => entry && entry.active !== false && safeMarket(entry.market, 'NASDAQ') === 'NASDAQ');
+      const sourceSha = safeText(metadata.source_sha256 ?? active[0]?.source?.sha256, null, 80);
+      const retrievedAt = safeText(metadata.source_retrieved_at ?? active[0]?.source?.retrieved_at, null, 40);
+      const label = safeText(metadata.denominator_label, 'NASDAQ listed equities (security-type-filtered, reviewed static seed)', 120);
+      return {
+        count: safeInteger(metadata.normalized_active_count) ?? active.length,
+        label,
+        status: safeText(metadata.denominator_status, 'complete_security_type_filtered_listing', 80),
+        version: [label, sourceSha ? `sha256:${sourceSha}` : null, retrievedAt ? `retrieved_at:${retrievedAt}` : null].filter(Boolean).join(' ')
+      };
+    } catch {
+      return { count: null, label: 'unknown', status: 'unknown', version: null };
+    }
   }
+  return { count: null, label: 'unknown', status: 'unknown', version: null };
 }
 
 function countArtifactCandidates(payload, market) {
@@ -1754,6 +1782,7 @@ async function coverageFromPostgres(pool, market = 'ASX') {
     )
     SELECT
       r.run_key, r.mode, r.market, r.started_at, r.completed_at, r.universe_version, r.source_mix,
+      r.metadata, r.universe_metadata, r.provider_failures,
       scored.usable, scored.scored, scored.excluded,
       observed.scraped, observed.latest_observed_at, observed.data_as_of, observed.missing_required_fields,
       provenance.provenance_rows, provenance.provenance_fields, provenance.source_families,
@@ -1764,13 +1793,27 @@ async function coverageFromPostgres(pool, market = 'ASX') {
   const mode = safeMode(row.mode);
   const configuredUniverse = await configuredInvestmentUniverse(selectedMarket);
   const sourceMix = parseMaybeJson(row.source_mix, {});
+  const runMetadata = parseMaybeJson(row.metadata, {});
+  const universeMetadata = parseMaybeJson(row.universe_metadata, {});
+  const providerFailures = parseMaybeJson(row.provider_failures, []);
   const sourceFamilies = safeTextArray(row.source_families, 8, 80);
   const providers = safeTextArray(sourceMix?.providers, 8, 80);
   const denominator = mode === 'fixture'
     ? (Array.isArray(sourceMix?.universe) ? sourceMix.universe.length : safeInteger(row.usable))
-    : configuredUniverse.count;
-  const denominatorLabel = mode === 'fixture' ? 'fixture sample universe' : configuredUniverse.label;
-  const denominatorStatus = mode === 'fixture' ? 'sample' : configuredUniverse.status;
+    : (safeInteger(universeMetadata.denominator)
+      ?? safeInteger(universeMetadata.selected_count)
+      ?? safeInteger(universeMetadata.normalized_active_count)
+      ?? safeInteger(universeMetadata.full_count)
+      ?? safeInteger(universeMetadata.count)
+      ?? safeInteger(sourceMix?.denominator)
+      ?? configuredUniverse.count);
+  const denominatorLabel = mode === 'fixture'
+    ? 'fixture sample universe'
+    : (safeText(universeMetadata.denominator_label ?? runMetadata.denominator_label, configuredUniverse.label, 120));
+  const denominatorStatus = mode === 'fixture'
+    ? 'sample'
+    : (safeText(universeMetadata.denominator_status ?? runMetadata.denominator_status, configuredUniverse.status, 80));
+  const providerFailureCount = Array.isArray(providerFailures) ? providerFailures.length : (safeInteger(providerFailures) ?? 0);
   const postgresFreshness = freshnessFromTimestamps({
     generatedAt: row.completed_at,
     latestRetrievedAt: row.latest_retrieved_at,
@@ -1789,13 +1832,24 @@ async function coverageFromPostgres(pool, market = 'ASX') {
       scraped: row.scraped,
       scored: row.scored,
       excluded: row.excluded,
+      failed: providerFailureCount,
       stale: staleCount,
       missing_required_fields: row.missing_required_fields,
       freshness: postgresFreshness.freshness,
       warnings: postgresFreshness.warnings,
       caveats: mode === 'fixture'
         ? ['Coverage is against the fixture sample universe, not all ASX-listed companies.']
-        : ['Coverage is for the configured bootstrap watchlist, not the full ASX exchange.']
+        : [
+            denominatorStatus === 'complete_security_type_filtered_listing'
+              ? 'Coverage denominator is a reviewed security-type-filtered full listing; excluded security types are not counted as companies.'
+              : (denominatorStatus === 'complete_exchange_listing'
+                ? 'Coverage denominator is the reviewed full exchange listing.'
+                : (selectedMarket === 'ASX'
+                  ? 'Coverage is for the configured bootstrap watchlist, not the full ASX exchange.'
+                  : 'Coverage denominator comes from the latest reviewed market universe metadata.')),
+            providerFailureCount > 0 ? `${providerFailureCount} provider failure${providerFailureCount === 1 ? '' : 's'} reported for the latest run.` : null,
+            safeInteger(row.excluded) > 0 ? `${safeInteger(row.excluded)} scored row${safeInteger(row.excluded) === 1 ? '' : 's'} excluded from usable coverage.` : null
+          ].filter(Boolean)
     },
     fallbackUsable: safeInteger(row.usable) ?? 0,
     window: {
@@ -1855,7 +1909,7 @@ function sanitizeInvestmentCandidate(candidate, index = 0) {
   if (!ticker && !name) return null;
   const rank = safeNumber(candidate.rank);
   const score = safeNumber(candidate.score) ?? safeNumber(candidate.composite_score);
-  return {
+  const output = {
     rank: rank ?? index + 1,
     ticker: ticker ?? 'UNKNOWN',
     name: name ?? ticker ?? 'Unknown candidate',
@@ -1871,6 +1925,11 @@ function sanitizeInvestmentCandidate(candidate, index = 0) {
     score_caps: safeScoreCaps(candidate.score_caps),
     sanitized_provenance_summary: safeText(candidate.sanitized_provenance_summary, null, 300)
   };
+  const exchange = safeText(candidate.exchange, null, 32);
+  const region = safeText(candidate.region, null, 32);
+  if (exchange) output.exchange = exchange;
+  if (region) output.region = region;
+  return output;
 }
 
 function safeScoreCaps(value) {
@@ -1928,13 +1987,6 @@ function readInvestmentFilterParams(searchParams) {
     }
   }
 
-  for (const field of INVESTMENT_SCREENER_UNAVAILABLE_FIELDS) {
-    const value = searchParams.get(field);
-    if (value && value.trim()) {
-      return investmentFilterError('unsupported_investment_screener_filter', `${field} filtering is not available in the sanitized ranked output yet.`);
-    }
-  }
-
   for (const field of INVESTMENT_SCREENER_FILTERABLE_FIELDS) {
     const rawValue = searchParams.get(field);
     if (!rawValue || !rawValue.trim()) {
@@ -1943,12 +1995,12 @@ function readInvestmentFilterParams(searchParams) {
       }
       continue;
     }
-    if (field === 'market') {
+    if (field === 'market' || field === 'exchange' || field === 'region') {
       const value = safeText(rawValue, null, 80);
       if (!value || !/^[a-z0-9][a-z0-9 ._-]{0,79}$/i.test(value)) {
-        return investmentFilterError('invalid_investment_screener_filter', 'Investment screener filter values must use plain market labels.');
+        return investmentFilterError('invalid_investment_screener_filter', `Investment screener ${field} values must use plain labels.`);
       }
-      applied[field] = value;
+      applied[field] = value.toUpperCase();
       continue;
     }
     // sector / industry: repeated-parameter multi-select. Each occurrence is one
@@ -2029,7 +2081,7 @@ function readInvestmentFilterParams(searchParams) {
 function searchInvestmentCandidates(candidates, query) {
   if (!query) return candidates;
   const needle = query.toLowerCase();
-  return candidates.filter((candidate) => [candidate.ticker, candidate.name, candidate.market, candidate.currency, candidate.sector, candidate.industry]
+  return candidates.filter((candidate) => [candidate.ticker, candidate.name, candidate.market, candidate.exchange, candidate.region, candidate.currency, candidate.sector, candidate.industry]
     .some((value) => String(value ?? '').toLowerCase().includes(needle)));
 }
 
@@ -2038,6 +2090,15 @@ function matchClassification(candidate, field, wanted) {
   const actual = String(candidate?.[field] ?? '').trim().toLowerCase();
   if (!actual) return false;
   return wanted.some((entry) => String(entry).trim().toLowerCase() === actual);
+}
+
+function distinctPlainValues(candidates, field) {
+  const values = new Set();
+  for (const candidate of candidates) {
+    const value = candidate?.[field];
+    if (typeof value === 'string' && value.trim()) values.add(value.trim().toUpperCase());
+  }
+  return [...values].sort((left, right) => left.localeCompare(right));
 }
 
 function distinctClassifications(candidates, field) {
@@ -2074,6 +2135,8 @@ function applyInvestmentScreenerFilters(payload, searchParams) {
       payload: {
         ...payload,
         available_facets: {
+          exchanges: distinctPlainValues(allCandidates, 'exchange'),
+          regions: distinctPlainValues(allCandidates, 'region'),
           sectors: distinctClassifications(allCandidates, 'sector'),
           industries: distinctClassifications(allCandidates, 'industry')
         }
@@ -2088,6 +2151,14 @@ function applyInvestmentScreenerFilters(payload, searchParams) {
   if (applied.market) {
     const wanted = applied.market.toLowerCase();
     candidates = candidates.filter((candidate) => String(candidate.market ?? '').toLowerCase() === wanted);
+  }
+  if (applied.exchange) {
+    const wanted = applied.exchange.toLowerCase();
+    candidates = candidates.filter((candidate) => String(candidate.exchange ?? '').toLowerCase() === wanted);
+  }
+  if (applied.region) {
+    const wanted = applied.region.toLowerCase();
+    candidates = candidates.filter((candidate) => String(candidate.region ?? '').toLowerCase() === wanted);
   }
 
   if (applied.sector) {
@@ -2115,6 +2186,8 @@ function applyInvestmentScreenerFilters(payload, searchParams) {
   // Facets are computed against the full (pre-pagination) filtered candidate set so
   // the sector/industry dropdowns reflect what remains selectable after other filters.
   const available_facets = {
+    exchanges: distinctPlainValues(candidates, 'exchange'),
+    regions: distinctPlainValues(candidates, 'region'),
     sectors: distinctClassifications(candidates, 'sector'),
     industries: distinctClassifications(candidates, 'industry')
   };
@@ -2266,7 +2339,7 @@ function payloadFromDuckDbSummary(summary) {
 
 async function coverageFromDuckDbDataRoot(dataRoot, market = 'ASX') {
   if (!dataRoot) return null;
-  const summary = await buildInvestmentScreenerDuckDbSummary({ dataRoot, market: safeMarket(market), source: 'yahoo-finance' });
+  const summary = await buildInvestmentScreenerDuckDbSummary({ dataRoot, market: safeMarket(market), source: investmentSourceForMarket(market) });
   const payload = payloadFromDuckDbSummary(summary);
   return {
     market: payload.coverage.market,
@@ -2281,7 +2354,7 @@ async function coverageFromDuckDbDataRoot(dataRoot, market = 'ASX') {
 async function rankedFromDuckDbDataRoot(dataRoot, searchParams = null) {
   if (!dataRoot) return null;
   const market = safeMarket(searchParams?.get?.('market') ?? 'ASX');
-  const summary = await buildInvestmentScreenerDuckDbSummary({ dataRoot, market, source: 'yahoo-finance' });
+  const summary = await buildInvestmentScreenerDuckDbSummary({ dataRoot, market, source: investmentSourceForMarket(market) });
   return applyInvestmentScreenerFilters(payloadFromDuckDbSummary(summary), searchParams);
 }
 
@@ -2361,7 +2434,7 @@ async function readInvestmentScreenerCompany({ dataRoot = null, ticker, searchPa
       dataRoot,
       ticker,
       market: safeMarket(searchParams?.get?.('market') ?? 'ASX'),
-      source: 'yahoo-finance'
+      source: investmentSourceForMarket(safeMarket(searchParams?.get?.('market') ?? 'ASX'))
     });
     return { statusCode: 200, payload: detail };
   } catch (err) {

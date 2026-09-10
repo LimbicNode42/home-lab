@@ -61,17 +61,26 @@ test('dashboard investment screener exposes selectable sector and industry filte
 });
 
 
-test('dashboard investment screener notes that exchange and region remain unavailable while sector/industry are selectable', async () => {
+test('dashboard investment screener exposes exchange and region filters for ASX and NASDAQ', async () => {
   const indexSource = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
-  assert.match(indexSource, /Exchange and region are disabled/i);
+  assert.match(indexSource, /<select id="investment-exchange-filter"[^>]*>/);
+  assert.match(indexSource, /<select id="investment-region-filter"[^>]*>/);
+  assert.doesNotMatch(indexSource, /id="investment-exchange-filter"[^>]*disabled/);
+  assert.doesNotMatch(indexSource, /id="investment-region-filter"[^>]*disabled/);
+  assert.match(appSource, /const investmentExchangeFilter = document\.querySelector\('#investment-exchange-filter'\)/);
+  assert.match(appSource, /const investmentRegionFilter = document\.querySelector\('#investment-region-filter'\)/);
+  assert.match(appSource, /searchParams\.set\('exchange'/);
+  assert.match(appSource, /searchParams\.set\('region'/);
 });
 
 
-test('dashboard investment screener market selector is ASX-first and honest about unavailable markets', async () => {
+test('dashboard investment screener market selector exposes ASX and NASDAQ without generic US collapse', async () => {
   const indexSource = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
   assert.match(indexSource, /<option value="ASX">Australia \/ ASX<\/option>/);
+  assert.match(indexSource, /<option value="NASDAQ">United States \/ NASDAQ<\/option>/);
   assert.doesNotMatch(indexSource, /<option value="US">US<\/option>/);
-  assert.match(indexSource, /US, Japan, and Switzerland are not populated in the current dashboard export/i);
+  assert.match(indexSource, /security-type-filtered full listed-equity universe/i);
+  assert.doesNotMatch(indexSource, /NASDAQ-100 constituents/i);
 });
 
 
@@ -169,6 +178,9 @@ test('dashboard investment screener renders source and coverage panel details', 
   assert.match(appSource, /Coverage:/);
   assert.match(appSource, /Freshness:/);
   assert.match(appSource, /denominator_label/);
+  assert.match(appSource, /humanizeInvestmentDenominatorStatus/);
+  assert.match(appSource, /Coverage basis:/);
+  assert.match(appSource, /Run results:/);
 });
 
 

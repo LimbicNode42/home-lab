@@ -57,12 +57,12 @@ Do not use it as the final reason to buy, sell, hold, size, or time a position. 
 4. Check the generated timestamp and data-as-of value.
 5. Start with the default Top 6 composite view.
 6. Read every caveat, risk flag, and limitation shown for a candidate.
-7. Use Market, Score focus, Weight preset, and Suggestions only to change the view of the current export.
+7. Use Market, Exchange, Region, Sector, Industry, Score focus, Weight preset, and Suggestions only to change the view of the current export. NASDAQ must remain visible as NASDAQ, not generic US.
 8. For anything interesting, leave the dashboard and verify against primary filings or an authorized market-data source.
 
 ## Inputs
 
-The product is now ASX-first. The bootstrap universe can come from either the small committed ASX watchlist or the reviewed ASX company-directory seed. The seed uses stable `company_id=asx:{asx_code}` identities, Yahoo `{asx_code}.AX` symbols, sanitized source metadata, and explicit denominator labels so top-N batches are not mistaken for full ASX coverage.
+The product is ASX-first but now also has an explicit NASDAQ bucket. ASX input can come from the small committed watchlist or reviewed ASX company-directory seed. NASDAQ input comes from `universe/nasdaq-listed-equities.seed.json`: a reviewed NASDAQ Trader listed-equity seed with `market=NASDAQ`, `exchange=NASDAQ`, `region=US`, `currency=USD`, and EODHD provider tickers using `{symbol}.US`. That denominator is **complete_security_type_filtered_listing** — full NASDAQ listed-equity coverage after excluding ETFs/test issues/non-equity securities, not the old NASDAQ-100 sample.
 
 Input quality matters more than UI polish. If the watchlist or ASX seed is stale, sparse, sector-skewed, or missing metadata, the output will inherit those limits with a nicer hat.
 
@@ -120,7 +120,7 @@ For routine operation, use the dashboard first. If the dashboard says output is 
 ## Next improvements
 
 - Keep the in-browser documentation map current as new screener docs are added.
-- Export richer safe metadata for exchange, region, sector, and industry filters.
+- Keep exchange, region, sector, and industry filters aligned with each newly published market bucket.
 - Add a freshness badge and last-success marker for the generator job.
 - Add side-by-side run comparison once sanitized historical Postgres projections exist.
 - Add a human review notes field outside the ranked JSON contract.
