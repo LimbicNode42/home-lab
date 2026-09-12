@@ -193,6 +193,7 @@
                 <option value="">All markets</option>
                 <option value="ASX">Australia / ASX</option>
                 <option value="NASDAQ">United States / NASDAQ</option>
+                <option value="NYSE">United States / NYSE</option>
               </select>
             </label>
             <label>
@@ -201,6 +202,7 @@
                 <option value="">All exchanges</option>
                 <option value="ASX">ASX</option>
                 <option value="NASDAQ">NASDAQ</option>
+                <option value="NYSE">NYSE</option>
               </select>
             </label>
             <label>
@@ -258,7 +260,7 @@
             </label>
             <button id="reset-investment-screener-filters" type="button">Reset filters</button>
           </form>
-          <p class="muted investment-control-note">Search, market, exchange, region, sector, industry, score focus, weight sort preset, and page size are applied to already-sanitized ranked data. ASX and NASDAQ are separate exchange buckets; NASDAQ uses the reviewed security-type-filtered full listed-equity universe; coverage is shown against the latest denominator_status, freshness, failures, and exclusions. Sector and industry values come from the active market export; hold Ctrl/Cmd to select more than one.</p>
+          <p class="muted investment-control-note">Search, market, exchange, region, sector, industry, score focus, weight sort preset, and page size are applied to already-sanitized ranked data. ASX, NASDAQ, and NYSE are separate exchange buckets; NASDAQ and NYSE use reviewed security-type-filtered full listed-equity universes; coverage is shown against the latest denominator_status, freshness, failures, and exclusions. Sector and industry values come from the active market export; hold Ctrl/Cmd to select more than one.</p>
           <div class="investment-pagination" aria-label="Investment screener pagination">
             <button id="investment-prev-page" type="button" disabled>Previous</button>
             <span id="investment-page-summary" class="muted">Showing latest page</span>
