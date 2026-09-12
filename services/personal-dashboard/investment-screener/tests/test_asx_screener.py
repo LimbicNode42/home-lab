@@ -2675,5 +2675,93 @@ class TestNasdaqCliArgs(unittest.TestCase):
         self.assertEqual(ticker_args.nasdaq_tickers, ["AAPL", "MSFT"])
 
 
+class TestNyseUniverseSeed(unittest.TestCase):
+
+    def _otherlisted_row(self, symbol, name, exchange="N", etf="N", test="N", cqs=None, nasdaq=None):
+        return {
+            "ACT Symbol": symbol,
+            "Security Name": name,
+            "Exchange": exchange,
+            "CQS Symbol": cqs or symbol,
+            "ETF": etf,
+            "Round Lot Size": "100",
+            "Test Issue": test,
+            "NASDAQ Symbol": nasdaq or symbol,
+        }
+
+    def test_parse_otherlisted_file_extracts_rows_and_footer(self):
+        body = (
+            "ACT Symbol|Security Name|Exchange|CQS Symbol|ETF|Round Lot Size|Test Issue|NASDAQ Symbol\n"
+            "BRK.B|Berkshire Hathaway Inc. Class B|N|BRK.B|N|100|N|BRK.B\n"
+            "SPY|SPDR S&P 500 ETF Trust|P|SPY|Y|100|N|SPY\n"
+            "File Creation Time: 0911202618:01||||||||\n"
+        ).encode("utf-8")
+        rows, meta = scr.parse_nyse_otherlisted_file(body)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["ACT Symbol"], "BRK.B")
+        self.assertEqual(meta["file_creation_time"], "0911202618:01")
+
+    def test_nyse_normalisation_preserves_dot_class_and_accounts_exclusions(self):
+        rows = [
+            self._otherlisted_row("BRK.B", "Berkshire Hathaway Inc. Class B"),
+            self._otherlisted_row("BF.B", "Brown-Forman Corporation Class B"),
+            self._otherlisted_row("SPY", "SPDR S&P 500 ETF Trust", etf="Y"),
+            self._otherlisted_row("TEST", "NYSE Test Issue", test="Y"),
+            self._otherlisted_row("AAC.W", "Acme Acquisition Corp Warrants"),
+            self._otherlisted_row("AAPL", "Apple Inc.", exchange="Q"),
+        ]
+        entries, metadata = scr.normalise_nyse_universe_rows(rows, "https://example.com/otherlisted.txt", "2026-09-12T00:00:00Z", "abc123", file_creation_time="0911202618:01")
+        self.assertEqual([e["us_code"] for e in entries], ["BF.B", "BRK.B"])
+        self.assertEqual(entries[0]["ticker"], "BF.B.US")
+        self.assertEqual(entries[0]["eodhd_ticker"], "BF.B.US")
+        self.assertEqual(entries[0]["company_id"], "nyse:BF.B")
+        self.assertEqual(entries[0]["market"], "NYSE")
+        self.assertEqual(entries[0]["exchange"], "NYSE")
+        self.assertEqual(entries[0]["security_type"], "nyse_listed_equity")
+        self.assertEqual(metadata["source_row_count"], 6)
+        self.assertEqual(metadata["nyse_source_row_count"], 5)
+        self.assertEqual(metadata["normalized_active_count"], 2)
+        self.assertEqual(metadata["excluded_count"], 4)
+        self.assertEqual(metadata["unaccounted_source_row_count"], 0)
+        reasons = {ex["code"]: ex["reason"] for ex in metadata["excluded"]}
+        self.assertEqual(reasons["AAPL"], "not_nyse_exchange")
+        self.assertEqual(reasons["SPY"], "etf")
+        self.assertEqual(reasons["TEST"], "test_issue")
+        self.assertTrue(reasons["AAC.W"].startswith("non_equity:"))
+
+    def test_select_nyse_universe_batch_keeps_filtered_denominator(self):
+        entries, _ = scr.normalise_nyse_universe_rows(
+            [self._otherlisted_row(f"TCK{i}", f"Ticker {i}") for i in range(4)],
+            "https://example.com", "2026-09-12", "abc",
+        )
+        selected = scr.select_nyse_universe_batch(entries)
+        self.assertEqual(selected["eligible_count"], 4)
+        self.assertEqual(selected["denominator_status"], "complete_security_type_filtered_listing")
+        self.assertEqual(selected["denominator_label"], scr.NYSE_DENOMINATOR_LABEL)
+
+    def test_nyse_mode_emits_nyse_market_source_and_identity(self):
+        row = {
+            "rank": 1, "ticker": "BRK.B.US", "company_id": "nyse:BRK.B", "us_code": "BRK.B",
+            "name": "Berkshire Hathaway Inc. Class B", "market": "NYSE", "exchange": "NYSE",
+            "region": "US", "currency": "USD", "composite_score": 88.0, "sub_scores": {"quality": 25}, "fields": {},
+        }
+        payload = scr.build_file_first_run_payload(
+            [row], source="eodhd", mode=scr.NYSE_MODE, universe=["BRK.B.US"],
+            universe_source=scr.NYSE_DENOMINATOR_LABEL,
+            batch_metadata={"eligible_count": 1, "selected_count": 1, "denominator_status": "complete_security_type_filtered_listing", "denominator_label": scr.NYSE_DENOMINATOR_LABEL},
+        )
+        self.assertEqual(payload["market"], "NYSE")
+        self.assertEqual(payload["source"], "eodhd")
+        self.assertEqual(payload["mode"], scr.NYSE_MODE)
+        self.assertEqual(payload["universe"]["market"], "NYSE")
+        self.assertEqual(payload["companies"][0]["exchange"], "NYSE")
+
+    def test_parse_args_accepts_nyse_seed_and_tickers(self):
+        seed_args = scr.parse_args(["--nyse-universe-seed", "universe/nyse-listed-equities.seed.json", "--max-tickers", "3"])
+        self.assertEqual(seed_args.nyse_universe_seed, "universe/nyse-listed-equities.seed.json")
+        ticker_args = scr.parse_args(["--nyse-tickers", "BRK.B", "BF.B.US"])
+        self.assertEqual(ticker_args.nyse_tickers, ["BRK.B", "BF.B.US"])
+
+
 if __name__ == "__main__":
     unittest.main()

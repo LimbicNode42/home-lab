@@ -201,6 +201,14 @@ NASDAQ_MODE = "nasdaq-eodhd-fundamentals"
 NASDAQ_SOURCE_NAME = "NASDAQ Trader listed securities (nasdaqlisted.txt)"
 NASDAQ_SOURCE_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
 NASDAQ_EQUITY_SECURITY_TYPE = "nasdaq_listed_equity"
+NYSE_UNIVERSE_SEED_SCHEMA_VERSION = "investment-screener-nyse-universe-seed/v1"
+NYSE_IDENTITY_RULE = "company_id=nyse:{us_code}; eodhd_ticker={us_code}.US; exchange=NYSE"
+NYSE_DENOMINATOR_LABEL = "NYSE listed equities (NASDAQ Trader otherlisted Exchange=N, security-type-filtered)"
+NYSE_MODE = "nyse-eodhd-fundamentals"
+NYSE_SOURCE_NAME = "NASDAQ Trader other listed securities (otherlisted.txt)"
+NYSE_SOURCE_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
+NYSE_EQUITY_SECURITY_TYPE = "nyse_listed_equity"
+
 # Security-type filter for the reviewed FULL NASDAQ listing (not a bounded
 # top-N sample). Excludes ETFs, exchange test/simulator symbols, and non-equity
 # instruments (warrants, rights, SPAC/SPAC-like units, preferred/depositary
@@ -221,6 +229,8 @@ US_EODHD_MODE = "us-eodhd-fundamentals"
 
 
 def _market_for_mode(mode: str) -> str:
+    if mode == NYSE_MODE:
+        return "NYSE"
     if mode == NASDAQ_MODE:
         return "NASDAQ"
     if mode == US_EODHD_MODE:
@@ -520,12 +530,32 @@ def _us_code_from_ticker(ticker: str) -> str:
     return normalised
 
 
+def normalise_nyse_ticker(ticker: str) -> str:
+    """Append .US for NYSE/EODHD symbols while preserving dot-class symbols."""
+    upper = str(ticker or "").strip().upper()
+    if not upper:
+        return ""
+    body = upper[:-3] if upper.endswith(".US") else upper
+    return body + ".US"
+
+
+def _nyse_code_from_ticker(ticker: str) -> str:
+    normalised = normalise_nyse_ticker(ticker)
+    if normalised.endswith(".US"):
+        return normalised[:-3]
+    return normalised
+
+
 def _us_company_id(code: str) -> str:
     return f"us:{code}"
 
 
 def _nasdaq_company_id(code: str) -> str:
     return f"nasdaq:{code}"
+
+
+def _nyse_company_id(code: str) -> str:
+    return f"nyse:{code}"
 
 
 def _normalise_us_company_name(value: Any) -> str:
@@ -933,6 +963,221 @@ def apply_nasdaq_seed_identity(companies: list[dict], seed_entries: list[dict]) 
                 merged[field] = value
         merged["market"] = "NASDAQ"
         merged["exchange"] = "NASDAQ"
+        merged["region"] = "US"
+        merged["currency"] = merged.get("currency") or "USD"
+        enriched.append(merged)
+    return enriched
+
+
+def _nyse_row_symbol(row: dict) -> str:
+    return str(row.get("ACT Symbol") or row.get("Symbol") or row.get("Code") or row.get("code") or "").strip()
+
+
+def parse_nyse_otherlisted_file(body: bytes) -> tuple[list[dict], dict]:
+    """Parse NASDAQ Trader ``otherlisted.txt`` rows + File Creation Time footer."""
+    text = body.decode("utf-8-sig")
+    lines = [line for line in text.replace("\r\n", "\n").split("\n")]
+    if not lines:
+        raise ValueError("NASDAQ Trader otherlisted listing is empty")
+    header = lines[0].split("|")
+    columns = ["ACT Symbol", "Security Name", "Exchange", "CQS Symbol", "ETF", "Round Lot Size", "Test Issue", "NASDAQ Symbol"]
+    if header != columns:
+        raise ValueError(f"Unexpected NASDAQ Trader otherlisted header: {header!r}")
+    file_creation_time = None
+    rows: list[dict] = []
+    for line in lines[1:]:
+        if not line.strip():
+            continue
+        if line.startswith("File Creation Time"):
+            value = line.split(":", 1)[1].split("|", 1)[0].strip()
+            file_creation_time = value or None
+            continue
+        parts = line.split("|")
+        if len(parts) != len(columns):
+            raise ValueError(f"Malformed NASDAQ Trader otherlisted row (expected {len(columns)} fields): {line[:80]!r}")
+        rows.append(dict(zip(columns, parts)))
+    return rows, {"file_creation_time": file_creation_time}
+
+
+def classify_nyse_otherlisted_row(row: dict) -> str:
+    if str(row.get("Exchange") or "").strip().upper() != "N":
+        return "not_nyse_exchange"
+    if str(row.get("ETF") or "").strip().upper() == "Y":
+        return "etf"
+    if str(row.get("Test Issue") or "").strip().upper() == "Y":
+        return "test_issue"
+    security_name = str(row.get("Security Name") or "")
+    if NASDAQ_OPERATING_PARTNERSHIP_COMMON_UNITS_RE.search(security_name):
+        return "equity_kept"
+    match = NASDAQ_NON_EQUITY_TOKEN_RE.search(security_name)
+    if match:
+        return f"non_equity:{match.group(1).lower()}"
+    return "equity_kept"
+
+
+def _nyse_exclusion_record(row: dict, reason: str) -> dict:
+    return {
+        "code": _nyse_row_symbol(row),
+        "name_raw": str(row.get("Security Name") or ""),
+        "exchange": str(row.get("Exchange") or "").strip().upper() or None,
+        "reason": reason,
+        "cqs_symbol": str(row.get("CQS Symbol") or ""),
+        "nasdaq_symbol": str(row.get("NASDAQ Symbol") or ""),
+        "etf": str(row.get("ETF") or "").strip().upper() == "Y",
+        "test_issue": str(row.get("Test Issue") or "").strip().upper() == "Y",
+        "round_lot_size": str(row.get("Round Lot Size") or ""),
+    }
+
+
+def normalise_nyse_universe_rows(
+    rows: list[dict],
+    source_url: str,
+    retrieved_at: str,
+    source_sha256: str,
+    file_creation_time: Optional[str] = None,
+) -> tuple[list[dict], dict]:
+    entries: list[dict] = []
+    excluded: list[dict] = []
+    seen_codes: set[str] = set()
+    seen_tickers: set[str] = set()
+    row_count = len(rows)
+    public_source_url = redact_url_secrets(source_url)
+    source = {
+        "name": NYSE_SOURCE_NAME,
+        "url": public_source_url,
+        "retrieved_at": retrieved_at,
+        "sha256": source_sha256,
+        "row_count": row_count,
+    }
+    nyse_source_row_count = 0
+    for row in rows:
+        if not isinstance(row, dict):
+            excluded.append({"reason": "row is not an object"})
+            continue
+        if str(row.get("Exchange") or "").strip().upper() == "N":
+            nyse_source_row_count += 1
+        classification = classify_nyse_otherlisted_row(row)
+        if classification != "equity_kept":
+            excluded.append(_nyse_exclusion_record(row, classification))
+            continue
+        raw_code = _nyse_row_symbol(row).upper()
+        if not raw_code or not US_CODE_RE.match(raw_code):
+            excluded.append(_nyse_exclusion_record(row, "invalid_symbol"))
+            continue
+        if US_TEST_SYMBOL_RE.search(raw_code):
+            excluded.append(_nyse_exclusion_record(row, "test_symbol_prefix"))
+            continue
+        us_code = raw_code
+        ticker = normalise_nyse_ticker(us_code)
+        if us_code in seen_codes:
+            raise ValueError(f"Duplicate NYSE symbol in universe source: {us_code}")
+        if ticker in seen_tickers:
+            raise ValueError(f"Duplicate EODHD ticker in NYSE universe source: {ticker}")
+        seen_codes.add(us_code)
+        seen_tickers.add(ticker)
+        name_raw = str(row.get("Security Name") or us_code).strip() or us_code
+        entry = {
+            "company_id": _nyse_company_id(us_code),
+            "ticker": ticker,
+            "eodhd_ticker": ticker,
+            "us_code": us_code,
+            "name": name_raw,
+            "name_raw": name_raw,
+            "name_normalized": _normalise_us_company_name(name_raw),
+            "market": "NYSE",
+            "exchange": "NYSE",
+            "region": "US",
+            "sector": None,
+            "industry": None,
+            "currency": "USD",
+            "security_type": NYSE_EQUITY_SECURITY_TYPE,
+            "active": True,
+            "suspended": False,
+            "delisted": False,
+            "etf": str(row.get("ETF") or "").strip().upper() == "Y",
+            "test_issue": str(row.get("Test Issue") or "").strip().upper() == "Y",
+            "act_symbol": str(row.get("ACT Symbol") or ""),
+            "cqs_symbol": str(row.get("CQS Symbol") or ""),
+            "nasdaq_symbol": str(row.get("NASDAQ Symbol") or ""),
+            "round_lot_size": str(row.get("Round Lot Size") or ""),
+            "source": source,
+        }
+        entries.append(entry)
+    entries.sort(key=lambda entry: str(entry["us_code"]))
+    for index, entry in enumerate(entries, start=1):
+        entry["universe_rank"] = index
+    accounted = len(entries) + len(excluded)
+    metadata = {
+        "schema_version": NYSE_UNIVERSE_SEED_SCHEMA_VERSION,
+        "source_name": source["name"],
+        "source_url": public_source_url,
+        "retrieved_at": retrieved_at,
+        "source_sha256": source_sha256,
+        "sha256": source_sha256,
+        "source_file_creation_time": file_creation_time,
+        "file_creation_time": file_creation_time,
+        "source_row_count": row_count,
+        "row_count": row_count,
+        "nyse_source_row_count": nyse_source_row_count,
+        "normalized_active_count": len(entries),
+        "excluded_count": len(excluded),
+        "excluded": excluded,
+        "unaccounted_source_row_count": max(row_count - accounted, 0),
+        "sort_rule": "symbol_asc",
+        "identity_rule": NYSE_IDENTITY_RULE,
+        "denominator_label": NYSE_DENOMINATOR_LABEL,
+        "denominator_status": "complete_security_type_filtered_listing",
+        "complete_exchange_listing": False,
+        "complete_security_type_filtered_listing": True,
+        "security_type_filter": ["exchange=N", "etf", "test_issue", "warrant", "warrants", "right", "rights", "unit", "units", "preferred", "notes", "etn"],
+        "security_type_source": "NASDAQ Trader otherlisted Exchange=N + ETF/Test-Issue flags + security-name token match (warrant/right/unit/preferred/note/ETN), except operating MLP/partnership Common Units which are kept as listed equity; sector/industry deferred to EODHD at hydration",
+        "generated_by": "investment-screener/screener.py normalise_nyse_universe_rows",
+    }
+    return entries, metadata
+
+
+def load_nyse_universe_seed(path: Path) -> dict:
+    with open(path, encoding="utf8") as fh:
+        data = json.load(fh)
+    if isinstance(data, list):
+        return {"metadata": {"seed_path": str(path)}, "entries": data}
+    if not isinstance(data, dict) or not isinstance(data.get("entries"), list):
+        raise ValueError(f"NYSE universe seed at {path} must contain an entries array")
+    metadata = dict(data.get("metadata") or {})
+    metadata.setdefault("seed_path", str(path))
+    return {"metadata": metadata, "entries": data["entries"]}
+
+
+def select_nyse_universe_batch(
+    entries: list[dict],
+    batch_offset: int = 0,
+    max_tickers: Optional[int] = None,
+    denominator_label: Optional[str] = None,
+) -> dict:
+    selected = select_us_universe_batch(entries, batch_offset=batch_offset, max_tickers=max_tickers, denominator_label=denominator_label or NYSE_DENOMINATOR_LABEL)
+    selected["denominator_label"] = denominator_label or NYSE_DENOMINATOR_LABEL
+    if selected["denominator_status"] == "complete_exchange_listing":
+        selected["denominator_status"] = "complete_security_type_filtered_listing"
+        selected["complete_exchange_listing"] = False
+        selected["complete_security_type_filtered_listing"] = True
+    return selected
+
+
+def apply_nyse_seed_identity(companies: list[dict], seed_entries: list[dict]) -> list[dict]:
+    by_ticker = {normalise_nyse_ticker(str(entry.get("ticker") or entry.get("eodhd_ticker"))): entry for entry in seed_entries if entry.get("ticker") or entry.get("eodhd_ticker")}
+    identity_fields = (
+        "company_id", "us_code", "market", "exchange", "region", "security_type", "active", "suspended", "delisted",
+    )
+    enriched: list[dict] = []
+    for company in companies:
+        merged = dict(company)
+        seed = by_ticker.get(normalise_nyse_ticker(str(company.get("ticker") or "")))
+        for field in identity_fields:
+            value = seed.get(field) if seed else None
+            if value is not None:
+                merged[field] = value
+        merged["market"] = "NYSE"
+        merged["exchange"] = "NYSE"
         merged["region"] = "US"
         merged["currency"] = merged.get("currency") or "USD"
         enriched.append(merged)
@@ -3701,7 +3946,9 @@ def _normalise_accounting_ticker(raw_ticker: Any, mode: str) -> str:
     upper = ticker_text.upper()
     if upper.endswith(".AX") or upper.endswith(".AU"):
         return normalise_asx_ticker(ticker_text)
-    if mode in {US_EODHD_MODE, NASDAQ_MODE} or ".US" in upper:
+    if mode == NYSE_MODE:
+        return normalise_nyse_ticker(ticker_text)
+    if mode in {US_EODHD_MODE, NASDAQ_MODE, NYSE_MODE} or ".US" in upper:
         return normalise_us_ticker(ticker_text)
     return normalise_asx_ticker(ticker_text)
 
@@ -3881,8 +4128,8 @@ def build_file_first_run_payload(
     source_caveats = [
         "Yahoo Finance public endpoints are unofficial; verify against ASX announcements/company reports before acting."
     ] if source == "yahoo-finance" or mode == "asx-yahoo-timeseries" else []
-    if market in ("US", "NASDAQ"):
-        label = "NASDAQ" if market == "NASDAQ" else "US"
+    if market in ("US", "NASDAQ", "NYSE"):
+        label = market
         source_caveats.append(
             f"{label} fundamentals from EODHD (licensed); live price from Yahoo chart. "
             "USD values are NOT comparable to ASX AUD values without FX normalization."
@@ -4674,6 +4921,15 @@ def parse_args(argv=None):
         help="Hydrate specific NASDAQ tickers via EODHD fundamentals (appends .US when omitted; market/exchange stay NASDAQ).",
     )
     ap.add_argument(
+        "--nyse-universe-seed",
+        default=None,
+        help="Reviewed full NYSE listed-equity seed JSON (otherlisted.txt Exchange=N, security-type-filtered). Hydrates via the EODHD fundamentals path with explicit NYSE exchange semantics.",
+    )
+    ap.add_argument(
+        "--nyse-tickers", nargs="*", metavar="TICKER",
+        help="Hydrate specific NYSE tickers via EODHD fundamentals (appends .US when omitted; market/exchange stay NYSE; dot-class symbols are preserved).",
+    )
+    ap.add_argument(
         "--fixture", action="store_true", default=False,
         help="Use built-in fixture data instead of live network calls.",
     )
@@ -4947,6 +5203,59 @@ def main(argv=None):
             "denominator_label": "explicit NASDAQ ticker list",
         }
         mode = NASDAQ_MODE
+    elif args.nyse_universe_seed:
+        seed_path = Path(args.nyse_universe_seed)
+        watchlist_path_str = str(seed_path)
+        seed = load_nyse_universe_seed(seed_path)
+        selected = select_nyse_universe_batch(
+            seed["entries"],
+            batch_offset=args.batch_offset,
+            max_tickers=args.max_tickers,
+            denominator_label=args.denominator_label,
+        )
+        universe_tickers = list(selected["tickers"])
+        cache_dir = Path(args.cache_dir) if args.cache_dir else None
+        universe_source = NYSE_DENOMINATOR_LABEL
+        universe_version = build_universe_version(seed["metadata"])
+        universe_metadata = dict(seed["metadata"])
+        batch_metadata = dict(selected)
+        batch_metadata.pop("entries", None)
+        batch_metadata.pop("tickers", None)
+        bound = f"offset={args.batch_offset}, size={args.max_tickers or selected['selected_count']}"
+        print(f"Hydrating {len(universe_tickers)} NYSE tickers via EODHD fundamentals from universe seed ({bound}); sleep_seconds={args.sleep_seconds}.", file=sys.stderr)
+        eodhd = EodhdAdapter()
+        companies = _fetch_us_eodhd_companies(
+            universe_tickers,
+            eodhd,
+            cache_dir=cache_dir,
+            sleep_seconds=args.sleep_seconds,
+            failure_sink=hydration_failures.append,
+        )
+        companies = apply_nyse_seed_identity(companies, selected["entries"])
+        mode = NYSE_MODE
+        universe_source = NYSE_DENOMINATOR_LABEL
+    elif args.nyse_tickers:
+        print(f"Hydrating NYSE tickers via EODHD fundamentals: {', '.join(args.nyse_tickers)}", file=sys.stderr)
+        universe_tickers = [normalise_nyse_ticker(ticker) for ticker in args.nyse_tickers]
+        cache_dir = Path(args.cache_dir) if args.cache_dir else None
+        universe_source = "explicit NYSE ticker list"
+        eodhd = EodhdAdapter()
+        companies = _fetch_us_eodhd_companies(
+            universe_tickers,
+            eodhd,
+            cache_dir=cache_dir,
+            sleep_seconds=args.sleep_seconds,
+            failure_sink=hydration_failures.append,
+        )
+        companies = apply_nyse_seed_identity(companies, [])
+        batch_metadata = {
+            "eligible_count": len(universe_tickers),
+            "selected_count": len(universe_tickers),
+            "full_count": len(universe_tickers),
+            "denominator_status": "known_sample_universe",
+            "denominator_label": "explicit NYSE ticker list",
+        }
+        mode = NYSE_MODE
     elif args.us_universe_seed:
         seed_path = Path(args.us_universe_seed)
         watchlist_path_str = str(seed_path)
@@ -5000,7 +5309,7 @@ def main(argv=None):
         }
         mode = "us-eodhd-fundamentals"
     else:
-        print("No input specified. Use --fixture, --asx-watchlist, --asx-tickers, --us-universe-seed, --us-tickers, --nasdaq-universe-seed, or --nasdaq-tickers.", file=sys.stderr)
+        print("No input specified. Use --fixture, --asx-watchlist, --asx-tickers, --us-universe-seed, --us-tickers, --nasdaq-universe-seed, --nasdaq-tickers, --nyse-universe-seed, or --nyse-tickers.", file=sys.stderr)
         sys.exit(1)
 
     if not companies:
@@ -5026,7 +5335,7 @@ def main(argv=None):
     if args.file_first_run_json:
         payload = build_file_first_run_payload(
             ranked,
-            source="yahoo-finance" if mode == "asx-yahoo-timeseries" else ("eodhd" if mode in {US_EODHD_MODE, NASDAQ_MODE} else mode),
+            source="yahoo-finance" if mode == "asx-yahoo-timeseries" else ("eodhd" if mode in {US_EODHD_MODE, NASDAQ_MODE, NYSE_MODE} else mode),
             mode=mode,
             universe=universe_tickers,
             universe_source=universe_source,

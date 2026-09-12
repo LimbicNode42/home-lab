@@ -43,6 +43,26 @@
       "notes": "EODHD fundamentals (.US symbols). Full active = 3434 security-type-filtered listed equities. Requires EODHD_API_KEY at runtime (fail-closed without it)."
     },
     {
+      "id": "nyse",
+      "enabled": true,
+      "market": "NYSE",
+      "exchange": "NYSE",
+      "region": "US",
+      "currency": "USD",
+      "source": "eodhd",
+      "mode": "nyse-eodhd-fundamentals",
+      "seed": "investment-screener/universe/nyse-listed-equities.seed.json",
+      "seed_arg": "--nyse-universe-seed",
+      "denominator_label": "NYSE listed equities (NASDAQ Trader otherlisted Exchange=N, security-type-filtered)",
+      "denominator_status": "complete_security_type_filtered_listing",
+      "full_count_policy": "complete_seed",
+      "smoke_batch_size": 3,
+      "sleep_seconds": 0.75,
+      "max_generated_age_hours": 26,
+      "credential_env": "EODHD_API_KEY",
+      "notes": "EODHD fundamentals (.US symbols). Full active count resolves from the reviewed security-type-filtered NYSE seed at runtime. Requires EODHD_API_KEY at runtime (fail-closed without it)."
+    },
+    {
       "id": "us",
       "enabled": false,
       "market": "US",
