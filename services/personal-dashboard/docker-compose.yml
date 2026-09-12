@@ -29,6 +29,9 @@ services:
       INVESTMENT_SCREENER_DATA_ROOT: /app
       HOMELAB_HEALTH_REPORT_FILE: /app/homelab-health/latest_report.txt
       MOBILE_WORKFLOW_STATUS_FILE: /app/mobile-workflow/status.json
+      MOBILE_VIEWER_UPSTREAM_URL: ${MOBILE_VIEWER_UPSTREAM_URL:-http://192.168.0.20:6080}
+      MOBILE_VIEWER_NOVNC_TOKEN_FILE: /run/secrets/mobile-viewer-novnc-token
+      METAMCP_STATUS_FILE: /app/metamcp/status.json
       PERSONAL_DASHBOARD_DATABASE_URL: ${PERSONAL_DASHBOARD_DATABASE_URL:-}
       PGSSLMODE: ${PGSSLMODE:-require}
       REPO_DOCS_ROOT: /app/repo-docs
@@ -69,6 +72,18 @@ services:
       - type: bind
         source: ${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}/mobile-workflow
         target: /app/mobile-workflow
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}/metamcp
+        target: /app/metamcp
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${MOBILE_VIEWER_NOVNC_TOKEN_FILE_HOST:-/var/lib/personal-dashboard/secrets/mobile-viewer-novnc-token}
+        target: /run/secrets/mobile-viewer-novnc-token
         read_only: true
         bind:
           create_host_path: false

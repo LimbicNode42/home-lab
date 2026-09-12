@@ -10,7 +10,8 @@ const DEFAULT_CONFIG = {
         { label: 'Vaultwarden', href: 'https://vault.wheeler-network.com' },
         { label: 'Traefik', href: 'https://traefik.wheeler-network.com' },
         { label: 'Hermes Kanban', href: 'http://192.168.0.20:9119/kanban' },
-        { label: 'Unified Inbox', href: 'http://192.168.0.50:8766' }
+        { label: 'Unified Inbox', href: 'http://192.168.0.50:8766' },
+        { label: 'Jellyfin', href: 'http://192.168.0.8:8096' }
       ]
     }
   ],
@@ -35,6 +36,14 @@ const DEFAULT_CONFIG = {
       displayUrl: 'http://192.168.0.50:8766',
       acceptableStatuses: [200],
       timeoutMs: 1000
+    },
+    {
+      id: 'jellyfin',
+      label: 'Jellyfin',
+      targetUrl: 'http://192.168.0.8:8096/health',
+      displayUrl: 'http://192.168.0.8:8096',
+      acceptableStatuses: [200],
+      timeoutMs: 1500
     }
   ],
   unifiedInbox: {
@@ -352,22 +361,28 @@ function validateMobileWorkflow(mobileWorkflow) {
 
   const viewer = mobileWorkflow.viewer ?? {};
   const mode = requireText(viewer.mode ?? 'review_required', 'mobileWorkflow.viewer.mode');
-  if (!['review_required', 'read_only_screenshot', 'ssh_tunnel'].includes(mode)) {
-    throw new Error('Invalid dashboard config: mobileWorkflow.viewer.mode must be review_required, read_only_screenshot, or ssh_tunnel');
+  if (!['review_required', 'read_only_screenshot', 'ssh_tunnel', 'authenticated_novnc'].includes(mode)) {
+    throw new Error('Invalid dashboard config: mobileWorkflow.viewer.mode must be review_required, read_only_screenshot, ssh_tunnel, or authenticated_novnc');
   }
   const label = requireText(viewer.label ?? 'Emulator viewer requires review', 'mobileWorkflow.viewer.label');
   const instruction = requireText(viewer.instruction ?? 'A viewer must be reviewed and authenticated before dashboard linking.', 'mobileWorkflow.viewer.instruction');
   const href = requireOptionalText(viewer.href, 'mobileWorkflow.viewer.href');
   if (href) {
-    if (!isHttpUrl(href)) {
-      throw new Error('Invalid dashboard config: mobileWorkflow.viewer.href must be an http(s) URL');
-    }
-    const parsed = new URL(href);
-    if (mode === 'ssh_tunnel' && !['127.0.0.1', 'localhost'].includes(parsed.hostname)) {
-      throw new Error('Invalid mobile workflow viewer: direct emulator links require reviewed authenticated proxy access');
-    }
-    if (mode === 'read_only_screenshot' && parsed.protocol !== 'https:') {
-      throw new Error('Invalid mobile workflow viewer: read-only screenshot links must use https');
+    if (mode === 'authenticated_novnc') {
+      if (href !== '/mobile-viewer/') {
+        throw new Error('Invalid mobile workflow viewer: authenticated noVNC links must use the dashboard /mobile-viewer/ proxy');
+      }
+    } else {
+      if (!isHttpUrl(href)) {
+        throw new Error('Invalid dashboard config: mobileWorkflow.viewer.href must be an http(s) URL');
+      }
+      const parsed = new URL(href);
+      if (mode === 'ssh_tunnel' && !['127.0.0.1', 'localhost'].includes(parsed.hostname)) {
+        throw new Error('Invalid mobile workflow viewer: direct emulator links require reviewed authenticated proxy access');
+      }
+      if (mode === 'read_only_screenshot' && parsed.protocol !== 'https:') {
+        throw new Error('Invalid mobile workflow viewer: read-only screenshot links must use https');
+      }
     }
   }
 

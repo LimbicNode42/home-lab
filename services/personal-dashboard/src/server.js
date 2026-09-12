@@ -67,6 +67,125 @@ function assertSafeAuth({ authMode, nodeEnv, allowDisabledAuth }) {
   }
 }
 
+
+const MOBILE_VIEWER_PREFIX = '/mobile-viewer';
+
+function readOptionalSecretFile(path) {
+  if (!path) return null;
+  try {
+    const value = readFileSync(path, 'utf8').trim();
+    return value || null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeMobileViewerPath(url) {
+  if (url.pathname === MOBILE_VIEWER_PREFIX || url.pathname === `${MOBILE_VIEWER_PREFIX}/`) {
+    return '/vnc.html?autoconnect=1&resize=scale&path=mobile-viewer/websockify';
+  }
+  const strippedPath = url.pathname.slice(MOBILE_VIEWER_PREFIX.length) || '/';
+  const upstreamPath = strippedPath.startsWith('/') ? strippedPath : `/${strippedPath}`;
+  if (upstreamPath === '/vnc.html' && !url.searchParams.has('path')) {
+    const params = new URLSearchParams(url.searchParams);
+    params.set('path', 'mobile-viewer/websockify');
+    params.set('resize', params.get('resize') ?? 'scale');
+    return `${upstreamPath}?${params.toString()}`;
+  }
+  return `${upstreamPath}${url.search}`;
+}
+
+function proxyMobileViewerHttp(request, response, { authMode, proxyUserHeader, upstreamUrl }) {
+  if (!isAuthorized(request, { authMode, proxyUserHeader })) {
+    return text(response, 401, 'Unauthorized');
+  }
+  if (!upstreamUrl) {
+    return text(response, 503, 'Mobile viewer proxy is not configured');
+  }
+
+  const requestUrl = new URL(request.url, 'http://dashboard.local');
+  const upstream = new URL(normalizeMobileViewerPath(requestUrl), upstreamUrl);
+  const upstreamRequest = http.request(upstream, {
+    method: request.method,
+    headers: {
+      accept: request.headers.accept ?? '*/*',
+      'user-agent': request.headers['user-agent'] ?? 'personal-dashboard-mobile-viewer-proxy'
+    },
+    timeout: 5000
+  }, (upstreamResponse) => {
+    const headers = { ...upstreamResponse.headers, 'cache-control': 'no-store' };
+    delete headers['content-security-policy'];
+    response.writeHead(upstreamResponse.statusCode ?? 502, headers);
+    upstreamResponse.pipe(response);
+  });
+  upstreamRequest.on('timeout', () => upstreamRequest.destroy(new Error('mobile viewer upstream timeout')));
+  upstreamRequest.on('error', () => text(response, 502, 'Mobile viewer upstream is unavailable'));
+  request.pipe(upstreamRequest);
+}
+
+function handleMobileViewerUpgrade(request, socket, head, { authMode, proxyUserHeader, upstreamUrl, token }) {
+  if (!isAuthorized(request, { authMode, proxyUserHeader })) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  if (!upstreamUrl || !token) {
+    socket.write('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  const requestUrl = new URL(request.url, 'http://dashboard.local');
+  if (requestUrl.pathname !== `${MOBILE_VIEWER_PREFIX}/websockify`) {
+    socket.write('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  const upstream = new URL(`/websockify?token=${encodeURIComponent(token)}`, upstreamUrl);
+  const upgradeHeaders = {
+    connection: 'Upgrade',
+    upgrade: request.headers.upgrade ?? 'websocket',
+    'sec-websocket-key': request.headers['sec-websocket-key'],
+    'sec-websocket-version': request.headers['sec-websocket-version'],
+    'sec-websocket-protocol': request.headers['sec-websocket-protocol'],
+    origin: request.headers.origin
+  };
+  for (const [key, value] of Object.entries(upgradeHeaders)) {
+    if (value === undefined) delete upgradeHeaders[key];
+  }
+  const upstreamRequest = http.request(upstream, {
+    method: 'GET',
+    headers: upgradeHeaders
+  });
+
+  upstreamRequest.on('upgrade', (upstreamResponse, upstreamSocket, upstreamHead) => {
+    socket.write('HTTP/1.1 101 Switching Protocols\r\n');
+    for (const [key, value] of Object.entries(upstreamResponse.headers)) {
+      if (Array.isArray(value)) {
+        for (const item of value) socket.write(`${key}: ${item}\r\n`);
+      } else if (value !== undefined) {
+        socket.write(`${key}: ${value}\r\n`);
+      }
+    }
+    socket.write('\r\n');
+    if (upstreamHead?.length) socket.write(upstreamHead);
+    if (head?.length) upstreamSocket.write(head);
+    upstreamSocket.pipe(socket);
+    socket.pipe(upstreamSocket);
+  });
+  upstreamRequest.on('response', (upstreamResponse) => {
+    socket.write(`HTTP/1.1 ${upstreamResponse.statusCode ?? 502} Upstream rejected upgrade\r\nConnection: close\r\n\r\n`);
+    socket.destroy();
+    upstreamResponse.resume();
+  });
+  upstreamRequest.on('error', () => {
+    socket.write('HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n');
+    socket.destroy();
+  });
+  upstreamRequest.end();
+}
+
 async function serveStatic(request, response) {
   const url = new URL(request.url, 'http://dashboard.local');
   const requestedPath = url.pathname === '/' ? '/index.html' : url.pathname;
@@ -2892,6 +3011,12 @@ export async function createApp(options = {}) {
   const mobileWorkflowStatusFile = Object.prototype.hasOwnProperty.call(options, 'mobileWorkflowStatusFile')
     ? options.mobileWorkflowStatusFile
     : (process.env.MOBILE_WORKFLOW_STATUS_FILE ?? null);
+  const mobileViewerUpstreamUrl = Object.prototype.hasOwnProperty.call(options, 'mobileViewerUpstreamUrl')
+    ? options.mobileViewerUpstreamUrl
+    : (process.env.MOBILE_VIEWER_UPSTREAM_URL ?? 'http://192.168.0.20:6080');
+  const mobileViewerToken = Object.prototype.hasOwnProperty.call(options, 'mobileViewerToken')
+    ? options.mobileViewerToken
+    : (process.env.MOBILE_VIEWER_NOVNC_TOKEN ?? readOptionalSecretFile(process.env.MOBILE_VIEWER_NOVNC_TOKEN_FILE ?? '/run/secrets/mobile-viewer-novnc-token'));
   const unifiedInboxStatusUrl = Object.prototype.hasOwnProperty.call(options, 'unifiedInboxStatusUrl')
     ? options.unifiedInboxStatusUrl
     : (process.env.UNIFIED_INBOX_STATUS_URL ?? config.unifiedInbox?.statusUrl ?? null);
@@ -2953,11 +3078,22 @@ export async function createApp(options = {}) {
     fetchImpl: dashboardFetchImpl
   });
 
-  return async function dashboardApp(request, response) {
+  const dashboardApp = async function dashboardApp(request, response) {
     const url = new URL(request.url, 'http://dashboard.local');
 
     if (request.method === 'GET' && url.pathname === '/healthz') {
       return json(response, 200, { status: 'ok' });
+    }
+
+    if (url.pathname === MOBILE_VIEWER_PREFIX || url.pathname.startsWith(`${MOBILE_VIEWER_PREFIX}/`)) {
+      if (request.method !== 'GET' && request.method !== 'HEAD') {
+        return text(response, 405, 'Method not allowed');
+      }
+      return proxyMobileViewerHttp(request, response, {
+        authMode,
+        proxyUserHeader,
+        upstreamUrl: mobileViewerUpstreamUrl
+      });
     }
 
     if (url.pathname.startsWith('/api/')) {
@@ -3300,13 +3436,26 @@ export async function createApp(options = {}) {
 
     return json(response, 405, { error: 'method_not_allowed' });
   };
+
+  dashboardApp.handleUpgrade = (request, socket, head) => handleMobileViewerUpgrade(request, socket, head, {
+    authMode,
+    proxyUserHeader,
+    upstreamUrl: mobileViewerUpstreamUrl,
+    token: mobileViewerToken
+  });
+
+  return dashboardApp;
 }
 
 export async function main() {
   const app = await createApp();
   const port = Number(process.env.PORT ?? 4322);
   const host = process.env.HOST ?? '0.0.0.0';
-  http.createServer(app).listen(port, host, () => {
+  const server = http.createServer(app);
+  if (typeof app.handleUpgrade === 'function') {
+    server.on('upgrade', app.handleUpgrade);
+  }
+  server.listen(port, host, () => {
     console.log(`personal-dashboard listening on ${host}:${port}`);
   });
 }

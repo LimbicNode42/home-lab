@@ -120,3 +120,14 @@ cleanly via the enabled units.
 - Consider a dashboard status-checks entry so the Home Dashboard shows emulator
   liveness/freshness (see the `mobileWorkflow` note added to
   `dashboard.public.json`).
+
+## Authenticated read-only dashboard viewer
+
+The safe browser path is the Home Dashboard proxy, not the raw tori noVNC URL:
+
+- Dashboard href: `/mobile-viewer/`
+- Upstream noVNC: `http://192.168.0.20:6080`
+- Backend token file on tori: `/opt/android-emulator/novnc/vnc_tokens` (not exposed to browsers)
+- Dashboard secret mount on critical: `/var/lib/personal-dashboard/secrets/mobile-viewer-novnc-token` -> `/run/secrets/mobile-viewer-novnc-token`
+
+The dashboard requires its existing reverse-proxy auth header before serving `/mobile-viewer/` or accepting the WebSocket upgrade. It injects the noVNC token only on the server-side upstream WebSocket request. `x11vnc` runs with `-viewonly`, so the exposed surface is for review/screenshot/stream feedback, not input control.

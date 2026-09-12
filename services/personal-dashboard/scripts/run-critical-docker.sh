@@ -17,6 +17,7 @@ INVESTMENT_SCREENER_HOST_DIR=${INVESTMENT_SCREENER_HOST_DIR:-/mnt/nas/services/p
 KANBAN_DB_HOST_DIR=${KANBAN_DB_HOST_DIR:-/mnt/nas/services/personal-dashboard/kanban}
 HOMELAB_HEALTH_HOST_DIR=${HOMELAB_HEALTH_HOST_DIR:-/mnt/nas/services/personal-dashboard/homelab-health}
 MOBILE_WORKFLOW_STATUS_HOST_DIR=${MOBILE_WORKFLOW_STATUS_HOST_DIR:-/mnt/nas/services/personal-dashboard/mobile-workflow}
+METAMCP_STATUS_HOST_DIR=${METAMCP_STATUS_HOST_DIR:-/mnt/nas/services/personal-dashboard/metamcp}
 WRITING_POSTS_HOST_DIR=${WRITING_POSTS_HOST_DIR:-/var/lib/personal-dashboard/writing}
 FINNICK_REPORT_HOST_PATH=$FINNICK_REPORT_HOST_DIR/latest_report.txt
 INVESTMENT_SCREENER_REPORT_HOST_PATH=$INVESTMENT_SCREENER_HOST_DIR/latest_report.txt
@@ -25,6 +26,7 @@ KANBAN_DB_HOST_PATH=$KANBAN_DB_HOST_DIR/kanban.db
 HOMELAB_HEALTH_HOST_PATH=$HOMELAB_HEALTH_HOST_DIR/latest_report.txt
 WRITING_POSTS_HOST_PATH=$WRITING_POSTS_HOST_DIR/writing-posts.json
 PERSONAL_DASHBOARD_ENV_FILE=${PERSONAL_DASHBOARD_ENV_FILE:-/root/.hermes/rendered/personal-dashboard.env}
+MOBILE_VIEWER_NOVNC_TOKEN_FILE_HOST=${MOBILE_VIEWER_NOVNC_TOKEN_FILE_HOST:-/var/lib/personal-dashboard/secrets/mobile-viewer-novnc-token}
 
 # Source an operator-local rendered secret file when present. This keeps the
 # committed deploy script portable while avoiding secret values in Git, command
@@ -84,6 +86,16 @@ if [ ! -f "$HOMELAB_HEALTH_HOST_PATH" ]; then
   printf '%s\n' "Refusing to recreate $CONTAINER; the directory bind must contain this expected file." >&2
   exit 1
 fi
+if [ ! -s "$MOBILE_VIEWER_NOVNC_TOKEN_FILE_HOST" ]; then
+  printf '%s\n' "Mobile viewer noVNC token file is missing or empty: $MOBILE_VIEWER_NOVNC_TOKEN_FILE_HOST" >&2
+  printf '%s\n' "Refusing to recreate $CONTAINER; the dashboard proxy needs a server-side token file and must not expose the token in config." >&2
+  exit 1
+fi
+# The dashboard runs as uid/gid 1000 in the container. The mounted token file
+# must be readable by that user; otherwise WebSocket upgrades fail closed with
+# 503 while the HTML viewer itself appears healthy.
+chgrp 1000 "$MOBILE_VIEWER_NOVNC_TOKEN_FILE_HOST"
+chmod 0640 "$MOBILE_VIEWER_NOVNC_TOKEN_FILE_HOST"
 
 # Blog/Drafts is the only writable filesystem-backed dashboard store. Keep it
 # host-local and separate from /app/data so Diary/Goals do not regress to the old
@@ -111,6 +123,7 @@ INVESTMENT_SCREENER_HOST_DIR="$INVESTMENT_SCREENER_HOST_DIR" \
 KANBAN_DB_HOST_DIR="$KANBAN_DB_HOST_DIR" \
 HOMELAB_HEALTH_HOST_DIR="$HOMELAB_HEALTH_HOST_DIR" \
 MOBILE_WORKFLOW_STATUS_HOST_DIR="$MOBILE_WORKFLOW_STATUS_HOST_DIR" \
+METAMCP_STATUS_HOST_DIR="$METAMCP_STATUS_HOST_DIR" \
 APP_DIR="$APP_DIR" \
   "$APP_DIR/scripts/sync-runtime-snapshots.sh"
 
@@ -148,6 +161,9 @@ docker run -d \
   -e INVESTMENT_SCREENER_DATA_ROOT=/app \
   -e HOMELAB_HEALTH_REPORT_FILE=/app/homelab-health/latest_report.txt \
   -e MOBILE_WORKFLOW_STATUS_FILE=/app/mobile-workflow/status.json \
+  -e MOBILE_VIEWER_UPSTREAM_URL=${MOBILE_VIEWER_UPSTREAM_URL:-http://192.168.0.20:6080} \
+  -e MOBILE_VIEWER_NOVNC_TOKEN_FILE=/run/secrets/mobile-viewer-novnc-token \
+  -e METAMCP_STATUS_FILE=/app/metamcp/status.json \
   -e DASHBOARD_AUTH_MODE=${DASHBOARD_AUTH_MODE:-reverse-proxy} \
   -e DASHBOARD_PROXY_USER_HEADER=${DASHBOARD_PROXY_USER_HEADER:-cf-access-authenticated-user-email} \
   -e DASHBOARD_STATUS_CACHE_TTL_MS=${DASHBOARD_STATUS_CACHE_TTL_MS:-30000} \
@@ -163,6 +179,8 @@ docker run -d \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/kanban,target=/app/kanban,readonly" \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/homelab-health,target=/app/homelab-health,readonly" \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/mobile-workflow,target=/app/mobile-workflow,readonly" \
+  --mount "type=bind,source=$MOBILE_VIEWER_NOVNC_TOKEN_FILE_HOST,target=/run/secrets/mobile-viewer-novnc-token,readonly" \
+  --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/metamcp,target=/app/metamcp,readonly" \
   --mount "type=bind,source=$WRITING_POSTS_HOST_DIR,target=/app/writing" \
   "$IMAGE"
 

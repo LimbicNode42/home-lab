@@ -81,6 +81,63 @@ test('rejects direct LAN emulator viewer links without reviewed authenticated ac
   );
 });
 
+
+
+test('accepts reviewed dashboard-relative mobile viewer without embedding credentials', () => {
+  const publicConfig = toPublicConfig(normalizeConfig({
+    ...mobileWorkflowConfig,
+    mobileWorkflow: {
+      ...mobileWorkflowConfig.mobileWorkflow,
+      viewer: {
+        mode: 'authenticated_novnc',
+        label: 'Android emulator viewer',
+        instruction: 'Open the authenticated dashboard noVNC viewer. The browser receives no backend connection material.',
+        href: '/mobile-viewer/'
+      }
+    }
+  }));
+
+  assert.equal(publicConfig.mobileWorkflow.viewer.mode, 'authenticated_novnc');
+  assert.equal(publicConfig.mobileWorkflow.viewer.href, '/mobile-viewer/');
+  assert.equal(/token|password|secret/i.test(JSON.stringify(publicConfig)), false);
+});
+
+test('rejects authenticated mobile viewer links that point back to the dashboard root', () => {
+  assert.throws(
+    () => normalizeConfig({
+      ...mobileWorkflowConfig,
+      mobileWorkflow: {
+        ...mobileWorkflowConfig.mobileWorkflow,
+        viewer: {
+          mode: 'authenticated_novnc',
+          label: 'Bad viewer',
+          instruction: 'This should be refused.',
+          href: 'https://dashboard.wheeler-network.com/'
+        }
+      }
+    }),
+    /authenticated noVNC links must use the dashboard \/mobile-viewer\/ proxy/i
+  );
+});
+
+test('rejects mobile viewer links that embed credentials', () => {
+  assert.throws(
+    () => normalizeConfig({
+      ...mobileWorkflowConfig,
+      mobileWorkflow: {
+        ...mobileWorkflowConfig.mobileWorkflow,
+        viewer: {
+          mode: 'authenticated_novnc',
+          label: 'Bad viewer',
+          instruction: 'This should be refused.',
+          href: 'https://dashboard.wheeler-network.com/mobile-viewer/?token=secret'
+        }
+      }
+    }),
+    /links must not embed credentials|unsafe operator internals|authenticated noVNC links must use the dashboard \/mobile-viewer\/ proxy/i
+  );
+});
+
 test('GET /api/mobile-workflow/status falls back safely when no cache file is configured', async () => {
   const configPath = await writeConfig(mobileWorkflowConfig);
   const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, mobileWorkflowStatusFile: null });
@@ -169,6 +226,57 @@ test('GET /api/mobile-workflow/status requires reverse-proxy auth', async () => 
   }
 });
 
+
+test('GET /mobile-viewer/ requires dashboard auth before proxying noVNC', async () => {
+  const configPath = await writeConfig(mobileWorkflowConfig);
+  const app = await createApp({
+    configPath,
+    authMode: 'reverse-proxy',
+    proxyUserHeader: 'x-forwarded-user',
+    mobileViewerUpstreamUrl: 'http://127.0.0.1:9',
+    mobileViewerToken: 'unused-test-token'
+  });
+  const server = await listen(app);
+
+  try {
+    const unauthorized = await fetch(`${server.baseUrl}/mobile-viewer/`);
+    assert.equal(unauthorized.status, 401);
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /mobile-viewer/ serves the reviewed noVNC viewer instead of the dashboard shell', async () => {
+  const upstream = http.createServer((request, response) => {
+    assert.equal(request.url, '/vnc.html?autoconnect=1&resize=scale&path=mobile-viewer/websockify');
+    response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    response.end('<!doctype html><title>noVNC</title><main>Reviewed emulator viewer</main>');
+  });
+  await new Promise((resolve) => upstream.listen(0, '127.0.0.1', resolve));
+  const { port } = upstream.address();
+  const configPath = await writeConfig(mobileWorkflowConfig);
+  const app = await createApp({
+    configPath,
+    authMode: 'reverse-proxy',
+    proxyUserHeader: 'x-forwarded-user',
+    mobileViewerUpstreamUrl: `http://127.0.0.1:${port}`,
+    mobileViewerToken: 'unused-test-token'
+  });
+  const server = await listen(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/mobile-viewer/`, { headers: { 'x-forwarded-user': 'ben' } });
+    const body = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(body, /Reviewed emulator viewer/);
+    assert.doesNotMatch(body, /id=\"dashboard-title\"|Home Dashboard/);
+  } finally {
+    await server.close();
+    await new Promise((resolve, reject) => upstream.close((err) => err ? reject(err) : resolve()));
+  }
+});
+
 const indexSource = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
 const appSource = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
 const stylesSource = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
@@ -183,7 +291,7 @@ test('app.js renders mobile runtime, adb device, last successful cycle, and view
   assert.match(appSource, /Runtime:/);
   assert.match(appSource, /ADB device:/);
   assert.match(appSource, /Last successful headless cycle:/);
-  assert.match(appSource, /No safe direct emulator viewer link is configured yet/);
+  assert.match(appSource, /Open reviewed emulator viewer/);
   assert.match(appSource, /\/api\/mobile-workflow\/status/);
 });
 

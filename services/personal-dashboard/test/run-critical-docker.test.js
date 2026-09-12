@@ -128,6 +128,10 @@ test('run-critical-docker.sh syncs NAS artifacts into a host-local runtime cache
 
   assert.match(script, /MOBILE_WORKFLOW_STATUS_HOST_DIR=\$\{MOBILE_WORKFLOW_STATUS_HOST_DIR:-\/mnt\/nas\/services\/personal-dashboard\/mobile-workflow\}/, 'fallback script must declare the optional mobile workflow source directory');
   assert.match(script, /-e\s+MOBILE_WORKFLOW_STATUS_FILE=\/app\/mobile-workflow\/status\.json/, 'container must read mobile workflow status from the runtime cache mount');
+  assert.match(script, /MOBILE_VIEWER_NOVNC_TOKEN_FILE_HOST=\$\{MOBILE_VIEWER_NOVNC_TOKEN_FILE_HOST:-\/var\/lib\/personal-dashboard\/secrets\/mobile-viewer-novnc-token\}/, 'fallback script must declare the host-side noVNC token file');
+  assert.match(script, /-e\s+MOBILE_VIEWER_NOVNC_TOKEN_FILE=\/run\/secrets\/mobile-viewer-novnc-token/, 'container must receive only the server-side noVNC token file path');
+  assert.match(script, /chgrp 1000 "\$MOBILE_VIEWER_NOVNC_TOKEN_FILE_HOST"/, 'fallback script must make the token file group-readable by the node user');
+  assert.match(script, /chmod 0640 "\$MOBILE_VIEWER_NOVNC_TOKEN_FILE_HOST"/, 'fallback script must keep the token file bounded while making the dashboard proxy able to read it');
 
   for (const nasVariable of ['FINNICK_REPORT_HOST_DIR', 'INVESTMENT_SCREENER_HOST_DIR', 'KANBAN_DB_HOST_DIR', 'HOMELAB_HEALTH_HOST_DIR', 'MOBILE_WORKFLOW_STATUS_HOST_DIR']) {
     assert.doesNotMatch(
@@ -210,6 +214,10 @@ test('docker-compose.yml mounts host-local runtime cache for read-only artifacts
   assert.match(compose, /WRITING_POSTS_FILE:\s*\/app\/writing\/writing-posts\.json/, 'Compose must point Blog/Drafts at the writable writing store');
   assert.match(compose, /source: \${WRITING_POSTS_HOST_DIR:-\/var\/lib\/personal-dashboard\/writing}[\s\S]*?target: \/app\/writing/, 'Compose must mount a host-local writable writing store directory');
   assert.doesNotMatch(compose, /target:\s*\/app\/writing[\s\S]{0,80}read_only:\s*true/, 'Compose writing store must be writable');
+
+  assert.equal(compose.includes('MOBILE_VIEWER_UPSTREAM_URL: ${MOBILE_VIEWER_UPSTREAM_URL:-http://192.168.0.20:6080}'), true, 'Compose must point the dashboard proxy at the reviewed noVNC upstream by env var');
+  assert.match(compose, /MOBILE_VIEWER_NOVNC_TOKEN_FILE:\s*\/run\/secrets\/mobile-viewer-novnc-token/, 'Compose must pass only the server-side noVNC token file path');
+  assert.match(compose, /source: \$\{MOBILE_VIEWER_NOVNC_TOKEN_FILE_HOST:-\/var\/lib\/personal-dashboard\/secrets\/mobile-viewer-novnc-token\}[\s\S]*?target: \/run\/secrets\/mobile-viewer-novnc-token[\s\S]*?read_only: true/, 'Compose must mount the noVNC token read-only from host-local secret storage');
 
   assert.match(compose, /PERSONAL_DASHBOARD_DATABASE_URL:\s*\$\{PERSONAL_DASHBOARD_DATABASE_URL:-\}/, 'Compose must pass the Postgres database URL from the rendered environment');
   assert.match(compose, /PGSSLMODE:\s*\$\{PGSSLMODE:-require\}/, 'Compose must default PGSSLMODE=require');

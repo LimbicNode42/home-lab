@@ -27,6 +27,10 @@
         {
           "label": "Bazarr",
           "href": "http://192.168.0.8:6767"
+        },
+        {
+          "label": "Jellyfin",
+          "href": "http://192.168.0.8:8096"
         }
       ]
     }
@@ -68,6 +72,16 @@
       "label": "Bazarr",
       "targetUrl": "http://192.168.0.8:6767/",
       "displayUrl": "http://192.168.0.8:6767",
+      "acceptableStatuses": [
+        200
+      ],
+      "timeoutMs": 1500
+    },
+    {
+      "id": "jellyfin",
+      "label": "Jellyfin",
+      "targetUrl": "http://192.168.0.8:8096/health",
+      "displayUrl": "http://192.168.0.8:8096",
       "acceptableStatuses": [
         200
       ],
@@ -172,14 +186,14 @@
     "runtime": {
       "state": "running",
       "adbDeviceId": "emulator-5554",
-      "detail": "Emulator is live; noVNC viewer is reachable from the trusted LAN at http://192.168.0.20:6080 (token-gated; see docs/operations/android-emulator-runbook.md)."
+      "detail": "Emulator is live on tori; authenticated read-only noVNC is proxied through the Home Dashboard."
     },
-    "lastSuccessfulCycleAt": "2026-09-05T03:00:00Z",
+    "lastSuccessfulCycleAt": "2026-09-05T03:00:00.000Z",
     "viewer": {
-      "mode": "live_lan_token_gated",
-      "label": "Android emulator viewer",
-      "instruction": "Open http://192.168.0.20:6080/vnc.html?token=<TOKEN> from a trusted LAN host. The token lives in /opt/android-emulator/novnc/vnc_tokens on tori (Vaultwarden ref planned). Full connect/stop/verify steps in docs/operations/android-emulator-runbook.md.",
-      "href": "http://192.168.0.20:6080/vnc.html"
+      "mode": "authenticated_novnc",
+      "label": "Android emulator viewer (authenticated read-only)",
+      "instruction": "Open through the authenticated Home Dashboard. Browser sessions go through the dashboard proxy; backend connection material stays server-side.",
+      "href": "/mobile-viewer/"
     }
   },
   "unifiedInbox": {
