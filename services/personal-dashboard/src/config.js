@@ -24,9 +24,9 @@ const DEFAULT_CONFIG = {
     {
       id: 'metamcp-gateway',
       label: 'MetaMCP gateway',
-      targetUrl: 'http://192.168.0.20:12008/mcp',
-      displayUrl: 'http://192.168.0.20:12008',
-      acceptableStatuses: [200, 401]
+      targetUrl: 'http://192.168.0.20:12008/health',
+      displayUrl: 'http://metamcp.local:12008',
+      acceptableStatuses: [200]
     },
     {
       id: 'unified-inbox',
@@ -59,7 +59,7 @@ const DEFAULT_CONFIG = {
     title: 'MetaMCP aggregator',
     version: '2.4.22',
     services: [
-      { id: 'metamcp', label: 'MetaMCP app', state: 'live_probe_configured', detail: 'LAN gateway status is checked live through the dashboard status probe.' },
+      { id: 'metamcp', label: 'MetaMCP app', state: 'live_probe_configured', detail: 'Live gateway health is probed server-side at /health; browser links use the metamcp.local friendly name because critical cannot resolve mDNS .local names.' },
       { id: 'metamcp-pg', label: 'MetaMCP Postgres', state: 'last_known_healthy', detail: 'Internal database for the MetaMCP control plane.' }
     ],
     tools: {
@@ -73,11 +73,11 @@ const DEFAULT_CONFIG = {
     },
     access: {
       mode: 'lan_gateway',
-      localUrl: 'http://192.168.0.20:12008',
-      note: 'LAN gateway is reachable at the URL below and still requires gateway authentication. The dashboard stores only the URL.',
+      localUrl: 'http://metamcp.local:12008',
+      note: 'LAN gateway is reachable at the URL below and still requires gateway authentication. The dashboard stores only URLs, never credentials/keys.',
       links: [
-        { label: 'Open MetaMCP gateway', href: 'http://192.168.0.20:12008' },
-        { label: 'MCP endpoint', href: 'http://192.168.0.20:12008/mcp' }
+        { label: 'Open MetaMCP gateway (metamcp.local)', href: 'http://metamcp.local:12008' },
+        { label: 'MCP endpoint (metamcp.local)', href: 'http://metamcp.local:12008/mcp' }
       ]
     }
   },
@@ -245,25 +245,28 @@ function validateMetaMcp(metaMcp) {
     };
   });
 
+  // The static tools block is optional; live registry data is supplied separately.
   const tools = metaMcp.tools ?? {};
-  const total = Number(tools.total ?? 0);
-  if (!Number.isInteger(total) || total < 0) {
-    throw new Error('Invalid dashboard config: metaMcp.tools.total must be a non-negative integer');
-  }
-  if (!Array.isArray(tools.domains)) {
-    throw new Error('Invalid dashboard config: metaMcp.tools.domains must be an array');
-  }
-  const domains = tools.domains.map((domain, index) => {
-    const count = Number(domain?.count ?? 0);
-    if (!Number.isInteger(count) || count < 0) {
-      throw new Error(`Invalid dashboard config: metaMcp.tools.domains[${index}].count must be a non-negative integer`);
+  const hasTools = Number.isInteger(Number(tools.total)) && Array.isArray(tools.domains);
+  let total = null;
+  let domains = [];
+  if (hasTools) {
+    total = Number(tools.total ?? 0);
+    if (total < 0) {
+      throw new Error('Invalid dashboard config: metaMcp.tools.total must be a non-negative integer');
     }
-    return {
-      id: requireText(domain?.id, `metaMcp.tools.domains[${index}].id`),
-      label: requireText(domain?.label, `metaMcp.tools.domains[${index}].label`),
-      count
-    };
-  });
+    domains = tools.domains.map((domain, index) => {
+      const count = Number(domain?.count ?? 0);
+      if (!Number.isInteger(count) || count < 0) {
+        throw new Error(`Invalid dashboard config: metaMcp.tools.domains[${index}].count must be a non-negative integer`);
+      }
+      return {
+        id: requireText(domain?.id, `metaMcp.tools.domains[${index}].id`),
+        label: requireText(domain?.label, `metaMcp.tools.domains[${index}].label`),
+        count
+      };
+    });
+  }
 
   const access = metaMcp.access ?? {};
   const mode = requireText(access.mode, 'metaMcp.access.mode');

@@ -52,11 +52,11 @@ const metamcpConfig = {
     },
     access: {
       mode: 'lan_gateway',
-      localUrl: 'http://192.168.0.20:12008',
-      note: 'LAN gateway requires authentication; the dashboard stores only the URL.',
+      localUrl: 'http://metamcp.local:12008',
+      note: 'LAN gateway requires authentication; the dashboard stores only URLs.',
       links: [
-        { label: 'Open MetaMCP gateway', href: 'http://192.168.0.20:12008' },
-        { label: 'MCP endpoint', href: 'http://192.168.0.20:12008/mcp' }
+        { label: 'Open MetaMCP gateway (metamcp.local)', href: 'http://metamcp.local:12008' },
+        { label: 'MCP endpoint (metamcp.local)', href: 'http://metamcp.local:12008/mcp' }
       ]
     }
   }
@@ -71,8 +71,9 @@ test('normalizes MetaMCP overview metadata for public display', () => {
   assert.equal(publicConfig.metaMcp.tools.total, 36);
   assert.deepEqual(publicConfig.metaMcp.tools.domains.map((domain) => domain.id), ['filesystem', 'git', 'memory', 'fetch']);
   assert.equal(publicConfig.metaMcp.access.mode, 'lan_gateway');
-  assert.equal(publicConfig.metaMcp.access.localUrl, 'http://192.168.0.20:12008');
-  assert.deepEqual(publicConfig.metaMcp.access.links.map((link) => link.href), ['http://192.168.0.20:12008', 'http://192.168.0.20:12008/mcp']);
+  assert.equal(publicConfig.metaMcp.access.localUrl, 'http://metamcp.local:12008');
+  assert.deepEqual(publicConfig.metaMcp.access.links.map((link) => link.href), ['http://metamcp.local:12008', 'http://metamcp.local:12008/mcp']);
+  assert.equal(JSON.stringify(publicConfig.metaMcp.access).includes('http://192.168.0.20:12008'), false);
   assert.equal(JSON.stringify(publicConfig).includes('bearer'), false);
   assert.equal(JSON.stringify(publicConfig).includes('/root/'), false);
 });
@@ -82,7 +83,7 @@ test('accepts reviewed MetaMCP LAN gateway links without embedding credentials',
   const serialized = JSON.stringify(publicConfig.metaMcp.access);
 
   assert.equal(publicConfig.metaMcp.access.mode, 'lan_gateway');
-  assert.equal(publicConfig.metaMcp.access.links[0].href, 'http://192.168.0.20:12008');
+  assert.equal(publicConfig.metaMcp.access.links[0].href, 'http://metamcp.local:12008');
   assert.equal(serialized.includes('api_key'), false);
   assert.equal(serialized.includes('token='), false);
 });
@@ -93,11 +94,25 @@ test('rejects MetaMCP LAN links with credential query parameters', () => {
       ...metamcpConfig,
       metaMcp: {
         ...metamcpConfig.metaMcp,
-        access: { ...metamcpConfig.metaMcp.access, links: [{ label: 'Bad', href: 'http://192.168.0.20:12008?token=secret' }] }
+        access: { ...metamcpConfig.metaMcp.access, links: [{ label: 'Bad', href: 'http://metamcp.local:12008?token=secret' }] }
       }
     }),
     /must not embed credentials/i
   );
+});
+
+
+test('repository config keeps MetaMCP Overview links friendly-name only while status display uses metamcp.local', async () => {
+  const source = JSON.parse(await readFile(new URL('../config/dashboard.public.json', import.meta.url), 'utf8'));
+  const publicConfig = toPublicConfig(normalizeConfig(source));
+  const coreLinks = publicConfig.sections.flatMap((section) => section.links).filter((link) => /metamcp/i.test(`${link.label} ${link.href}`));
+  const metamcpStatus = publicConfig.statusChecks.find((check) => check.id === 'metamcp-gateway');
+  const accessUrls = [publicConfig.metaMcp.access.localUrl, ...publicConfig.metaMcp.access.links.map((link) => link.href)];
+
+  assert.deepEqual(coreLinks.map((link) => link.href), ['http://metamcp.local:12008']);
+  assert.equal(metamcpStatus.displayUrl, 'http://metamcp.local:12008');
+  assert.deepEqual(accessUrls, ['http://metamcp.local:12008', 'http://metamcp.local:12008', 'http://metamcp.local:12008/mcp']);
+  assert.equal(JSON.stringify({ coreLinks, metamcpStatus, accessUrls }).includes('http://192.168.0.20:12008'), false);
 });
 
 test('GET /api/config/public returns the MetaMCP overview without target URLs or secrets', async () => {
@@ -113,7 +128,8 @@ test('GET /api/config/public returns the MetaMCP overview without target URLs or
     assert.equal(response.status, 200);
     assert.equal(body.metaMcp.tools.total, 36);
     assert.equal(body.metaMcp.services[1].label, 'MetaMCP Postgres');
-    assert.equal(body.metaMcp.access.links[0].href, 'http://192.168.0.20:12008');
+    assert.equal(body.metaMcp.access.links[0].href, 'http://metamcp.local:12008');
+    assert.equal(serialized.includes('http://192.168.0.20:12008'), false);
     assert.equal(body.metaMcp.access.command, undefined);
     assert.equal(serialized.includes('targetUrl'), false);
     assert.equal(serialized.includes('TOKEN'), false);

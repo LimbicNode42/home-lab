@@ -171,7 +171,7 @@ test('GET /api/status treats configured acceptable status codes as up for authen
   const configPath = await writeConfig({
     title: 'Home Dashboard',
     sections: [],
-    statusChecks: [{ id: 'metamcp-gateway', label: 'MetaMCP gateway', targetUrl: `${probe.baseUrl}/mcp`, displayUrl: 'http://192.168.0.20:12008', acceptableStatuses: [200, 401] }]
+    statusChecks: [{ id: 'metamcp-gateway', label: 'MetaMCP gateway', targetUrl: `${probe.baseUrl}/mcp`, displayUrl: 'http://metamcp.local:12008', acceptableStatuses: [200, 401] }]
   });
   const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, statusCacheTtlMs: 1000 });
   const server = await listen(app);
@@ -184,7 +184,7 @@ test('GET /api/status treats configured acceptable status codes as up for authen
     assert.equal(response.status, 200);
     assert.equal(body.checks[0].status, 'up');
     assert.equal(body.checks[0].httpStatus, 401);
-    assert.equal(body.checks[0].displayUrl, 'http://192.168.0.20:12008');
+    assert.equal(body.checks[0].displayUrl, 'http://metamcp.local:12008');
     assert.equal(serialized.includes(probe.baseUrl), false);
     assert.equal(serialized.includes('token'), false);
   } finally {
@@ -200,7 +200,7 @@ test('GET /api/status reports down for unacceptable MetaMCP gateway responses', 
   const configPath = await writeConfig({
     title: 'Home Dashboard',
     sections: [],
-    statusChecks: [{ id: 'metamcp-gateway', label: 'MetaMCP gateway', targetUrl: `${probe.baseUrl}/mcp`, displayUrl: 'http://192.168.0.20:12008', acceptableStatuses: [200, 401] }]
+    statusChecks: [{ id: 'metamcp-gateway', label: 'MetaMCP gateway', targetUrl: `${probe.baseUrl}/mcp`, displayUrl: 'http://metamcp.local:12008', acceptableStatuses: [200, 401] }]
   });
   const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, statusCacheTtlMs: 1000 });
   const server = await listen(app);
@@ -225,7 +225,7 @@ test('GET /api/status reports timeout for slow MetaMCP gateway probes', async ()
   const configPath = await writeConfig({
     title: 'Home Dashboard',
     sections: [],
-    statusChecks: [{ id: 'metamcp-gateway', label: 'MetaMCP gateway', targetUrl: `${probe.baseUrl}/mcp`, displayUrl: 'http://192.168.0.20:12008', acceptableStatuses: [200, 401] }]
+    statusChecks: [{ id: 'metamcp-gateway', label: 'MetaMCP gateway', targetUrl: `${probe.baseUrl}/mcp`, displayUrl: 'http://metamcp.local:12008', acceptableStatuses: [200, 401] }]
   });
   const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, statusCacheTtlMs: 1000, statusProbeTimeoutMs: 20 });
   const server = await listen(app);

@@ -18,7 +18,7 @@
         },
         {
           "label": "MetaMCP gateway",
-          "href": "http://192.168.0.20:12008"
+          "href": "http://metamcp.local:12008"
         },
         {
           "label": "Unified Inbox",
@@ -47,11 +47,10 @@
     {
       "id": "metamcp-gateway",
       "label": "MetaMCP gateway",
-      "targetUrl": "http://192.168.0.20:12008/mcp",
-      "displayUrl": "http://192.168.0.20:12008",
+      "targetUrl": "http://192.168.0.20:12008/health",
+      "displayUrl": "http://metamcp.local:12008",
       "acceptableStatuses": [
-        200,
-        401
+        200
       ]
     },
     {
@@ -84,7 +83,7 @@
         "id": "metamcp",
         "label": "MetaMCP app",
         "state": "live_probe_configured",
-        "detail": "LAN gateway status is checked live through the dashboard status probe."
+        "detail": "Live gateway health is probed server-side at /health; browser links use the metamcp.local friendly name because critical cannot resolve mDNS .local names."
       },
       {
         "id": "metamcp-pg",
@@ -121,19 +120,15 @@
     "access": {
       "mode": "lan_gateway",
       "localUrl": "http://metamcp.local:12008",
-      "note": "LAN gateway is reachable at the URL below and still requires gateway authentication. Friendly name metamcp.local (mDNS) resolves to 192.168.0.20; plain-Linux hosts without mDNS should use http://192.168.0.20:12008. Browser login works end-to-end at the friendly name (2026-09-05); the dashboard stores only the URL, never credentials/keys.",
+      "note": "LAN gateway is reachable at the URL below and still requires gateway authentication. Friendly name metamcp.local (mDNS) resolves to 192.168.0.20 for browsers on the LAN; the dashboard server probes the raw IP /health endpoint because critical cannot resolve mDNS .local names. The dashboard stores only URLs, never credentials/keys.",
       "links": [
         {
           "label": "Open MetaMCP gateway (metamcp.local)",
           "href": "http://metamcp.local:12008"
         },
         {
-          "label": "Open MetaMCP gateway (IP)",
-          "href": "http://192.168.0.20:12008"
-        },
-        {
-          "label": "MCP endpoint",
-          "href": "http://192.168.0.20:12008/mcp"
+          "label": "MCP endpoint (metamcp.local)",
+          "href": "http://metamcp.local:12008/mcp"
         }
       ]
     }
