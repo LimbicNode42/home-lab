@@ -148,6 +148,16 @@ h2, h3 { margin-top: 0; }
 .mobile-runtime-list li { margin: 0.25rem 0; }
 .mobile-components { margin-top: 1rem; }
 .mobile-cache-message { margin: 0.25rem 0 1rem; }
+.mobile-matrix-card {
+  padding: 1rem;
+  border: 1px solid #273244;
+  border-radius: 0.8rem;
+  background: #111827;
+  margin-bottom: 1rem;
+}
+.mobile-matrix-card h3 { margin: 0 0 0.65rem; }
+.mobile-matrix-card .mobile-matrix { margin-top: 0.25rem; }
+.mobile-matrix-profile.active { border-color: #2ea043; background: #0f1d16; }
 
 .mobile-control-panel { display: grid; gap: 0.65rem; margin-top: 0.4rem; padding-top: 0.65rem; border-top: 1px solid #273244; }
 .mobile-control-panel h4 { margin: 0; font-size: 0.95rem; }

@@ -393,10 +393,42 @@ function validateMobileWorkflow(mobileWorkflow) {
     components: normalizedComponents,
     runtime: { state: runtimeState, adbDeviceId, detail },
     lastSuccessfulCycleAt,
-    viewer: { mode, label, instruction, href }
+    viewer: { mode, label, instruction, href },
+    deviceMatrix: validateDeviceMatrix(mobileWorkflow.deviceMatrix)
   };
   assertNoUnsafeOperatorInternals(JSON.stringify(normalized), 'mobileWorkflow');
   return normalized;
+}
+
+function validateDeviceMatrix(deviceMatrix) {
+  if (deviceMatrix === undefined || deviceMatrix === null) return null;
+  if (typeof deviceMatrix !== 'object' || Array.isArray(deviceMatrix)) {
+    throw new Error('Invalid dashboard config: mobileWorkflow.deviceMatrix must be an object');
+  }
+  if (deviceMatrix.enabled === false) return { enabled: false, profiles: [] };
+  const profiles = deviceMatrix.profiles;
+  if (!Array.isArray(profiles)) {
+    throw new Error('Invalid dashboard config: mobileWorkflow.deviceMatrix.profiles must be an array');
+  }
+  const normalizedProfiles = profiles.map((profile, index) => {
+    const id = requireText(profile?.id, `mobileWorkflow.deviceMatrix.profiles[${index}].id`);
+    if (!/^[a-z0-9][a-z0-9-]{0,62}$/i.test(id)) {
+      throw new Error(`Invalid dashboard config: mobileWorkflow.deviceMatrix.profiles[${index}].id must be DNS-label-like`);
+    }
+    return {
+      id,
+      label: requireText(profile?.label, `mobileWorkflow.deviceMatrix.profiles[${index}].label`),
+      resolution: requireOptionalText(profile?.resolution, `mobileWorkflow.deviceMatrix.profiles[${index}].resolution`),
+      densityDpi: profile?.densityDpi ?? null,
+      aspectRatio: requireOptionalText(profile?.aspectRatio, `mobileWorkflow.deviceMatrix.profiles[${index}].aspectRatio`),
+      orientation: requireOptionalText(profile?.orientation, `mobileWorkflow.deviceMatrix.profiles[${index}].orientation`)
+    };
+  });
+  return {
+    enabled: true,
+    defaultProfile: requireOptionalText(deviceMatrix.defaultProfile, 'mobileWorkflow.deviceMatrix.defaultProfile'),
+    profiles: normalizedProfiles
+  };
 }
 
 function validateStatusChecks(statusChecks) {

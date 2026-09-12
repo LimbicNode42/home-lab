@@ -3101,6 +3101,23 @@ function sanitizeIsoTimestamp(value) {
   return Number.isNaN(time) ? null : new Date(time).toISOString();
 }
 
+function sanitizeMobileMatrix(rawMatrix) {
+  if (!rawMatrix || typeof rawMatrix !== 'object' || Array.isArray(rawMatrix)) return null;
+  const activeProfileId = sanitizeMobileText(rawMatrix.activeProfileId, null);
+  if (!activeProfileId || !/^[a-z0-9][a-z0-9-]{0,62}$/i.test(activeProfileId)) return null;
+  const serial = sanitizeMobileText(rawMatrix.serial, null);
+  const normalizedSerial = serial && (/^emulator-[0-9]{4,5}$/.test(serial) || /^[A-Za-z0-9._:-]{3,64}$/.test(serial))
+    ? serial
+    : null;
+  return {
+    activeProfileId,
+    activeProfileLabel: sanitizeMobileText(rawMatrix.activeProfileLabel, null),
+    avdName: sanitizeMobileText(rawMatrix.avdName, null),
+    serial: normalizedSerial,
+    startedAt: sanitizeIsoTimestamp(rawMatrix.startedAt)
+  };
+}
+
 function mobileWorkflowPayload({ config, statusFilePayload = null, cacheStatus, message, fileMtimeMs = null }) {
   if (!config?.enabled) {
     return {
@@ -3112,6 +3129,7 @@ function mobileWorkflowPayload({ config, statusFilePayload = null, cacheStatus, 
   }
 
   const runtime = sanitizeMobileRuntime(statusFilePayload?.runtime, config.runtime ?? {});
+  const matrix = sanitizeMobileMatrix(statusFilePayload?.matrix);
   const generatedAt = sanitizeIsoTimestamp(statusFilePayload?.generatedAt) ?? (fileMtimeMs ? new Date(fileMtimeMs).toISOString() : null);
   return {
     enabled: true,
@@ -3119,6 +3137,8 @@ function mobileWorkflowPayload({ config, statusFilePayload = null, cacheStatus, 
     host: config.host,
     components: config.components,
     runtime,
+    matrix,
+    deviceMatrix: config.deviceMatrix,
     lastSuccessfulCycleAt: sanitizeIsoTimestamp(statusFilePayload?.lastSuccessfulCycleAt) ?? config.lastSuccessfulCycleAt ?? null,
     viewer: config.viewer,
     generatedAt,

@@ -116,6 +116,63 @@ cleanly via the enabled units.
 - [x] noVNC answers HTTP 200 on http://192.168.0.20:6080/vnc.html
 - [x] x11vnc bound to loopback only (no LAN 5900 exposure)
 
+## Device matrix (multi-profile testing)
+
+Beyond the persistent `agent_feedback` AVD, `tori` hosts a declarative Android
+device matrix for realistic multi-screen mobile testing. Profiles are defined in
+`services/android-emulator/matrix.json` (Git) and managed by
+`services/android-emulator/scripts/emulator-matrix.sh` (deployed to
+`/opt/android-emulator/`).
+
+| id | AVD | Device | Resolution | Density | Ratio | Orientation | RAM | adb port | display |
+|---|---|---|---|---|---|---|---|---|---|
+| `small` | `matrix_small` | Nexus 5 | 1080x1920 | 480 | 16:9 | portrait | 1536M | 5564 | :98 |
+| `tall` | `matrix_tall` | pixel_6 | 1080x2400 | 420 | 20:9 | portrait | 1536M | 5574 | :97 |
+| `large` | `matrix_large` | pixel_6_pro | 1440x3120 | 560 | 19.5:9 | portrait | 2048M | 5584 | :96 |
+| `tablet` | `matrix_tablet` | Nexus 10 | 2560x1600 | 320 | 16:10 | landscape | 2048M | 5594 | :95 |
+
+All profiles use `system-images;android-36;google_apis;x86_64` (Android 16 / API
+36), software GPU (`swiftshader_indirect`), and a 2048M data partition. `tall` is
+the default profile.
+
+### Capacity constraint (one-at-a-time)
+
+`tori` has 4 vCPU / ~7.7 GiB RAM. A single software-GL emulator already peaks at
+~4.7 GiB, so **only one matrix profile runs at a time** — and it must not run
+concurrently with the resident `agent_feedback` AVD. A concurrent boot of two
+software-GL emulators OOMs the node and crashes both (observed 2026-09-12). The
+manager script enforces this by stopping any other matrix profile before starting
+a new one; the operator must additionally stop `agent_feedback` (or accept the
+risk) before running a matrix profile. `large` and `tablet` are the most
+RAM-hungry and are the first to defer under memory pressure.
+
+### Commands
+
+```bash
+# On tori, as root:
+cd /opt/android-emulator
+./scripts/emulator-matrix.sh create            # create missing AVDs (idempotent)
+./scripts/emulator-matrix.sh status            # table of profiles + running state
+./scripts/emulator-matrix.sh start tall        # start a profile (stops other matrix profiles)
+./scripts/emulator-matrix.sh stop              # stop the running matrix profile
+./scripts/emulator-matrix.sh install tall <apk>
+./scripts/emulator-matrix.sh smoke tall <apk>  # boot-if-needed + install + launch + screenshot
+```
+
+The active profile is written to `/opt/android-emulator/run/matrix-active.json`
+and surfaced in the Home Dashboard mobile-workflow status (`matrix` +
+`deviceMatrix` fields) via `publish-dashboard-status.sh`.
+
+### Verification receipts (2026-09-12)
+
+- `small`: boot=1, 1080x1920@480, `com.limbicnode.unified_inbox_mobile` installed,
+  smoke screenshot `logs/smoke-small.png` (valid 1080x1920 PNG).
+- `tall`: boot=1, 1080x2400@420, app installed + launched, smoke screenshot
+  `logs/smoke-tall.png` (valid 1080x2400 PNG).
+- `large` / `tablet`: AVDs created and config-validated, but **not boot-verified**
+  — deferred due the 4 vCPU / ~7.7 GiB single-emulator capacity wall. They boot
+  one-at-a-time via the same manager script when capacity allows.
+
 ## Open items / follow-ups
 
 - Move the noVNC token into Vaultwarden (folder `homelab`, item

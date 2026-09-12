@@ -210,6 +210,75 @@ test('GET /api/mobile-workflow/status reports malformed cache without leaking ra
   }
 });
 
+test('GET /api/mobile-workflow/status sanitizes device-matrix active profile without leaking paths', async () => {
+  const configPath = await writeConfig({
+    ...mobileWorkflowConfig,
+    mobileWorkflow: {
+      ...mobileWorkflowConfig.mobileWorkflow,
+      deviceMatrix: {
+        enabled: true,
+        defaultProfile: 'tall',
+        profiles: [
+          { id: 'small', label: 'Small phone / 16:9', resolution: '1080x1920', densityDpi: 480, aspectRatio: '16:9', orientation: 'portrait' },
+          { id: 'tall', label: 'Modern tall phone', resolution: '1080x2400', densityDpi: 420, aspectRatio: '20:9', orientation: 'portrait' }
+        ]
+      }
+    }
+  });
+  const dir = await mkdtemp(join(tmpdir(), 'dashboard-mobile-matrix-'));
+  const statusFile = join(dir, 'status.json');
+  await writeFile(statusFile, JSON.stringify({
+    generatedAt: '2026-09-01T06:30:00.000Z',
+    runtime: { state: 'running', adbDeviceId: 'emulator-5574', bootCompleted: true, detail: 'booted' },
+    matrix: { activeProfileId: 'tall', activeProfileLabel: 'Modern tall phone', avdName: 'matrix_tall', serial: 'emulator-5574', startedAt: '2026-09-01T06:25:00.000Z' },
+    lastSuccessfulCycleAt: '2026-09-01T03:00:00.000Z'
+  }), 'utf8');
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, mobileWorkflowStatusFile: statusFile });
+  const server = await listen(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/mobile-workflow/status`);
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+
+    assert.equal(response.status, 200);
+    assert.equal(body.matrix.activeProfileId, 'tall');
+    assert.equal(body.matrix.activeProfileLabel, 'Modern tall phone');
+    assert.equal(body.matrix.serial, 'emulator-5574');
+    assert.equal(body.matrix.startedAt, '2026-09-01T06:25:00.000Z');
+    assert.equal(body.deviceMatrix.enabled, true);
+    assert.equal(body.deviceMatrix.defaultProfile, 'tall');
+    assert.equal(body.deviceMatrix.profiles.length, 2);
+    assert.equal(serialized.includes('/tmp/'), false);
+    assert.equal(serialized.includes(statusFile), false);
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /api/mobile-workflow/status drops malformed matrix active profile safely', async () => {
+  const configPath = await writeConfig(mobileWorkflowConfig);
+  const dir = await mkdtemp(join(tmpdir(), 'dashboard-mobile-matrix-bad-'));
+  const statusFile = join(dir, 'status.json');
+  await writeFile(statusFile, JSON.stringify({
+    generatedAt: '2026-09-01T06:30:00.000Z',
+    runtime: { state: 'running', adbDeviceId: 'emulator-5554', bootCompleted: true, detail: 'booted' },
+    matrix: { activeProfileId: 'not a valid id!', activeProfileLabel: 'Bad', avdName: 'x', serial: 'emulator-5554', startedAt: 'not-a-date' },
+    lastSuccessfulCycleAt: '2026-09-01T03:00:00.000Z'
+  }), 'utf8');
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, mobileWorkflowStatusFile: statusFile });
+  const server = await listen(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/mobile-workflow/status`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.matrix, null);
+  } finally {
+    await server.close();
+  }
+});
+
 test('GET /api/mobile-workflow/status requires reverse-proxy auth', async () => {
   const configPath = await writeConfig(mobileWorkflowConfig);
   const app = await createApp({ configPath, authMode: 'reverse-proxy', proxyUserHeader: 'x-forwarded-user', mobileWorkflowStatusFile: null });

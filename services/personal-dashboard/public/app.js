@@ -466,6 +466,36 @@ function renderMobileWorkflowOverview(status, config = mobileWorkflowConfig) {
   ];
   if (payload.generatedAt) runtimeLines.push(`Cache generated: ${payload.generatedAt}`);
 
+  const matrix = payload.matrix || null;
+  const deviceMatrix = payload.deviceMatrix || null;
+
+  function renderDeviceMatrixCard() {
+    const children = [el('h3', { text: 'Android device matrix' })];
+    const profiles = deviceMatrix?.profiles || [];
+    if (profiles.length === 0) {
+      children.push(el('p', { className: 'muted', text: 'No device matrix profiles are configured yet.' }));
+    } else {
+      const activeId = matrix?.activeProfileId || deviceMatrix?.defaultProfile || null;
+      children.push(el('div', { className: 'status-grid mobile-matrix' }, profiles.map((profile) => {
+        const active = activeId === profile.id;
+        const lines = [
+          profile.resolution ? `${profile.resolution} @ ${profile.densityDpi ?? '?'}dpi` : null,
+          profile.aspectRatio ? profile.aspectRatio : null,
+          profile.orientation ? profile.orientation : null
+        ].filter(Boolean);
+        return el('article', { className: `status-card mobile-matrix-profile${active ? ' active' : ''}` }, [
+          el('div', { className: 'status-title', text: profile.label || profile.id || 'Device profile' }),
+          active ? el('span', { className: 'badge up', text: 'active' }) : null,
+          el('p', { className: 'muted', text: lines.join(' · ') || 'No dimensions published.' })
+        ]);
+      })));
+      if (matrix?.startedAt) {
+        children.push(el('p', { className: 'muted', text: `Active profile last started: ${matrix.startedAt}` }));
+      }
+    }
+    return el('article', { className: 'mobile-matrix-card' }, children);
+  }
+
   const viewer = payload.viewer || {};
   const viewerChildren = [
     el('h3', { text: viewer.label || 'Emulator viewer' }),
@@ -489,6 +519,9 @@ function renderMobileWorkflowOverview(status, config = mobileWorkflowConfig) {
     ]),
     el('article', { className: 'mobile-viewer-card' }, viewerChildren)
   ]));
+  if (deviceMatrix?.enabled || deviceMatrix?.profiles?.length) {
+    mobileWorkflowOverview.append(renderDeviceMatrixCard());
+  }
   if (payload.message) {
     mobileWorkflowOverview.append(el('p', { className: 'muted mobile-cache-message', text: payload.message }));
   }
