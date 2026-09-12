@@ -694,7 +694,8 @@ test('GET /api/investment-screener/ranked returns representative sanitized ranke
     assert.deepEqual(body.doc_links, [
       { label: 'Investment screener product guide', url: '/api/docs/investment-screener-overview', doc_id: 'investment-screener-overview' },
       { label: 'Interpreting screener results', url: '/api/docs/investment-screener-interpreting-results', doc_id: 'investment-screener-interpreting-results' },
-      { label: 'Investment screener operations', url: '/api/docs/investment-screener-operations-limitations', doc_id: 'investment-screener-operations-limitations' }
+      { label: 'Investment screener operations', url: '/api/docs/investment-screener-operations-limitations', doc_id: 'investment-screener-operations-limitations' },
+      { label: 'NYSE source and identity rules', url: '/api/docs/investment-screener-nyse-source-identity', doc_id: 'investment-screener-nyse-source-identity' }
     ]);
   } finally {
     await server.close();
@@ -1120,6 +1121,128 @@ test('GET /api/investment-screener/coverage surfaces full NASDAQ denominator and
   }
 });
 
+
+
+test('GET /api/investment-screener/coverage surfaces NYSE as a first-class EODHD market from Postgres metadata', async () => {
+  const queries = [];
+  const investmentScreenerHistoryPool = {
+    async query(sql, params) {
+      queries.push({ sql, params });
+      return { rows: [{
+        run_key: 'investment-screener:NYSE:nyse-eodhd-fundamentals:2026-09-12T03:11:22.000Z:cb016b32f404',
+        mode: 'nyse-eodhd-fundamentals',
+        market: 'NYSE',
+        started_at: new Date('2026-09-12T03:00:00.000Z'),
+        completed_at: new Date('2026-09-12T03:11:22.000Z'),
+        universe_version: 'NYSE listed equities (security-type-filtered, reviewed static seed) sha256:ab1cd85be373c3e7a0fa17154146bc8d5dc25dcc4fa68db28a3546c96f2eb15f retrieved_at:2026-09-12T00:38:40Z',
+        source_mix: { providers: ['eodhd'], source_families: ['eodhd'] },
+        metadata: {},
+        universe_metadata: {
+          normalized_active_count: 2227,
+          denominator_label: 'NYSE listed equities (security-type-filtered, reviewed static seed)',
+          denominator_status: 'complete_security_type_filtered_listing',
+          source_sha256: 'ab1cd85be373c3e7a0fa17154146bc8d5dc25dcc4fa68db28a3546c96f2eb15f'
+        },
+        provider_failures: Array.from({ length: 258 }, (_unused, index) => ({ ticker: `BAD${index}.US`, reason: 'provider unavailable' })),
+        usable: '1881',
+        scored: '1926',
+        excluded: '45',
+        scraped: '1969',
+        missing_required_fields: '45',
+        provenance_rows: '43230',
+        provenance_fields: '42',
+        source_families: ['eodhd'],
+        latest_retrieved_at: new Date('2026-09-12T03:11:21.000Z'),
+        data_as_of: new Date('2026-09-12T00:00:00.000Z'),
+        latest_provenance_data_as_of: new Date('2026-09-12T00:00:00.000Z')
+      }] };
+    }
+  };
+
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerRankedFile: null, investmentScreenerHistoryPool });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/investment-screener/coverage?market=NYSE`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.status, 'ok');
+    assert.equal(body.source, 'postgres');
+    assert.equal(body.coverage.market, 'NYSE');
+    assert.equal(body.source_summary.mode, 'nyse-eodhd-fundamentals');
+    assert.equal(body.source_summary.mode_label, 'EODHD NYSE fundamentals');
+    assert.deepEqual(body.source_summary.providers, ['eodhd']);
+    assert.equal(body.coverage.denominator, 2227);
+    assert.equal(body.coverage.denominator_status, 'complete_security_type_filtered_listing');
+    assert.equal(body.coverage.usable, 1881);
+    assert.equal(body.coverage.scored, 1926);
+    assert.equal(body.coverage.scraped, 1969);
+    assert.equal(body.coverage.failed, 258);
+    assert.equal(body.coverage.excluded, 45);
+    assert.match(body.coverage.coverage_label, /^1881 \/ 2227 NYSE listed equities/);
+    assert.equal(queries[0].params[0], 'NYSE');
+    assert.equal(JSON.stringify(body).includes('NASDAQ-100'), false);
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /api/investment-screener/ranked can read NYSE EODHD DuckDB artifacts by market query', async () => {
+  const { publishInvestmentScreenerRun } = await import('../src/investment-screener-storage.js');
+  const dataRoot = await mkdtemp(join(tmpdir(), 'investment-api-duckdb-nyse-'));
+  await publishInvestmentScreenerRun({
+    dataRoot,
+    run: {
+      market: 'NYSE',
+      source: 'eodhd',
+      mode: 'nyse-eodhd-fundamentals',
+      started_at: '2026-09-12T03:00:00.000Z',
+      completed_at: '2026-09-12T03:11:22.000Z',
+      data_as_of: '2026-09-12',
+      universe: {
+        source: 'NYSE listed equities (security-type-filtered, reviewed static seed)',
+        version: 'sha256:ab1cd85be373c3e7a0fa17154146bc8d5dc25dcc4fa68db28a3546c96f2eb15f',
+        count: 2227,
+        selected_count: 2227,
+        market: 'NYSE',
+        complete_exchange_listing: false
+      },
+      companies: [
+        { ticker: 'BRK.B', name: 'Berkshire Hathaway Inc.', market: 'NYSE', exchange: 'NYSE', region: 'US', currency: 'USD' },
+        { ticker: 'V', name: 'Visa Inc.', market: 'NYSE', exchange: 'NYSE', region: 'US', currency: 'USD' }
+      ],
+      scores: [
+        { rank: 1, ticker: 'BRK.B', name: 'Berkshire Hathaway Inc.', market: 'NYSE', exchange: 'NYSE', region: 'US', currency: 'USD', composite_score: 94.2, sub_scores: { quality: 23 } },
+        { rank: 2, ticker: 'V', name: 'Visa Inc.', market: 'NYSE', exchange: 'NYSE', region: 'US', currency: 'USD', composite_score: 91.1, sub_scores: { quality: 22 } }
+      ],
+      provenance: [{ ticker: 'BRK.B', field_name: 'revenue', source_family: 'eodhd', provider: 'eodhd', retrieved_at: '2026-09-12T03:11:21.000Z', data_as_of: '2026-09-12' }],
+      coverage: { denominator_status: 'complete_security_type_filtered_listing', failed: 258, excluded: 45 }
+    }
+  });
+
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerRankedFile: null, investmentScreenerDataRoot: dataRoot });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/investment-screener/ranked?market=NYSE&exchange=NYSE&region=US&limit=10`);
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+    assert.equal(response.status, 200);
+    assert.equal(body.source_summary.mode, 'nyse-eodhd-fundamentals');
+    assert.equal(body.source_summary.mode_label, 'EODHD NYSE fundamentals');
+    assert.equal(body.coverage.market, 'NYSE');
+    assert.equal(body.coverage.denominator, 2227);
+    assert.equal(body.coverage.denominator_status, 'complete_security_type_filtered_listing');
+    assert.deepEqual(body.available_facets.exchanges, ['NYSE']);
+    assert.deepEqual(body.available_facets.regions, ['US']);
+    assert.deepEqual(body.candidates.map((candidate) => candidate.ticker), ['BRK.B', 'V']);
+    assert.equal(serialized.includes(dataRoot), false);
+    assert.equal(serialized.includes('postgres://'), false);
+  } finally {
+    await server.close();
+    await rm(dataRoot, { recursive: true, force: true });
+  }
+});
 
 test('GET /api/investment-screener/ranked preserves bounded ASX Yahoo source mode', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'investment-ranked-asx-mode-'));

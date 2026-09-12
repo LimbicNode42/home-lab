@@ -1017,7 +1017,7 @@ function renderInvestmentSourceCoveragePanel(payload) {
     caveats.unshift('Coverage degraded — Postgres history is unavailable; coverage is inferred from the sanitized ranked artifact.');
   }
   if (payload?.mode === 'fixture' || sourceSummary?.mode === 'fixture') {
-    caveats.unshift('Fixture/sample data — not full ASX market coverage.');
+    caveats.unshift('Fixture/sample data — not full market coverage.');
   }
   const rows = [
     el('div', { className: 'investment-source-row', text: `Source: ${sourceLine || 'Unknown source mode'}` }),
@@ -1067,7 +1067,7 @@ function renderInvestmentScreener(payload) {
   if (sourceCoveragePanel) children.push(sourceCoveragePanel);
 
   if (payload.mode === 'fixture') {
-    children.push(el('p', { className: 'investment-fixture-warning', text: 'Fixture/sample data only — not a real ASX scrape/backfill. This is not full ASX market coverage.' }));
+    children.push(el('p', { className: 'investment-fixture-warning', text: 'Fixture/sample data only — not full market coverage.' }));
   }
 
   const appliedFilterSummary = investmentAppliedFilterSummary(payload.applied_filters);

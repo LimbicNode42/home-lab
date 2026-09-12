@@ -74,12 +74,15 @@ test('dashboard investment screener exposes exchange and region filters for ASX 
 });
 
 
-test('dashboard investment screener market selector exposes ASX and NASDAQ without generic US collapse', async () => {
+test('dashboard investment screener market selector exposes ASX, NASDAQ, and NYSE without generic US collapse', async () => {
   const indexSource = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
   assert.match(indexSource, /<option value="ASX">Australia \/ ASX<\/option>/);
   assert.match(indexSource, /<option value="NASDAQ">United States \/ NASDAQ<\/option>/);
+  assert.match(indexSource, /<option value="NYSE">United States \/ NYSE<\/option>/);
+  assert.match(indexSource, /<option value="NYSE">NYSE<\/option>/);
   assert.doesNotMatch(indexSource, /<option value="US">US<\/option>/);
-  assert.match(indexSource, /security-type-filtered full listed-equity universe/i);
+  assert.match(indexSource, /ASX, NASDAQ, and NYSE are separate exchange buckets/i);
+  assert.match(indexSource, /security-type-filtered full listed-equity universes/i);
   assert.doesNotMatch(indexSource, /NASDAQ-100 constituents/i);
 });
 
@@ -87,7 +90,7 @@ test('dashboard investment screener market selector exposes ASX and NASDAQ witho
 test('dashboard investment screener renders applied filter state and fixture warning', () => {
   assert.match(appSource, /Applied filters:/);
   assert.match(appSource, /Market: \$\{appliedFilters\.market\}/);
-  assert.match(appSource, /Fixture\/sample data only — not a real ASX scrape\/backfill\./);
+  assert.match(appSource, /Fixture\/sample data only — not full market coverage\./);
 });
 
 
@@ -186,7 +189,7 @@ test('dashboard investment screener renders source and coverage panel details', 
 
 test('dashboard investment screener renders fixture and degraded coverage caveats honestly', () => {
   assert.match(appSource, /Fixture\/sample data/);
-  assert.match(appSource, /not full ASX market coverage/);
+  assert.match(appSource, /not full market coverage/);
   assert.match(appSource, /Coverage degraded/);
   assert.match(appSource, /Postgres history is unavailable/);
   assert.match(appSource, /alternate_denominators/);
