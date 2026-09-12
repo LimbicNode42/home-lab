@@ -88,6 +88,142 @@ class LseSeedContractTests(unittest.TestCase):
         self.assertIn("missing_provider_symbol", json.dumps(payload["failures"]))
 
 
+class LseProviderMappingTests(unittest.TestCase):
+    def test_lse_provider_reference_exactly_maps_unique_normalised_names(self):
+        seed_entries, seed_metadata = scr.normalise_lse_issuer_rows(
+            [
+                {"Company Name": "HSBC Holdings plc", "Market": "MAIN MARKET"},
+                {"Company Name": "No Provider Match plc", "Market": "AIM"},
+            ],
+            source_url="https://docs.londonstockexchange.com/list.xlsx",
+            retrieved_at="2026-09-12T19:20:00Z",
+            source_sha256="seedsha",
+            source_as_at="2026-07-31",
+        )
+        provider_rows = [
+            {
+                "Code": "HSBA",
+                "Name": "HSBC HOLDINGS PLC",
+                "Exchange": "LSE",
+                "Currency": "GBp",
+                "Type": "Common Stock",
+                "Isin": "GB0005405286",
+            }
+        ]
+
+        mapped_entries, report = scr.reconcile_lse_provider_symbols(
+            seed_entries,
+            provider_rows,
+            provider="eodhd",
+            provider_source_url="https://eodhd.com/api/exchange-symbol-list/LSE?api_token=SECRET&fmt=json",
+            retrieved_at="2026-09-13T08:00:00Z",
+            provider_sha256="providersha",
+            seed_metadata=seed_metadata,
+        )
+
+        by_id = {entry["company_id"]: entry for entry in mapped_entries}
+        self.assertEqual(by_id["lse:hsbc-holdings-plc"]["eodhd_ticker"], "HSBA.LSE")
+        self.assertEqual(by_id["lse:hsbc-holdings-plc"]["ticker"], "HSBA.LSE")
+        self.assertEqual(by_id["lse:hsbc-holdings-plc"]["isin"], "GB0005405286")
+        self.assertEqual(by_id["lse:hsbc-holdings-plc"]["currency"], "GBp")
+        self.assertEqual(by_id["lse:hsbc-holdings-plc"]["mapping_status"], "mapped")
+        self.assertEqual(by_id["lse:no-provider-match-plc"]["mapping_status"], "unmapped")
+        self.assertEqual(report["mapped_count"], 1)
+        self.assertEqual(report["unmapped_count"], 1)
+        self.assertEqual(report["failed_count"], 0)
+        self.assertEqual(report["excluded_count"], 0)
+        self.assertEqual(report["unaccounted_seed_count"], 0)
+        self.assertEqual(report["denominator_status"], "mapped_subset_provider_symbol_review_required")
+        self.assertNotIn("SECRET", json.dumps(report))
+
+    def test_lse_provider_reference_ambiguous_name_does_not_guess(self):
+        seed_entries, seed_metadata = scr.normalise_lse_issuer_rows(
+            [{"Company Name": "Example plc", "Market": "MAIN MARKET"}],
+            source_url="fixture",
+            retrieved_at="now",
+            source_sha256="seedsha",
+            source_as_at="2026-07-31",
+        )
+        provider_rows = [
+            {"Code": "EXA", "Name": "Example plc", "Exchange": "LSE", "Isin": "GB00A"},
+            {"Code": "EXB", "Name": "Example PLC", "Exchange": "LSE", "Isin": "GB00B"},
+        ]
+
+        mapped_entries, report = scr.reconcile_lse_provider_symbols(
+            seed_entries,
+            provider_rows,
+            provider="eodhd",
+            provider_source_url="fixture?api_token=SECRET",
+            retrieved_at="now",
+            provider_sha256="providersha",
+            seed_metadata=seed_metadata,
+        )
+
+        self.assertIsNone(mapped_entries[0]["eodhd_ticker"])
+        self.assertEqual(mapped_entries[0]["mapping_status"], "mapping_ambiguous")
+        self.assertEqual(report["mapping_ambiguous_count"], 1)
+        self.assertEqual(report["mapped_count"], 0)
+        self.assertEqual(report["unaccounted_seed_count"], 0)
+
+    def test_lse_selection_uses_only_reviewed_mapped_provider_symbols(self):
+        entries = [
+            {
+                "company_id": "lse:mapped",
+                "issuer_id": "lse:mapped",
+                "name": "Mapped PLC",
+                "name_match_key": "mapped",
+                "active": True,
+                "universe_rank": 1,
+                "eodhd_ticker": "MAP.LSE",
+                "mapping_status": "mapped",
+            },
+            {
+                "company_id": "lse:ambiguous",
+                "issuer_id": "lse:ambiguous",
+                "name": "Ambiguous PLC",
+                "name_match_key": "ambiguous",
+                "active": True,
+                "universe_rank": 2,
+                "eodhd_ticker": "AMB.LSE",
+                "mapping_status": "mapping_ambiguous",
+            },
+        ]
+
+        selected = scr.select_lse_universe_batch(entries, max_tickers=2, provider="eodhd")
+
+        self.assertEqual(selected["tickers"], ["MAP.LSE"])
+        self.assertEqual(selected["selected_count"], 1)
+        self.assertEqual(selected["missing_provider_symbol_count"], 1)
+        self.assertEqual(selected["missing_provider_symbols"][0]["reason"], "mapping_ambiguous")
+    def test_lse_file_first_payload_surfaces_mapping_accounting_fields(self):
+        payload = scr.build_file_first_run_payload(
+            [],
+            source="eodhd",
+            mode=scr.LSE_MODE,
+            universe=[],
+            universe_source=scr.LSE_DENOMINATOR_LABEL,
+            universe_metadata={"source_row_count": 3},
+            batch_metadata={
+                "eligible_count": 3,
+                "selected_count": 1,
+                "mapped_count": 1,
+                "unmapped_count": 1,
+                "mapping_ambiguous_count": 1,
+                "failed_count": 0,
+                "excluded_count": 0,
+                "denominator_status": "mapped_subset_provider_symbol_review_required",
+                "denominator_label": "LSE mapped issuer subset pending review",
+                "provider_symbol_convention": "fixture convention",
+            },
+            hydration_failures=[],
+        )
+
+        self.assertEqual(payload["coverage"]["mapped_count"], 1)
+        self.assertEqual(payload["coverage"]["unmapped_count"], 1)
+        self.assertEqual(payload["coverage"]["mapping_ambiguous_count"], 1)
+        self.assertEqual(payload["universe"]["provider_symbol_convention"], "fixture convention")
+
+
 class TseSeedContractTests(unittest.TestCase):
     def test_tse_rows_normalise_jpx_equities_and_exclusions(self):
         rows = [

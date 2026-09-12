@@ -317,6 +317,51 @@ Initial disabled/smoke-only draft:
 
 If implementation starts with Yahoo-only quote smoke, use `source=yahoo-finance`, modes `lse-yahoo-chart-smoke` and `tse-yahoo-chart-smoke`, `DRY_RUN=1`, and `enabled=false` for recurring full hydration. Do not route Yahoo smoke through the existing full monthly job.
 
+## LSE provider-symbol mapping reconciliation status (2026-09-13)
+
+Task `t_46b8f481` added the fail-closed LSE mapping reconciliation path and
+accounting artifact:
+
+- Mapping/accounting artifact:
+  `services/personal-dashboard/investment-screener/universe/lse-provider-symbol-mapping.accounting.json`.
+- Current committed accounting is intentionally all-unmapped because this worker
+  had no approved EODHD/FMP provider symbol reference or account access available
+  locally: `mapped_count=0`, `unmapped_count=1522`,
+  `mapping_ambiguous_count=0`, `failed_count=0`, `excluded_count=0`,
+  `unaccounted_seed_count=0`.
+- The reconciliation code accepts provider reference rows only from an approved
+  source, uses provider-supplied `Code` as the symbol source, and matches the LSE
+  seed with exact `name_match_key` equality only. Duplicate provider names become
+  `mapping_ambiguous`; unmatched issuers remain `unmapped`. No fuzzy name search
+  or ticker/name guessing is allowed.
+- File-first run payloads now carry LSE mapping counters in both `universe` and
+  `coverage`: `mapped_count`, `unmapped_count`, `mapping_ambiguous_count`, and
+  `provider_symbol_convention`.
+
+### LSE enablement criteria
+
+Keep `lse.enabled=false` until all of the following are true:
+
+1. An approved provider/security-master reference is fetched outside the repo or
+   supplied as a non-secret artifact. For the currently documented EODHD path,
+   this means `exchange-symbol-list/LSE` with the real API token kept out of
+   logs and Git.
+2. The mapping artifact is regenerated from the committed LSE seed plus that
+   approved provider reference, and every one of the 1,522 seed rows is accounted
+   as exactly one of: `mapped`, `unmapped`, `mapping_ambiguous`, `failed`, or
+   `excluded` with a non-secret reason.
+3. `unaccounted_seed_count == 0`, `failed_count == 0`, and any non-zero
+   `unmapped_count` or `mapping_ambiguous_count` has been explicitly reviewed as
+   acceptable partial coverage. Otherwise the denominator remains
+   `complete_issuer_listing_requires_symbol_mapping`.
+4. Only rows with `mapping_status=mapped` and a reviewed provider symbol are
+   eligible for hydration. A row carrying a ticker-shaped value but marked
+   `mapping_ambiguous`, `unmapped`, `failed`, or `excluded` must not be sent to a
+   provider.
+5. A scratch `DRY_RUN=1` smoke run succeeds with no secret-bearing URLs, no NAS
+   latest-pointer mutation, and dashboard labels that say mapped subset rather
+   than full LSE coverage unless the mapping is complete.
+
 ## Dashboard and freshness requirements
 
 The dashboard/API must surface these fields when LSE/TSE exports exist:
