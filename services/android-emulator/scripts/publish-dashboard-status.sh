@@ -11,6 +11,7 @@ ADB=${ADB:-/opt/android-sdk/platform-tools/adb}
 DEVICE=${MOBILE_WORKFLOW_ADB_DEVICE:-emulator-5554}
 LOCAL_OUT=${LOCAL_OUT:-/opt/android-emulator/run/status.json}
 MATRIX_ACTIVE=${MATRIX_ACTIVE:-/opt/android-emulator/run/matrix-active.json}
+DEV_LOOP=${DEV_LOOP:-/opt/android-emulator/run/dev-loop.json}
 REMOTE=${REMOTE:-root@192.168.0.50:/mnt/nas/services/personal-dashboard/mobile-workflow/status.json}
 REMOTE_RUNTIME=${REMOTE_RUNTIME:-root@192.168.0.50:/var/lib/personal-dashboard/runtime-cache/mobile-workflow/status.json}
 TMP="${LOCAL_OUT}.tmp.$$"
@@ -40,10 +41,10 @@ else
   detail="adb binary is unavailable on the dashboard status publisher host."
 fi
 
-python3 - "$TMP" "$state" "$adb_device_id" "$boot_completed" "$detail" "$MATRIX_ACTIVE" <<'PY'
+python3 - "$TMP" "$state" "$adb_device_id" "$boot_completed" "$detail" "$MATRIX_ACTIVE" "$DEV_LOOP" <<'PY'
 import json, sys, os
 from datetime import datetime, timezone
-out, state, device, boot, detail, matrix_active = sys.argv[1:]
+out, state, device, boot, detail, matrix_active, dev_loop_file = sys.argv[1:]
 matrix = None
 if os.path.exists(matrix_active):
     try:
@@ -58,6 +59,21 @@ if os.path.exists(matrix_active):
         }
     except (ValueError, OSError):
         matrix = None
+dev_loop = None
+if os.path.exists(dev_loop_file):
+    try:
+        with open(dev_loop_file, encoding="utf-8") as fh:
+            raw = json.load(fh)
+        dev_loop = {
+            "status": raw.get("status"),
+            "branch": raw.get("branch"),
+            "targetDevice": raw.get("targetDevice"),
+            "buildId": raw.get("buildId"),
+            "lastReloadAt": raw.get("lastReloadAt"),
+            "lastError": raw.get("lastError"),
+        }
+    except (ValueError, OSError):
+        dev_loop = None
 payload = {
     "generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
     "runtime": {
@@ -67,6 +83,7 @@ payload = {
         "detail": detail,
     },
     "matrix": matrix,
+    "devLoop": dev_loop,
     "lastSuccessfulCycleAt": "2026-09-05T03:00:00Z",
 }
 with open(out, "w", encoding="utf-8") as fh:

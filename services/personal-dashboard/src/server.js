@@ -3118,6 +3118,24 @@ function sanitizeMobileMatrix(rawMatrix) {
   };
 }
 
+function sanitizeMobileDevLoop(rawDevLoop) {
+  if (!rawDevLoop || typeof rawDevLoop !== 'object' || Array.isArray(rawDevLoop)) return null;
+  const status = sanitizeMobileText(rawDevLoop.status, null);
+  if (!status || !/^[a-z_]+$/.test(status)) return null;
+  const targetDevice = sanitizeMobileText(rawDevLoop.targetDevice, null);
+  const normalizedDevice = targetDevice && (/^emulator-[0-9]{4,5}$/.test(targetDevice) || /^[A-Za-z0-9._:-]{3,64}$/.test(targetDevice))
+    ? targetDevice
+    : null;
+  return {
+    status,
+    branch: sanitizeMobileText(rawDevLoop.branch, null),
+    targetDevice: normalizedDevice,
+    buildId: sanitizeMobileText(rawDevLoop.buildId, null),
+    lastReloadAt: sanitizeIsoTimestamp(rawDevLoop.lastReloadAt),
+    lastError: sanitizeMobileText(rawDevLoop.lastError, null)
+  };
+}
+
 function mobileWorkflowPayload({ config, statusFilePayload = null, cacheStatus, message, fileMtimeMs = null }) {
   if (!config?.enabled) {
     return {
@@ -3130,6 +3148,7 @@ function mobileWorkflowPayload({ config, statusFilePayload = null, cacheStatus, 
 
   const runtime = sanitizeMobileRuntime(statusFilePayload?.runtime, config.runtime ?? {});
   const matrix = sanitizeMobileMatrix(statusFilePayload?.matrix);
+  const devLoop = sanitizeMobileDevLoop(statusFilePayload?.devLoop);
   const generatedAt = sanitizeIsoTimestamp(statusFilePayload?.generatedAt) ?? (fileMtimeMs ? new Date(fileMtimeMs).toISOString() : null);
   return {
     enabled: true,
@@ -3139,6 +3158,7 @@ function mobileWorkflowPayload({ config, statusFilePayload = null, cacheStatus, 
     runtime,
     matrix,
     deviceMatrix: config.deviceMatrix,
+    devLoop,
     lastSuccessfulCycleAt: sanitizeIsoTimestamp(statusFilePayload?.lastSuccessfulCycleAt) ?? config.lastSuccessfulCycleAt ?? null,
     viewer: config.viewer,
     generatedAt,

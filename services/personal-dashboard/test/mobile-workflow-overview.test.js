@@ -279,6 +279,47 @@ test('GET /api/mobile-workflow/status drops malformed matrix active profile safe
   }
 });
 
+test('GET /api/mobile-workflow/status sanitizes dev-loop build feedback without leaking paths', async () => {
+  const configPath = await writeConfig(mobileWorkflowConfig);
+  const dir = await mkdtemp(join(tmpdir(), 'dashboard-mobile-devloop-'));
+  const statusFile = join(dir, 'status.json');
+  await writeFile(statusFile, JSON.stringify({
+    generatedAt: '2026-09-12T08:00:00.000Z',
+    runtime: { state: 'running', adbDeviceId: 'emulator-5554', bootCompleted: true, detail: 'booted' },
+    devLoop: {
+      status: 'running',
+      branch: 'wt/t_d3c5ecd0',
+      worktree: '/root/work/home-lab/.worktrees/t_d3c5ecd0',
+      targetDevice: 'emulator-5554',
+      buildId: '1.0.0+12',
+      lastReloadAt: '2026-09-12T07:59:00.000Z',
+      lastError: null
+    },
+    lastSuccessfulCycleAt: '2026-09-01T03:00:00.000Z'
+  }), 'utf8');
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, mobileWorkflowStatusFile: statusFile });
+  const server = await listen(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/mobile-workflow/status`);
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+
+    assert.equal(response.status, 200);
+    assert.equal(body.devLoop.status, 'running');
+    assert.equal(body.devLoop.branch, 'wt/t_d3c5ecd0');
+    assert.equal(body.devLoop.buildId, '1.0.0+12');
+    assert.equal(body.devLoop.targetDevice, 'emulator-5554');
+    assert.equal(body.devLoop.lastReloadAt, '2026-09-12T07:59:00.000Z');
+    // Local-only paths and secrets must never surface.
+    assert.equal(serialized.includes('/root/'), false);
+    assert.equal(serialized.includes('/mnt/nas'), false);
+    assert.equal(serialized.includes(statusFile), false);
+  } finally {
+    await server.close();
+  }
+});
+
 test('GET /api/mobile-workflow/status requires reverse-proxy auth', async () => {
   const configPath = await writeConfig(mobileWorkflowConfig);
   const app = await createApp({ configPath, authMode: 'reverse-proxy', proxyUserHeader: 'x-forwarded-user', mobileWorkflowStatusFile: null });
@@ -362,6 +403,13 @@ test('app.js renders mobile runtime, adb device, last successful cycle, and view
   assert.match(appSource, /Last successful headless cycle:/);
   assert.match(appSource, /Open reviewed emulator viewer/);
   assert.match(appSource, /\/api\/mobile-workflow\/status/);
+});
+
+test('app.js renders dev-loop build/reload feedback with sanitized labels', () => {
+  assert.match(appSource, /Dev loop:/);
+  assert.match(appSource, /Build id:/);
+  assert.match(appSource, /Target device:/);
+  assert.match(appSource, /Last reload:/);
 });
 
 test('styles.css defines mobile workflow overview grid/card styling', () => {

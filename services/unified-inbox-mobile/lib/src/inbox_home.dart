@@ -28,7 +28,7 @@ class _InboxHomeScreenState extends State<InboxHomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Unified Inbox · Read-only'),
+        title: const Text('Unified Inbox · Read-only (dev-loop v2)'),
       ),
       body: IndexedStack(
         index: _tabIndex,

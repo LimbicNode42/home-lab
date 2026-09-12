@@ -184,6 +184,79 @@ and surfaced in the Home Dashboard mobile-workflow status (`matrix` +
   liveness/freshness (see the `mobileWorkflow` note added to
   `dashboard.public.json`).
 
+## Hot-reload dev loop (agent workflow)
+
+This is how an agent (or Ben) pushes a Flutter change onto an emulator and
+keeps iterating. It is a single reproducible command sequence; no vibes, no
+remembering adb flags.
+
+Source of truth: `services/android-emulator/scripts/hot-reload.sh` (device
+selection + matrix management) wraps `services/android-emulator/scripts/
+dev-loop.py` (the watch/build/install/launch driver). Both are committed to Git
+and deployed to `/opt/android-emulator/scripts/` on `tori`.
+
+### The three commands
+
+```bash
+cd /opt/android-emulator/scripts      # or repo-relative services/android-emulator/scripts
+
+# 1. One-shot: build + install + launch on the default resident emulator.
+./hot-reload.sh build /path/to/unified-inbox-mobile
+
+# 2. Foreground dev loop: rebuild/install/launch on every Dart change (Ctrl-C to stop).
+./hot-reload.sh watch /path/to/unified-inbox-mobile
+
+# 3. Inspect / remember targets:
+./hot-reload.sh targets
+./hot-reload.sh stop                    # stop a running matrix profile
+```
+
+`build` and `watch` accept `--device <serial>` (explicit pass-through) or
+`--profile small|tall|large|tablet` (start the matching matrix AVD via
+`emulator-matrix.sh` and target it). Default target is the resident
+`agent_feedback` emulator (`emulator-5554`, systemd-managed). `--dart-define
+KEY=VALUE` is passed through to `flutter build`.
+
+### How it works (and why install-per-change, not `flutter attach`)
+
+- The watcher hashes the Dart/YAML source tree and, on any change, runs
+  `flutter build apk --debug`, `adb install -r`, and launches the main activity
+  via `monkey`. The emulator now shows the latest code — a deterministic,
+  visible "hot restart" per change.
+- We deliberately use install-per-change instead of `flutter attach`/VM-service
+  hot reload: the host is no-AVX2 + software-GL, so a long-lived attached Dart
+  VM session stalls under emulator load. Re-install-and-launch is deterministic
+  and leaves a visible state change every time, which is what Ben needs to SEE
+  an agent change land.
+- `watch` writes `/opt/android-emulator/run/dev-loop.json` with
+  `{status, branch, worktree, targetDevice, buildId, lastReloadAt, lastError}`.
+  The Home Dashboard sanitizes this into its `mobile-workflow` payload
+  (`devLoop` block) so the Overview tile shows the latest build id/branch/target
+  device/last-reload time without leaking paths or secrets.
+
+### Agent workflow (after making a code change in a worktree)
+
+1. Build once to prove the change compiles and installs:
+   `./hot-reload.sh build <worktree>/services/unified-inbox-mobile`
+2. Start the dev loop to keep iterating:
+   `./hot-reload.sh watch <worktree>/services/unified-inbox-mobile`
+3. Review the result on the Home Dashboard Overview tile (`/mobile-viewer/`) or
+   via `adb -s emulator-5554 exec-out screencap -p > shot.png`.
+4. `Ctrl-C` the watcher when done; run `./hot-reload.sh stop` if a matrix
+   profile was started.
+
+One matrix profile per commit is the smoke default (`tall` is `defaultProfile`);
+fan out to the full small/tall/large/tablet matrix before review/deploy, one at
+a time (the 4 vCPU / ~7.7 GiB capacity wall).
+
+### Capability note (iOS)
+
+There is no local iOS lane: iOS Simulator requires macOS + Xcode, and the
+homelab has zero Apple hardware (verified 2026-09-12). See
+`docs/operations/ios-simulator-feasibility-and-provisioning.md` for the precise
+blocker and the three approval paths (Mac mini / GitHub Actions macOS runner /
+device farm). Android does not depend on it.
+
 ## Authenticated interactive dashboard viewer
 
 The safe browser path is the Home Dashboard proxy, not the raw tori noVNC URL:

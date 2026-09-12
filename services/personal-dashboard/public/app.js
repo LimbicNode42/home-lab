@@ -466,6 +466,15 @@ function renderMobileWorkflowOverview(status, config = mobileWorkflowConfig) {
   ];
   if (payload.generatedAt) runtimeLines.push(`Cache generated: ${payload.generatedAt}`);
 
+  const devLoop = payload.devLoop || null;
+  if (devLoop && devLoop.status) {
+    runtimeLines.push(`Dev loop: ${devLoop.status}`);
+    if (devLoop.buildId) runtimeLines.push(`Build id: ${devLoop.buildId}`);
+    if (devLoop.branch) runtimeLines.push(`Branch: ${devLoop.branch}`);
+    if (devLoop.targetDevice) runtimeLines.push(`Target device: ${devLoop.targetDevice}`);
+    if (devLoop.lastReloadAt) runtimeLines.push(`Last reload: ${devLoop.lastReloadAt}`);
+  }
+
   const matrix = payload.matrix || null;
   const deviceMatrix = payload.deviceMatrix || null;
 
