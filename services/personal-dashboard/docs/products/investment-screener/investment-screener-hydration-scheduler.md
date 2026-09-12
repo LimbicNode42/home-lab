@@ -38,11 +38,20 @@ Enabled markets are driven from `universe/recurring-markets.json`. The registry 
 | `NASDAQ` | `eodhd` | `nasdaq-eodhd-fundamentals` | `nasdaq-listed-equities.seed.json` | 3434 | `complete_security_type_filtered_listing` | `EODHD_API_KEY` |
 | `NYSE` | `eodhd` | `nyse-eodhd-fundamentals` | `nyse-listed-equities.seed.json` | 2227 | `complete_security_type_filtered_listing` | `EODHD_API_KEY` |
 
+Committed but disabled markets are also present in the registry and seed directory so denominator/accounting tests can exercise them without editing the driver loop:
+
+| Market | Source | Mode | Seed | Full count (active) | `denominator_status` | Credential |
+|---|---|---|---|---|---|---|
+| `LSE` | `eodhd` | `lse-eodhd-fundamentals` | `lse-listed-issuers.seed.json` | 1522 | `complete_issuer_listing_requires_symbol_mapping` | `EODHD_API_KEY` |
+| `TSE` | `eodhd` | `tse-eodhd-fundamentals` | `tse-listed-equities.seed.json` | 3712 | `complete_security_type_filtered_listing` | `EODHD_API_KEY` |
+
 ### Disabled / not applicable markets
 
+- **`LSE`** is **disabled** until a reviewed TIDM/ISIN/provider-symbol mapping exists. The committed seed is the official issuer denominator, but it intentionally carries `ticker: null`, `eodhd_ticker: null`, and `yahoo_ticker: null`; selector output accounts attempted rows as `missing_provider_symbol` rather than pretending a mapped subset is full LSE coverage.
+- **`TSE`** is **disabled** for recurring EODHD hydration until authenticated EODHD `exchanges-list` discovery proves the Japan/Tokyo exchange suffix. The committed JPX seed has Yahoo `.T` aliases for bounded smoke only; `.T` is not the source-of-truth denominator and must not be used as a recurring full-provider contract.
 - **`US`** is **disabled** in the registry (`enabled: false`) and is therefore never part of a recurring cycle. Rationale: the only committed US seed (`us-sp500-constituents.seed.json`, 503 names) is a curated S&P 500 sample (`known_sample_universe`), *not* a full US/NYSE ordinary-share listing. Selecting it unbounded would mislabel a 503-name sample as `complete_exchange_listing` (via `select_us_universe_batch`), and the codebase has no reviewed full-US seed (`generate_us_universe_seed.py` deliberately does not enumerate the ~7000 NYSE/NASDAQ names). NASDAQ and NYSE now provide separate recurring full-universe coverage for their reviewed US listed-equity surfaces. Re-enable US only after a reviewed full-US seed + a recurring-safe mode that preserves an honest `denominator_status`.
 
-The `denominator_status` values map to the caller's honest label exactly as before: full seed → `complete_exchange_listing` (ASX) or `complete_security_type_filtered_listing` (NASDAQ/NYSE, whose reviewed seeds are security-type-filtered); bounded slice → `ranked_market_cap_batch`; explicit/curated sample → `known_sample_universe`. The owner wrappers never pass a `--denominator-label` override, so the labels come from `screener.py`'s own honest derivation and are never mislabeled.
+The `denominator_status` values map to the caller's honest label exactly as before: full seed → `complete_exchange_listing` (ASX) or `complete_security_type_filtered_listing` (NASDAQ/NYSE/TSE, whose reviewed seeds are security-type-filtered); LSE issuer seed before mapping → `complete_issuer_listing_requires_symbol_mapping`; bounded slice → `ranked_market_cap_batch`; explicit/curated sample → `known_sample_universe`. The owner wrappers never pass a `--denominator-label` override, so the labels come from `screener.py`'s own honest derivation and are never mislabeled.
 
 ### Full-count policy
 

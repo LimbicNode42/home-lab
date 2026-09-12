@@ -1,7 +1,7 @@
 """Tests for the config-driven recurring investment-screener market registry.
 
 These prove the registry iteration contract the owner wrappers depend on:
-- the embedded registry enables ASX, NASDAQ, and NYSE (not US),
+- the embedded registry enables ASX, NASDAQ, and NYSE while LSE/TSE/US are disabled,
 - a future market is added by a config/seed entry, not loop-code edits,
 - fail-closed seed handling (missing/empty seed raises, no magic count),
 - full-count is resolved dynamically from the reviewed seed.
@@ -65,9 +65,9 @@ class RegistryLoadingTests(unittest.TestCase):
         enabled = rm.enabled_markets(reg)
         self.assertEqual([m["id"] for m in enabled], ["asx", "nasdaq", "nyse"])
         disabled = rm.disabled_markets(reg)
-        self.assertEqual([m["id"] for m in disabled], ["us"])
-        self.assertIs(disabled[0]["enabled"], False)
-        self.assertTrue(disabled[0].get("disabled_reason"))
+        self.assertEqual([m["id"] for m in disabled], ["lse", "tse", "us"])
+        self.assertIs(disabled[-1]["enabled"], False)
+        self.assertTrue(disabled[-1].get("disabled_reason"))
 
     def test_added_market_is_enumerated_without_code_change(self):
         # An operator adds a future market entry; the same driver loop
