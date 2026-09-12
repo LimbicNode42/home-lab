@@ -190,9 +190,9 @@
     },
     "lastSuccessfulCycleAt": "2026-09-05T03:00:00.000Z",
     "viewer": {
-      "mode": "authenticated_novnc",
-      "label": "Android emulator viewer (authenticated read-only)",
-      "instruction": "Open through the authenticated Home Dashboard. Browser sessions go through the dashboard proxy; backend connection material stays server-side.",
+      "mode": "authenticated_interactive",
+      "label": "Android emulator viewer (authenticated interactive)",
+      "instruction": "Open through the authenticated Home Dashboard. Tap, keyboard, swipe, rotate, back/home, screenshot, and stream refresh are available only after dashboard auth; backend VNC/ADB material stays server-side.",
       "href": "/mobile-viewer/"
     }
   },

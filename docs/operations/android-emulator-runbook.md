@@ -34,19 +34,25 @@ isolated Android surfaces, redroid is the documented fall-forward.
 
 ## Connect procedure
 
-1. From any trusted-LAN host, open:
-   `http://192.168.0.20:6080/vnc.html?token=<TOKEN>`
-2. The token is the shared secret in `/opt/android-emulator/novnc/vnc_tokens`
-   (mode 0600) on `tori`. Retrieve it with:
-   `sudo cat /opt/android-emulator/novnc/vnc_tokens | cut -d: -f1`
-   (format is `token:host:port`; only the token part is needed in the URL).
-3. Once the noVNC canvas loads, the AVD is interactive: tap to click, drag to
-   scroll, keyboard passes through.
-4. Open the Unified Inbox app (launcher icon) to review messages.
+1. Preferred: open the Home Dashboard Overview tile and use `/mobile-viewer/`.
+   The dashboard requires its existing reverse-proxy auth header, then proxies the
+   noVNC client and WebSocket without exposing backend tokens to the browser.
+2. The Overview tile now marks the viewer as `authenticated_interactive` and
+   exposes bounded controls for tap, swipe, type, Back, Home, rotate, screenshot,
+   and stream/screenshot refresh. These controls go through the dashboard and a
+   token-gated `android-control.service` on `tori`; ADB remains loopback-only on
+   `tori`.
+3. Operator fallback from trusted LAN only: open
+   `http://192.168.0.20:6080/vnc.html?token=<TOKEN>`. The token is the shared
+   secret in `/opt/android-emulator/novnc/vnc_tokens` (mode 0600) on `tori`.
+4. Once the noVNC canvas loads, the AVD is interactive: tap to click, drag to
+   scroll, keyboard passes through. Open the Unified Inbox app (launcher icon)
+   to review messages.
 
 No VNC port is exposed to the LAN — x11vnc binds `127.0.0.1:5900` only, and the
-token-gated websockify is the sole ingress. This is trusted-LAN only; there is no
-Cloudflare Tunnel route and no public hostname for this service.
+token-gated websockify is the sole non-dashboard ingress. This is trusted-LAN only;
+there is no Cloudflare Tunnel route, public hostname, VNC exposure, or ADB exposure
+for this service.
 
 ## adb access (operator)
 
@@ -121,7 +127,7 @@ cleanly via the enabled units.
   liveness/freshness (see the `mobileWorkflow` note added to
   `dashboard.public.json`).
 
-## Authenticated read-only dashboard viewer
+## Authenticated interactive dashboard viewer
 
 The safe browser path is the Home Dashboard proxy, not the raw tori noVNC URL:
 
@@ -129,5 +135,9 @@ The safe browser path is the Home Dashboard proxy, not the raw tori noVNC URL:
 - Upstream noVNC: `http://192.168.0.20:6080`
 - Backend token file on tori: `/opt/android-emulator/novnc/vnc_tokens` (not exposed to browsers)
 - Dashboard secret mount on critical: `/var/lib/personal-dashboard/secrets/mobile-viewer-novnc-token` -> `/run/secrets/mobile-viewer-novnc-token`
+- Control transport: Home Dashboard `/api/mobile-workflow/control` -> token-gated `android-control.service` on `http://192.168.0.20:6081` -> `/opt/android-sdk/platform-tools/adb -s emulator-5554 ...`
+- Screenshot transport: Home Dashboard `/api/mobile-workflow/screenshot` -> token-gated `android-control.service` -> `adb exec-out screencap -p`
 
-The dashboard requires its existing reverse-proxy auth header before serving `/mobile-viewer/` or accepting the WebSocket upgrade. It injects the noVNC token only on the server-side upstream WebSocket request. `x11vnc` runs with `-viewonly`, so the exposed surface is for review/screenshot/stream feedback, not input control.
+The dashboard requires its existing reverse-proxy auth header before serving `/mobile-viewer/`, accepting the WebSocket upgrade, accepting control POSTs, or returning screenshots. It injects the noVNC token only on the server-side upstream WebSocket request. `x11vnc` stays bound to loopback, but now runs without `-viewonly`; the dashboard controls and noVNC canvas are intentionally interactive after authentication. ADB stays loopback-only on `tori` and is not exposed as a network service.
+
+Rollback: restore `-viewonly` in `/opt/android-emulator/scripts/start-vnc.sh`, restart only `android-vnc.service`, and revert the dashboard `mobileWorkflow.viewer.mode` to `authenticated_novnc`/read-only. If dashboard controls misbehave, unset the `MOBILE_CONTROL_*` env vars or roll back the dashboard container image/config without touching Hermes gateway.

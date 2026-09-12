@@ -110,7 +110,7 @@ const DEFAULT_CONFIG = {
     viewer: {
       mode: 'review_required',
       label: 'Emulator viewer requires review',
-      instruction: 'Use the proven headless cycle on tori for now. A read-only adb screenshot, noVNC, or scrcpy web viewer must be placed behind authentication before the dashboard links to it.',
+      instruction: 'Use the proven headless cycle on tori for now. Interactive noVNC/web controls must be placed behind dashboard authentication before linking.',
       href: null
     }
   }
@@ -361,16 +361,16 @@ function validateMobileWorkflow(mobileWorkflow) {
 
   const viewer = mobileWorkflow.viewer ?? {};
   const mode = requireText(viewer.mode ?? 'review_required', 'mobileWorkflow.viewer.mode');
-  if (!['review_required', 'read_only_screenshot', 'ssh_tunnel', 'authenticated_novnc'].includes(mode)) {
-    throw new Error('Invalid dashboard config: mobileWorkflow.viewer.mode must be review_required, read_only_screenshot, ssh_tunnel, or authenticated_novnc');
+  if (!['review_required', 'read_only_screenshot', 'ssh_tunnel', 'authenticated_novnc', 'authenticated_interactive'].includes(mode)) {
+    throw new Error('Invalid dashboard config: mobileWorkflow.viewer.mode must be review_required, read_only_screenshot, ssh_tunnel, authenticated_novnc, or authenticated_interactive');
   }
   const label = requireText(viewer.label ?? 'Emulator viewer requires review', 'mobileWorkflow.viewer.label');
   const instruction = requireText(viewer.instruction ?? 'A viewer must be reviewed and authenticated before dashboard linking.', 'mobileWorkflow.viewer.instruction');
   const href = requireOptionalText(viewer.href, 'mobileWorkflow.viewer.href');
   if (href) {
-    if (mode === 'authenticated_novnc') {
+    if (mode === 'authenticated_novnc' || mode === 'authenticated_interactive') {
       if (href !== '/mobile-viewer/') {
-        throw new Error('Invalid mobile workflow viewer: authenticated noVNC links must use the dashboard /mobile-viewer/ proxy');
+        throw new Error('Invalid mobile workflow viewer: authenticated interactive/noVNC links must use the dashboard /mobile-viewer/ proxy');
       }
     } else {
       if (!isHttpUrl(href)) {

@@ -100,6 +100,7 @@ function el(tag, attrs = {}, children = []) {
   for (const [key, value] of Object.entries(attrs)) {
     if (key === 'className') node.className = value;
     else if (key === 'text') node.textContent = value;
+    else if (key.startsWith('on') && typeof value === 'function') node.addEventListener(key.slice(2).toLowerCase(), value);
     else node.setAttribute(key, value);
   }
   for (const child of children) node.append(child);
@@ -367,6 +368,75 @@ function mobileWorkflowBadgeClass(state) {
   return 'neutral';
 }
 
+
+async function sendMobileControl(action, payload = {}) {
+  return postJson('/api/mobile-workflow/control', { action, ...payload });
+}
+
+function refreshMobileScreenshot(img) {
+  img.src = `/api/mobile-workflow/screenshot?t=${Date.now()}`;
+}
+
+function buildMobileControlPanel() {
+  const message = el('p', { className: 'muted mobile-control-message', text: 'Authenticated controls send bounded ADB input through the dashboard server; ADB is not exposed to the browser or LAN.' });
+  const screenshot = el('img', { className: 'mobile-screenshot', alt: 'Latest Android emulator screenshot' });
+  const setMessage = (text, isError = false) => {
+    message.textContent = text;
+    message.className = isError ? 'error mobile-control-message' : 'muted mobile-control-message';
+  };
+  const run = async (action, payload = {}) => {
+    try {
+      setMessage(`Sending ${action}…`);
+      await sendMobileControl(action, payload);
+      setMessage(`${action} sent. Refreshing screenshot…`);
+      refreshMobileScreenshot(screenshot);
+    } catch (error) {
+      setMessage(`${action} failed: ${error.message}`, true);
+    }
+  };
+
+  const tapX = el('input', { type: 'number', value: '540', min: '0', max: '5000', inputMode: 'numeric', 'aria-label': 'Tap X coordinate' });
+  const tapY = el('input', { type: 'number', value: '960', min: '0', max: '5000', inputMode: 'numeric', 'aria-label': 'Tap Y coordinate' });
+  const typeInput = el('input', { type: 'text', maxLength: '160', placeholder: 'Text to type', 'aria-label': 'Text to type into emulator' });
+  const rotateSelect = el('select', { 'aria-label': 'Rotate emulator' }, [
+    el('option', { value: 'portrait', text: 'Portrait' }),
+    el('option', { value: 'landscape', text: 'Landscape' }),
+    el('option', { value: 'reverse-portrait', text: 'Reverse portrait' }),
+    el('option', { value: 'reverse-landscape', text: 'Reverse landscape' })
+  ]);
+
+  refreshMobileScreenshot(screenshot);
+
+  return el('div', { className: 'mobile-control-panel' }, [
+    el('h4', { text: 'Authenticated emulator controls' }),
+    message,
+    el('div', { className: 'mobile-control-row' }, [
+      tapX,
+      tapY,
+      el('button', { type: 'button', text: 'Tap', onclick: () => run('tap', { x: Number(tapX.value), y: Number(tapY.value) }) })
+    ]),
+    el('div', { className: 'mobile-control-row' }, [
+      el('button', { type: 'button', text: 'Swipe up', onclick: () => run('swipe', { x1: 540, y1: 1500, x2: 540, y2: 420, durationMs: 450 }) }),
+      el('button', { type: 'button', text: 'Swipe down', onclick: () => run('swipe', { x1: 540, y1: 420, x2: 540, y2: 1500, durationMs: 450 }) }),
+      el('button', { type: 'button', text: 'Back', onclick: () => run('back') }),
+      el('button', { type: 'button', text: 'Home', onclick: () => run('home') })
+    ]),
+    el('div', { className: 'mobile-control-row' }, [
+      typeInput,
+      el('button', { type: 'button', text: 'Type', onclick: () => run('type', { text: typeInput.value }) })
+    ]),
+    el('div', { className: 'mobile-control-row' }, [
+      rotateSelect,
+      el('button', { type: 'button', text: 'Rotate', onclick: () => run('rotate', { rotation: rotateSelect.value }) }),
+      el('button', { type: 'button', text: 'Refresh screenshot/stream', onclick: () => {
+        refreshMobileScreenshot(screenshot);
+        setMessage('Screenshot refreshed. If the noVNC stream looks stale, reload the viewer tab.');
+      } })
+    ]),
+    screenshot
+  ]);
+}
+
 function renderMobileWorkflowOverview(status, config = mobileWorkflowConfig) {
   if (!mobileWorkflowOverview) return;
   mobileWorkflowOverview.replaceChildren();
@@ -402,7 +472,10 @@ function renderMobileWorkflowOverview(status, config = mobileWorkflowConfig) {
     el('p', { className: 'muted', text: viewer.instruction || 'No reviewed emulator viewing surface is configured yet.' })
   ];
   if (viewer.href) {
-    viewerChildren.push(el('a', { href: viewer.href, text: 'Open reviewed emulator viewer', rel: 'noreferrer noopener' }));
+    viewerChildren.push(el('a', { href: viewer.href, text: viewer.mode === 'authenticated_interactive' ? 'Open interactive emulator viewer' : 'Open reviewed emulator viewer', rel: 'noreferrer noopener' }));
+    if (viewer.mode === 'authenticated_interactive') {
+      viewerChildren.push(buildMobileControlPanel());
+    }
   } else {
     viewerChildren.push(el('p', { className: 'error', text: 'No safe direct emulator viewer link is configured yet.' }));
   }

@@ -116,7 +116,7 @@ test('rejects authenticated mobile viewer links that point back to the dashboard
         }
       }
     }),
-    /authenticated noVNC links must use the dashboard \/mobile-viewer\/ proxy/i
+    /authenticated interactive\/noVNC links must use the dashboard \/mobile-viewer\/ proxy/i
   );
 });
 
@@ -134,7 +134,7 @@ test('rejects mobile viewer links that embed credentials', () => {
         }
       }
     }),
-    /links must not embed credentials|unsafe operator internals|authenticated noVNC links must use the dashboard \/mobile-viewer\/ proxy/i
+    /links must not embed credentials|unsafe operator internals|authenticated interactive\/noVNC links must use the dashboard \/mobile-viewer\/ proxy/i
   );
 });
 
@@ -299,4 +299,92 @@ test('styles.css defines mobile workflow overview grid/card styling', () => {
   assert.match(stylesSource, /\.mobile-workflow-grid/);
   assert.match(stylesSource, /\.mobile-runtime-card/);
   assert.match(stylesSource, /\.mobile-components/);
+});
+
+
+test('POST /api/mobile-workflow/control requires dashboard auth', async () => {
+  const configPath = await writeConfig(mobileWorkflowConfig);
+  const app = await createApp({
+    configPath,
+    authMode: 'reverse-proxy',
+    proxyUserHeader: 'x-forwarded-user',
+    mobileWorkflowStatusFile: null,
+    mobileControlRunner: async () => ({ ok: true })
+  });
+  const server = await listen(app);
+
+  try {
+    const unauthorized = await fetch(`${server.baseUrl}/api/mobile-workflow/control`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'home' })
+    });
+    assert.equal(unauthorized.status, 401);
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /api/mobile-workflow/control sends bounded adb tap/type/rotate commands through server-side runner', async () => {
+  const configPath = await writeConfig({
+    ...mobileWorkflowConfig,
+    mobileWorkflow: {
+      ...mobileWorkflowConfig.mobileWorkflow,
+      viewer: { mode: 'authenticated_interactive', label: 'Interactive viewer', instruction: 'Authenticated controls enabled.', href: '/mobile-viewer/' }
+    }
+  });
+  const commands = [];
+  const app = await createApp({
+    configPath,
+    authMode: 'reverse-proxy',
+    proxyUserHeader: 'x-forwarded-user',
+    mobileWorkflowStatusFile: null,
+    mobileControlDeviceId: 'emulator-5554',
+    mobileControlRunner: async (command) => {
+      commands.push(command);
+      return { ok: true, observed: command.action };
+    }
+  });
+  const server = await listen(app);
+
+  try {
+    const headers = { 'x-forwarded-user': 'ben', 'content-type': 'application/json' };
+    const tap = await fetch(`${server.baseUrl}/api/mobile-workflow/control`, { method: 'POST', headers, body: JSON.stringify({ action: 'tap', x: 12, y: 34 }) });
+    const type = await fetch(`${server.baseUrl}/api/mobile-workflow/control`, { method: 'POST', headers, body: JSON.stringify({ action: 'type', text: 'hello world' }) });
+    const rotate = await fetch(`${server.baseUrl}/api/mobile-workflow/control`, { method: 'POST', headers, body: JSON.stringify({ action: 'rotate', rotation: 'landscape' }) });
+
+    assert.equal(tap.status, 200);
+    assert.equal(type.status, 200);
+    assert.equal(rotate.status, 200);
+    assert.deepEqual(commands[0].args, ['shell', 'input', 'tap', '12', '34']);
+    assert.deepEqual(commands[1].args, ['shell', 'input', 'text', 'hello%sworld']);
+    assert.match(commands[2].shellCommand, /user_rotation 1/);
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /api/mobile-workflow/screenshot requires auth and returns PNG from server-side runner', async () => {
+  const configPath = await writeConfig(mobileWorkflowConfig);
+  const app = await createApp({
+    configPath,
+    authMode: 'reverse-proxy',
+    proxyUserHeader: 'x-forwarded-user',
+    mobileWorkflowStatusFile: null,
+    mobileScreenshotRunner: () => Buffer.from([0x89, 0x50, 0x4e, 0x47])
+  });
+  const server = await listen(app);
+
+  try {
+    const unauthorized = await fetch(`${server.baseUrl}/api/mobile-workflow/screenshot`);
+    const authorized = await fetch(`${server.baseUrl}/api/mobile-workflow/screenshot`, { headers: { 'x-forwarded-user': 'ben' } });
+    const body = Buffer.from(await authorized.arrayBuffer());
+
+    assert.equal(unauthorized.status, 401);
+    assert.equal(authorized.status, 200);
+    assert.equal(authorized.headers.get('content-type'), 'image/png');
+    assert.deepEqual([...body], [0x89, 0x50, 0x4e, 0x47]);
+  } finally {
+    await server.close();
+  }
 });

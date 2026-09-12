@@ -1,0 +1,24 @@
+[Unit]
+Description=Token-gated Android emulator control bridge
+After=network-online.target android-emulator.service
+Wants=network-online.target
+Requires=android-emulator.service
+
+[Service]
+Type=simple
+Environment=ANDROID_CONTROL_BIND=192.168.0.20
+Environment=ANDROID_CONTROL_PORT=6081
+Environment=ANDROID_NOVNC_TOKEN_FILE=/opt/android-emulator/novnc/vnc_tokens
+Environment=ANDROID_ADB=/opt/android-sdk/platform-tools/adb
+Environment=ANDROID_DEVICE_ID=emulator-5554
+Environment=ANDROID_CONTROL_TIMEOUT=20
+ExecStart=/usr/bin/python3 /opt/android-emulator/scripts/control-server.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/root/.android /tmp /opt/android-emulator/logs
+
+[Install]
+WantedBy=multi-user.target

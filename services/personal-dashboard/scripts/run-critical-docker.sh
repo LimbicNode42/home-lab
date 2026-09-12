@@ -163,6 +163,8 @@ docker run -d \
   -e MOBILE_WORKFLOW_STATUS_FILE=/app/mobile-workflow/status.json \
   -e MOBILE_VIEWER_UPSTREAM_URL=${MOBILE_VIEWER_UPSTREAM_URL:-http://192.168.0.20:6080} \
   -e MOBILE_VIEWER_NOVNC_TOKEN_FILE=/run/secrets/mobile-viewer-novnc-token \
+  -e MOBILE_CONTROL_UPSTREAM_URL=${MOBILE_CONTROL_UPSTREAM_URL:-http://192.168.0.20:6081} \
+  -e MOBILE_CONTROL_DEVICE_ID=${MOBILE_CONTROL_DEVICE_ID:-emulator-5554} \
   -e METAMCP_STATUS_FILE=/app/metamcp/status.json \
   -e DASHBOARD_AUTH_MODE=${DASHBOARD_AUTH_MODE:-reverse-proxy} \
   -e DASHBOARD_PROXY_USER_HEADER=${DASHBOARD_PROXY_USER_HEADER:-cf-access-authenticated-user-email} \

@@ -186,6 +186,190 @@ function handleMobileViewerUpgrade(request, socket, head, { authMode, proxyUserH
   upstreamRequest.end();
 }
 
+
+const MOBILE_CONTROL_ACTIONS = new Set(['tap', 'swipe', 'type', 'back', 'home', 'rotate']);
+const MOBILE_ROTATIONS = new Map([
+  ['portrait', 0],
+  ['landscape', 1],
+  ['reverse-portrait', 2],
+  ['reverse-landscape', 3]
+]);
+
+function boundedInteger(value, name, min, max) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    const error = new Error(`${name} must be an integer between ${min} and ${max}`);
+    error.statusCode = 400;
+    error.code = 'invalid_mobile_control_payload';
+    throw error;
+  }
+  return parsed;
+}
+
+function mobileTextArgument(value) {
+  if (typeof value !== 'string') {
+    const error = new Error('text must be a string');
+    error.statusCode = 400;
+    error.code = 'invalid_mobile_control_payload';
+    throw error;
+  }
+  const trimmed = value.slice(0, 160);
+  if (!trimmed) {
+    const error = new Error('text must not be empty');
+    error.statusCode = 400;
+    error.code = 'invalid_mobile_control_payload';
+    throw error;
+  }
+  if (!/^[A-Za-z0-9 .,@:_+\-/]+$/.test(trimmed)) {
+    const error = new Error('text contains unsupported characters for safe adb input');
+    error.statusCode = 400;
+    error.code = 'invalid_mobile_control_payload';
+    throw error;
+  }
+  return trimmed.replace(/ /g, '%s');
+}
+
+function buildMobileControlCommand(body) {
+  const action = typeof body.action === 'string' ? body.action.trim().toLowerCase() : '';
+  if (!MOBILE_CONTROL_ACTIONS.has(action)) {
+    const error = new Error('Unsupported mobile control action');
+    error.statusCode = 400;
+    error.code = 'unsupported_mobile_control_action';
+    throw error;
+  }
+
+  if (action === 'tap') {
+    return { action, args: ['shell', 'input', 'tap', String(boundedInteger(body.x, 'x', 0, 5000)), String(boundedInteger(body.y, 'y', 0, 5000))] };
+  }
+  if (action === 'swipe') {
+    return {
+      action,
+      args: [
+        'shell', 'input', 'swipe',
+        String(boundedInteger(body.x1, 'x1', 0, 5000)),
+        String(boundedInteger(body.y1, 'y1', 0, 5000)),
+        String(boundedInteger(body.x2, 'x2', 0, 5000)),
+        String(boundedInteger(body.y2, 'y2', 0, 5000)),
+        String(boundedInteger(body.durationMs ?? 300, 'durationMs', 50, 5000))
+      ]
+    };
+  }
+  if (action === 'type') {
+    return { action, args: ['shell', 'input', 'text', mobileTextArgument(body.text)] };
+  }
+  if (action === 'back') {
+    return { action, args: ['shell', 'input', 'keyevent', 'KEYCODE_BACK'] };
+  }
+  if (action === 'home') {
+    return { action, args: ['shell', 'input', 'keyevent', 'KEYCODE_HOME'] };
+  }
+
+  const rotation = typeof body.rotation === 'string' ? body.rotation.trim().toLowerCase() : '';
+  if (!MOBILE_ROTATIONS.has(rotation)) {
+    const error = new Error('rotation must be portrait, landscape, reverse-portrait, or reverse-landscape');
+    error.statusCode = 400;
+    error.code = 'invalid_mobile_control_payload';
+    throw error;
+  }
+  return {
+    action,
+    args: ['shell', 'settings', 'put', 'system', 'accelerometer_rotation', '0', '&&', 'settings', 'put', 'system', 'user_rotation', String(MOBILE_ROTATIONS.get(rotation))],
+    shellCommand: `settings put system accelerometer_rotation 0 && settings put system user_rotation ${MOBILE_ROTATIONS.get(rotation)}`
+  };
+}
+
+async function runMobileControlRequest(body, { upstreamUrl, token, timeoutMs }) {
+  if (!upstreamUrl || !token) {
+    const error = new Error('Mobile control upstream is not configured');
+    error.statusCode = 503;
+    error.code = 'mobile_control_not_configured';
+    throw error;
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(new URL('/control', upstreamUrl), {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(payload.message || 'Mobile control upstream rejected command');
+      error.statusCode = response.status >= 400 && response.status < 500 ? response.status : 502;
+      error.code = payload.error || 'mobile_control_failed';
+      throw error;
+    }
+    return payload;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function captureMobileScreenshot({ upstreamUrl, token, timeoutMs }) {
+  if (!upstreamUrl || !token) {
+    const error = new Error('Mobile screenshot upstream is not configured');
+    error.statusCode = 503;
+    error.code = 'mobile_control_not_configured';
+    throw error;
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(new URL('/screenshot', upstreamUrl), {
+      headers: { authorization: `Bearer ${token}` },
+      signal: controller.signal
+    });
+    if (!response.ok) {
+      const error = new Error('Mobile screenshot upstream failed');
+      error.statusCode = response.status >= 400 && response.status < 500 ? response.status : 502;
+      error.code = 'mobile_screenshot_failed';
+      throw error;
+    }
+    return Buffer.from(await response.arrayBuffer());
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function handleMobileControl(request, response, { mobileControlRunner, mobileControlConfig }) {
+  let body;
+  try {
+    body = await readJsonBody(request, 2048);
+    const command = buildMobileControlCommand(body);
+    const result = mobileControlRunner
+      ? await mobileControlRunner(command)
+      : await runMobileControlRequest(body, mobileControlConfig);
+    return json(response, 200, { ok: true, action: command.action, deviceId: mobileControlConfig.deviceId, ...result });
+  } catch (err) {
+    const statusCode = err.statusCode && err.statusCode >= 400 && err.statusCode < 500 ? err.statusCode : 502;
+    return json(response, statusCode, {
+      error: err.code || 'mobile_control_failed',
+      message: statusCode === 502 ? 'Mobile emulator control command failed' : err.message
+    });
+  }
+}
+
+async function handleMobileScreenshot(response, { mobileScreenshotRunner, mobileControlConfig }) {
+  try {
+    const png = mobileScreenshotRunner ? mobileScreenshotRunner() : await captureMobileScreenshot(mobileControlConfig);
+    response.writeHead(200, {
+      'content-type': 'image/png',
+      'content-length': png.length,
+      'cache-control': 'no-store'
+    });
+    response.end(png);
+  } catch (err) {
+    console.error('mobile screenshot proxy failed', { name: err?.name, code: err?.code, statusCode: err?.statusCode });
+    return json(response, 502, { error: 'mobile_screenshot_failed', message: 'Mobile emulator screenshot capture failed' });
+  }
+}
+
 async function serveStatic(request, response) {
   const url = new URL(request.url, 'http://dashboard.local');
   const requestedPath = url.pathname === '/' ? '/index.html' : url.pathname;
@@ -3025,6 +3209,14 @@ export async function createApp(options = {}) {
   const mobileViewerToken = Object.prototype.hasOwnProperty.call(options, 'mobileViewerToken')
     ? options.mobileViewerToken
     : (process.env.MOBILE_VIEWER_NOVNC_TOKEN ?? readOptionalSecretFile(process.env.MOBILE_VIEWER_NOVNC_TOKEN_FILE ?? '/run/secrets/mobile-viewer-novnc-token'));
+  const mobileControlConfig = {
+    upstreamUrl: options.mobileControlUpstreamUrl ?? process.env.MOBILE_CONTROL_UPSTREAM_URL ?? 'http://192.168.0.20:6081',
+    token: options.mobileControlToken ?? process.env.MOBILE_CONTROL_TOKEN ?? mobileViewerToken,
+    deviceId: options.mobileControlDeviceId ?? process.env.MOBILE_CONTROL_DEVICE_ID ?? config.mobileWorkflow?.runtime?.adbDeviceId ?? 'emulator-5554',
+    timeoutMs: Number(options.mobileControlTimeoutMs ?? process.env.MOBILE_CONTROL_TIMEOUT_MS ?? 20000)
+  };
+  const mobileControlRunner = Object.prototype.hasOwnProperty.call(options, 'mobileControlRunner') ? options.mobileControlRunner : null;
+  const mobileScreenshotRunner = Object.prototype.hasOwnProperty.call(options, 'mobileScreenshotRunner') ? options.mobileScreenshotRunner : null;
   const unifiedInboxStatusUrl = Object.prototype.hasOwnProperty.call(options, 'unifiedInboxStatusUrl')
     ? options.unifiedInboxStatusUrl
     : (process.env.UNIFIED_INBOX_STATUS_URL ?? config.unifiedInbox?.statusUrl ?? null);
@@ -3120,6 +3312,14 @@ export async function createApp(options = {}) {
       if (request.method === 'GET' && url.pathname === '/api/mobile-workflow/status') {
         const result = await readMobileWorkflowStatus({ config: config.mobileWorkflow, statusFile: mobileWorkflowStatusFile });
         return json(response, result.statusCode, result.payload);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/mobile-workflow/control') {
+        return handleMobileControl(request, response, { mobileControlRunner, mobileControlConfig });
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/mobile-workflow/screenshot') {
+        return await handleMobileScreenshot(response, { mobileScreenshotRunner, mobileControlConfig });
       }
 
       if (request.method === 'GET' && url.pathname === '/api/unified-inbox/status') {
