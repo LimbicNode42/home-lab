@@ -2,7 +2,7 @@
 
 > Operator guidance, not financial advice. This document records the *single named owner* for recurring non-fixture investment-screener hydration across all tracked markets, its cadence, per-market universe denominator, failure notification path, and runbook.
 >
-> This is the all-market generalization of the former ASX-only runbook. ASX behavior and its regression guards are preserved; NASDAQ is now a first-class recurring market; US is explicitly not-applicable to the recurring full-universe cadence (see [Universe](#universe-denominator)).
+> This is the all-market generalization of the former ASX-only runbook. ASX behavior and its regression guards are preserved; NASDAQ and NYSE are now first-class recurring markets; US is explicitly not-applicable to the recurring full-universe cadence (see [Universe](#universe-denominator)).
 
 ## Owner
 
@@ -36,12 +36,13 @@ Enabled markets are driven from `universe/recurring-markets.json`. The registry 
 |---|---|---|---|---|---|---|
 | `ASX` | `yahoo-finance` | `asx-yahoo-timeseries` | `asx-listed-companies.seed.json` | 1838 | `complete_exchange_listing` | none |
 | `NASDAQ` | `eodhd` | `nasdaq-eodhd-fundamentals` | `nasdaq-listed-equities.seed.json` | 3434 | `complete_security_type_filtered_listing` | `EODHD_API_KEY` |
+| `NYSE` | `eodhd` | `nyse-eodhd-fundamentals` | `nyse-listed-equities.seed.json` | 2227 | `complete_security_type_filtered_listing` | `EODHD_API_KEY` |
 
 ### Disabled / not applicable markets
 
-- **`US`** is **disabled** in the registry (`enabled: false`) and is therefore never part of a recurring cycle. Rationale: the only committed US seed (`us-sp500-constituents.seed.json`, 503 names) is a curated S&P 500 sample (`known_sample_universe`), *not* a full US/NYSE ordinary-share listing. Selecting it unbounded would mislabel a 503-name sample as `complete_exchange_listing` (via `select_us_universe_batch`), and the codebase has no reviewed full-US seed (`generate_us_universe_seed.py` deliberately does not enumerate the ~7000 NYSE/NASDAQ names). NASDAQ already provides recurring full-universe coverage of the US listed-equity surface. Re-enable US only after a reviewed full-US seed + a recurring-safe mode that preserves an honest `denominator_status`.
+- **`US`** is **disabled** in the registry (`enabled: false`) and is therefore never part of a recurring cycle. Rationale: the only committed US seed (`us-sp500-constituents.seed.json`, 503 names) is a curated S&P 500 sample (`known_sample_universe`), *not* a full US/NYSE ordinary-share listing. Selecting it unbounded would mislabel a 503-name sample as `complete_exchange_listing` (via `select_us_universe_batch`), and the codebase has no reviewed full-US seed (`generate_us_universe_seed.py` deliberately does not enumerate the ~7000 NYSE/NASDAQ names). NASDAQ and NYSE now provide separate recurring full-universe coverage for their reviewed US listed-equity surfaces. Re-enable US only after a reviewed full-US seed + a recurring-safe mode that preserves an honest `denominator_status`.
 
-The `denominator_status` values map to the caller's honest label exactly as before: full seed → `complete_exchange_listing` (ASX) or `complete_security_type_filtered_listing` (NASDAQ, whose reviewed seed is security-type-filtered); bounded slice → `ranked_market_cap_batch`; explicit/curated sample → `known_sample_universe`. The owner wrappers never pass a `--denominator-label` override, so the labels come from `screener.py`'s own honest derivation and are never mislabeled.
+The `denominator_status` values map to the caller's honest label exactly as before: full seed → `complete_exchange_listing` (ASX) or `complete_security_type_filtered_listing` (NASDAQ/NYSE, whose reviewed seeds are security-type-filtered); bounded slice → `ranked_market_cap_batch`; explicit/curated sample → `known_sample_universe`. The owner wrappers never pass a `--denominator-label` override, so the labels come from `screener.py`'s own honest derivation and are never mislabeled.
 
 ### Full-count policy
 
@@ -114,9 +115,10 @@ Broad hydration approval gates:
 cd /root/work/home-lab/services/personal-dashboard
 cat /mnt/pve/NAS/services/personal-dashboard/investment-screener/manifests/market=ASX/source=yahoo-finance/latest.json
 cat /mnt/pve/NAS/services/personal-dashboard/investment-screener/manifests/market=NASDAQ/source=eodhd/latest.json
+cat /mnt/pve/NAS/services/personal-dashboard/investment-screener/manifests/market=NYSE/source=eodhd/latest.json
 ```
 
-Confirm `mode` matches the registry (asx-yahoo-timeseries / nasdaq-eodhd-fundamentals), `fixture=false`, a recent `completed_at`, and `coverage.usable > 0`.
+Confirm `mode` matches the registry (asx-yahoo-timeseries / nasdaq-eodhd-fundamentals / nyse-eodhd-fundamentals), `fixture=false`, a recent `completed_at`, and `coverage.usable > 0`.
 
 ### Dry-run the full owner (bounded, no NAS, no provider scrape)
 
@@ -141,7 +143,7 @@ INVESTMENT_SCREENER_DATA_ROOT=/tmp/investment-screener-smoke-scratch \
   bash scripts/run-investment-screener-smoke-owner.sh
 ```
 
-Emits `SCREENER_SMOKE market=ASX status=ok …` and `SCREENER_SMOKE market=NASDAQ status=n/a reason=missing_credential_EODHD_API_KEY …` (when the credential is absent) and never writes `latest.json`. NASDAQ smoke requires `EODHD_API_KEY` in the runtime environment (fail-closed without it).
+Emits `SCREENER_SMOKE market=ASX status=ok …` plus `SCREENER_SMOKE market=NASDAQ status=n/a reason=missing_credential_EODHD_API_KEY …` and `SCREENER_SMOKE market=NYSE status=n/a reason=missing_credential_EODHD_API_KEY …` when the credential is absent, and never writes `latest.json`. NASDAQ/NYSE smoke requires `EODHD_API_KEY` in the runtime environment (fail-closed without it).
 
 ### Credentialed smoke / top-N run pattern
 
@@ -170,7 +172,7 @@ Only after the smoke run verifies sanitized logs should an operator run the appr
 | `INVESTMENT_SCREENER_DATA_ROOT` | `/mnt/pve/NAS/services/personal-dashboard` (tori) / `/mnt/nas/...` (critical) | Canonical data root |
 | `RECURRING_MARKETS_REGISTRY` | `<repo>/investment-screener/universe/recurring-markets.json` | Market registry path (override for tests/scratch) |
 | `DRY_RUN` | `0` | Set `1` to write only the run payload, skip publish/preflight (smoke forces `1`) |
-| `EODHD_API_KEY` | (unset) | EODHD fundamentals credential for NASDAQ/US; fail-closed when unset |
+| `EODHD_API_KEY` | (unset) | EODHD fundamentals credential for NASDAQ/NYSE/US; fail-closed when unset |
 
 Per-market registry fields (source of truth): `source`, `mode`, `seed`, `seed_arg`, `denominator_label`, `denominator_status`, `full_count_policy`, `smoke_batch_size`, `sleep_seconds`, `max_generated_age_hours`, `credential_env`.
 

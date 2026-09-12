@@ -57,12 +57,12 @@ Do not use it as the final reason to buy, sell, hold, size, or time a position. 
 4. Check the generated timestamp and data-as-of value.
 5. Start with the default Top 6 composite view.
 6. Read every caveat, risk flag, and limitation shown for a candidate.
-7. Use Market, Exchange, Region, Sector, Industry, Score focus, Weight preset, and Suggestions only to change the view of the current export. NASDAQ must remain visible as NASDAQ, not generic US.
+7. Use Market, Exchange, Region, Sector, Industry, Score focus, Weight preset, and Suggestions only to change the view of the current export. NASDAQ and NYSE must remain visible as separate markets, not generic US.
 8. For anything interesting, leave the dashboard and verify against primary filings or an authorized market-data source.
 
 ## Inputs
 
-The product is ASX-first but now also has an explicit NASDAQ bucket. ASX input can come from the small committed watchlist or reviewed ASX company-directory seed. NASDAQ input comes from `universe/nasdaq-listed-equities.seed.json`: a reviewed NASDAQ Trader listed-equity seed with `market=NASDAQ`, `exchange=NASDAQ`, `region=US`, `currency=USD`, and EODHD provider tickers using `{symbol}.US`. That denominator is **complete_security_type_filtered_listing** — full NASDAQ listed-equity coverage after excluding ETFs/test issues/non-equity securities, not the old NASDAQ-100 sample.
+The product is ASX-first but now also has explicit NASDAQ and NYSE buckets. ASX input can come from the small committed watchlist or reviewed ASX company-directory seed. NASDAQ input comes from `universe/nasdaq-listed-equities.seed.json`: a reviewed NASDAQ Trader listed-equity seed with `market=NASDAQ`, `exchange=NASDAQ`, `region=US`, `currency=USD`, and EODHD provider tickers using `{symbol}.US`. NYSE input comes from `universe/nyse-listed-equities.seed.json`: NASDAQ Trader `otherlisted.txt` filtered to `Exchange=N`, with `market=NYSE`, `exchange=NYSE`, `region=US`, `currency=USD`, and EODHD provider tickers using `{symbol}.US` while preserving dot-class symbols such as `BRK.B.US`. Both US exchange denominators are **complete_security_type_filtered_listing** — full reviewed exchange listed-equity coverage after excluding ETFs/test issues/non-equity securities, not top-N samples.
 
 Input quality matters more than UI polish. If the watchlist or ASX seed is stale, sparse, sector-skewed, or missing metadata, the output will inherit those limits with a nicer hat.
 
