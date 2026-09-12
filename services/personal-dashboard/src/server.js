@@ -311,15 +311,16 @@ async function runMobileControlRequest(body, { upstreamUrl, token, timeoutMs }) 
   }
 }
 
-async function captureMobileScreenshot({ upstreamUrl, token, timeoutMs }) {
+async function captureMobileScreenshot({ upstreamUrl, token, timeoutMs, screenshotTimeoutMs }) {
   if (!upstreamUrl || !token) {
     const error = new Error('Mobile screenshot upstream is not configured');
     error.statusCode = 503;
     error.code = 'mobile_control_not_configured';
     throw error;
   }
+  const requestTimeoutMs = Number(screenshotTimeoutMs ?? timeoutMs ?? 30000);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
   try {
     const response = await fetch(new URL('/screenshot', upstreamUrl), {
       headers: { authorization: `Bearer ${token}` },
@@ -3229,11 +3230,13 @@ export async function createApp(options = {}) {
   const mobileViewerToken = Object.prototype.hasOwnProperty.call(options, 'mobileViewerToken')
     ? options.mobileViewerToken
     : (process.env.MOBILE_VIEWER_NOVNC_TOKEN ?? readOptionalSecretFile(process.env.MOBILE_VIEWER_NOVNC_TOKEN_FILE ?? '/run/secrets/mobile-viewer-novnc-token'));
+  const mobileControlTimeoutMs = Number(options.mobileControlTimeoutMs ?? process.env.MOBILE_CONTROL_TIMEOUT_MS ?? 20000);
   const mobileControlConfig = {
     upstreamUrl: options.mobileControlUpstreamUrl ?? process.env.MOBILE_CONTROL_UPSTREAM_URL ?? 'http://192.168.0.20:6081',
     token: options.mobileControlToken ?? process.env.MOBILE_CONTROL_TOKEN ?? mobileViewerToken,
     deviceId: options.mobileControlDeviceId ?? process.env.MOBILE_CONTROL_DEVICE_ID ?? config.mobileWorkflow?.runtime?.adbDeviceId ?? 'emulator-5554',
-    timeoutMs: Number(options.mobileControlTimeoutMs ?? process.env.MOBILE_CONTROL_TIMEOUT_MS ?? 20000)
+    timeoutMs: mobileControlTimeoutMs,
+    screenshotTimeoutMs: Number(options.mobileScreenshotTimeoutMs ?? process.env.MOBILE_SCREENSHOT_TIMEOUT_MS ?? Math.max(mobileControlTimeoutMs, 30000))
   };
   const mobileControlRunner = Object.prototype.hasOwnProperty.call(options, 'mobileControlRunner') ? options.mobileControlRunner : null;
   const mobileScreenshotRunner = Object.prototype.hasOwnProperty.call(options, 'mobileScreenshotRunner') ? options.mobileScreenshotRunner : null;

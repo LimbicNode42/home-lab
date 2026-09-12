@@ -457,3 +457,38 @@ test('GET /api/mobile-workflow/screenshot requires auth and returns PNG from ser
     await server.close();
   }
 });
+
+test('GET /api/mobile-workflow/screenshot allows bounded screenshot-specific timeout', async () => {
+  const upstream = http.createServer(async (request, response) => {
+    assert.equal(request.url, '/screenshot');
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    response.writeHead(200, { 'content-type': 'image/png' });
+    response.end(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  });
+  await new Promise((resolve) => upstream.listen(0, '127.0.0.1', resolve));
+  const { port } = upstream.address();
+  const configPath = await writeConfig(mobileWorkflowConfig);
+  const app = await createApp({
+    configPath,
+    authMode: 'reverse-proxy',
+    proxyUserHeader: 'x-forwarded-user',
+    mobileWorkflowStatusFile: null,
+    mobileControlUpstreamUrl: `http://127.0.0.1:${port}`,
+    mobileControlToken: 'test-token',
+    mobileControlTimeoutMs: 1,
+    mobileScreenshotTimeoutMs: 500
+  });
+  const server = await listen(app);
+
+  try {
+    const authorized = await fetch(`${server.baseUrl}/api/mobile-workflow/screenshot`, { headers: { 'x-forwarded-user': 'ben' } });
+    const body = Buffer.from(await authorized.arrayBuffer());
+
+    assert.equal(authorized.status, 200);
+    assert.equal(authorized.headers.get('content-type'), 'image/png');
+    assert.deepEqual([...body], [0x89, 0x50, 0x4e, 0x47]);
+  } finally {
+    await server.close();
+    await new Promise((resolve, reject) => upstream.close((err) => err ? reject(err) : resolve()));
+  }
+});

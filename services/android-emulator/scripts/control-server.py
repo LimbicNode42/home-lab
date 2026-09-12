@@ -10,6 +10,8 @@ import json
 import os
 import re
 import subprocess
+import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -19,7 +21,10 @@ TOKEN_FILE = Path(os.environ.get("ANDROID_NOVNC_TOKEN_FILE", "/opt/android-emula
 ADB = os.environ.get("ANDROID_ADB", "/opt/android-sdk/platform-tools/adb")
 DEVICE = os.environ.get("ANDROID_DEVICE_ID", "emulator-5554")
 TIMEOUT = float(os.environ.get("ANDROID_CONTROL_TIMEOUT", "20"))
+SCREENSHOT_ATTEMPTS = int(os.environ.get("ANDROID_SCREENSHOT_ATTEMPTS", "3"))
+SCREENSHOT_BACKOFF = float(os.environ.get("ANDROID_SCREENSHOT_BACKOFF", "0.75"))
 TEXT_RE = re.compile(r"^[A-Za-z0-9 .,@:_+\-/]+$")
+SCREENSHOT_LOCK = threading.Lock()
 ROTATIONS = {
     "portrait": "0",
     "landscape": "1",
@@ -57,6 +62,64 @@ def adb(*args: str) -> subprocess.CompletedProcess[str]:
         stderr=subprocess.PIPE,
         text=True,
     )
+
+
+def adb_bytes(*args: str) -> bytes:
+    return subprocess.run(
+        [ADB, "-s", DEVICE, *args],
+        check=True,
+        timeout=TIMEOUT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    ).stdout
+
+
+def adb_text(*args: str) -> str:
+    return adb(*args).stdout.strip().replace("\r", "")
+
+
+def device_health() -> dict[str, object]:
+    """Return sanitized emulator health markers for logs/API diagnostics."""
+    health: dict[str, object] = {"deviceId": DEVICE}
+    try:
+        health["adbState"] = adb_text("get-state")
+    except Exception:
+        health["adbState"] = "unavailable"
+    try:
+        health["bootCompleted"] = adb_text("shell", "getprop", "sys.boot_completed") == "1"
+    except Exception:
+        health["bootCompleted"] = False
+    try:
+        health["display"] = adb_text("shell", "wm", "size")
+    except Exception:
+        health["display"] = "unknown"
+    return health
+
+
+def capture_screenshot() -> tuple[bytes, dict]:
+    """Serialize and retry screencap calls so concurrent dashboard refreshes do not wedge adb."""
+    attempts = max(1, SCREENSHOT_ATTEMPTS)
+    with SCREENSHOT_LOCK:
+        last_exc: Exception | None = None
+        for attempt in range(1, attempts + 1):
+            started = time.monotonic()
+            try:
+                png = adb_bytes("exec-out", "screencap", "-p")
+                elapsed_ms = int((time.monotonic() - started) * 1000)
+                if not png.startswith(b"\x89PNG") or len(png) < 1024:
+                    raise RuntimeError("screencap returned invalid png")
+                return png, {"attempts": attempt, "elapsedMs": elapsed_ms, **device_health()}
+            except Exception as exc:
+                last_exc = exc
+                elapsed_ms = int((time.monotonic() - started) * 1000)
+                print(
+                    f"screenshot_attempt_failed attempt={attempt} elapsedMs={elapsed_ms} "
+                    f"error={type(exc).__name__} health={json.dumps(device_health(), sort_keys=True)}",
+                    flush=True,
+                )
+                if attempt < attempts:
+                    time.sleep(SCREENSHOT_BACKOFF * attempt)
+        raise RuntimeError(f"screencap failed after {attempts} attempts") from last_exc
 
 
 def handle_control(payload: dict) -> dict:
@@ -115,22 +178,19 @@ class Handler(BaseHTTPRequestHandler):
         if self.path != "/screenshot":
             return self.send_json(404, {"error": "not_found"})
         try:
-            png = subprocess.run(
-                [ADB, "-s", DEVICE, "exec-out", "screencap", "-p"],
-                check=True,
-                timeout=TIMEOUT,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            ).stdout
+            png, diagnostics = capture_screenshot()
             self.send_response(200)
             self.send_header("content-type", "image/png")
             self.send_header("cache-control", "no-store")
             self.send_header("content-length", str(len(png)))
+            self.send_header("x-android-screenshot-attempts", str(diagnostics["attempts"]))
+            self.send_header("x-android-screenshot-elapsed-ms", str(diagnostics["elapsedMs"]))
             self.end_headers()
             self.wfile.write(png)
         except Exception as exc:
-            print(f"screenshot_failed: {type(exc).__name__}: {exc}", flush=True)
-            self.send_json(502, {"error": "screenshot_failed", "message": "Unable to capture emulator screenshot"})
+            health = device_health()
+            print(f"screenshot_failed: {type(exc).__name__}: {exc} health={json.dumps(health, sort_keys=True)}", flush=True)
+            self.send_json(502, {"error": "screenshot_failed", "message": "Unable to capture emulator screenshot", "health": health})
 
     def do_POST(self):
         if not self.authorized():

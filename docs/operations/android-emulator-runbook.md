@@ -173,6 +173,44 @@ and surfaced in the Home Dashboard mobile-workflow status (`matrix` +
   — deferred due the 4 vCPU / ~7.7 GiB single-emulator capacity wall. They boot
   one-at-a-time via the same manager script when capacity allows.
 
+### Verification receipts (2026-09-13 — large/tablet smoke complete)
+
+- `large`: boot=1, 1440x3120@560, app installed + launched, smoke screenshot
+  `logs/smoke-large.png` (valid 1440x3120 PNG). Boot took ~4.5 min cold; the
+  first `install` attempt hit a transient `system_server` watchdog restart
+  (`DeadSystemException` / `Service package: not found`) that self-recovered in
+  ~1 min — a retry after the package service returned succeeded. This is the
+  known software-GL + 2 vCPU cold-boot fragility, not an app defect.
+- `tablet`: boot=1, 2560x1600@320, app installed + launched, smoke screenshot
+  `logs/smoke-tablet.png` (valid 2560x1600 PNG). Boot ~5 min cold.
+
+All four matrix profiles are now boot/install/smoke verified. The resident
+`agent_feedback` AVD was stopped for the smoke window and restored afterwards
+(boot=1, app present, all five systemd units active, ports loopback-only).
+
+## ADB/screencap stall remediation (2026-09-13)
+
+The intermittent dashboard screenshot 502 was root-caused to `adb exec-out
+screencap -p` exceeding the 20s `ANDROID_CONTROL_TIMEOUT` under node load
+(loadavg 4–6 on 4 vCPU while the resident emulator idles at ~45% CPU). Control
+verbs (`input tap`, `keyevent`, etc.) are lightweight and returned in <1s, so
+only the screenshot path stalled. The fix, applied to
+`android-control.service` on tori:
+
+- Serialize screencap calls behind a process lock so concurrent dashboard
+  refreshes cannot wedge adb.
+- Retry up to `ANDROID_SCREENSHOT_ATTEMPTS` (3) with linear backoff
+  (`ANDROID_SCREENSHOT_BACKOFF` 0.75s) before returning 502.
+- Emit sanitized health diagnostics (`adbState`, `bootCompleted`, `display`)
+  on failure and as response headers (`x-android-screenshot-attempts`,
+  `x-android-screenshot-elapsed-ms`).
+- Dashboard side: a dedicated `MOBILE_SCREENSHOT_TIMEOUT_MS` (default 30000)
+  decouples the screenshot fetch timeout from the 20s control timeout.
+
+Verified live: 6 sequential + 8 concurrent screenshot requests through the
+bridge all returned 200 with valid PNGs; no stalls. ADB, x11vnc, and control
+ports remain loopback/token-gated as before.
+
 ## Open items / follow-ups
 
 - Move the noVNC token into Vaultwarden (folder `homelab`, item
