@@ -48,7 +48,7 @@ Committed but disabled markets are also present in the registry and seed directo
 ### Disabled / not applicable markets
 
 - **`LSE`** is **disabled** until a reviewed TIDM/ISIN/provider-symbol mapping exists. The committed seed is the official issuer denominator, but it intentionally carries `ticker: null`, `eodhd_ticker: null`, and `yahoo_ticker: null`; selector output accounts attempted rows as `missing_provider_symbol` rather than pretending a mapped subset is full LSE coverage.
-- **`TSE`** is **disabled** for recurring EODHD hydration until authenticated EODHD `exchanges-list` discovery proves the Japan/Tokyo exchange suffix. The committed JPX seed has Yahoo `.T` aliases for bounded smoke only; `.T` is not the source-of-truth denominator and must not be used as a recurring full-provider contract.
+- **`TSE`** is **disabled** for recurring EODHD hydration because authenticated EODHD discovery did **not** expose a Japan/Tokyo exchange code. On 2026-09-12 UTC, `exchanges-list` returned 70 exchanges, 0 Japan/Tokyo/JPX candidates; bounded Toyota probes for `7203.TSE`, `7203.T`, `7203.JP`, `7203.TYO`, `7203.XJPX`, and `7203.XTKS` all returned 404. The committed JPX seed now accounts every active row as `eodhd_mapping_status: unmapped` / `eodhd_unmapped_reason: eodhd_japan_exchange_not_available` (3712 unmapped, 729 excluded, 0 failed, 0 unaccounted). Yahoo `.T` aliases remain bounded-smoke only; `.T` is not the source-of-truth denominator and must not be used as a recurring full-provider contract.
 - **`US`** is **disabled** in the registry (`enabled: false`) and is therefore never part of a recurring cycle. Rationale: the only committed US seed (`us-sp500-constituents.seed.json`, 503 names) is a curated S&P 500 sample (`known_sample_universe`), *not* a full US/NYSE ordinary-share listing. Selecting it unbounded would mislabel a 503-name sample as `complete_exchange_listing` (via `select_us_universe_batch`), and the codebase has no reviewed full-US seed (`generate_us_universe_seed.py` deliberately does not enumerate the ~7000 NYSE/NASDAQ names). NASDAQ and NYSE now provide separate recurring full-universe coverage for their reviewed US listed-equity surfaces. Re-enable US only after a reviewed full-US seed + a recurring-safe mode that preserves an honest `denominator_status`.
 
 The `denominator_status` values map to the caller's honest label exactly as before: full seed → `complete_exchange_listing` (ASX) or `complete_security_type_filtered_listing` (NASDAQ/NYSE/TSE, whose reviewed seeds are security-type-filtered); LSE issuer seed before mapping → `complete_issuer_listing_requires_symbol_mapping`; bounded slice → `ranked_market_cap_batch`; explicit/curated sample → `known_sample_universe`. The owner wrappers never pass a `--denominator-label` override, so the labels come from `screener.py`'s own honest derivation and are never mislabeled.
@@ -128,6 +128,16 @@ cat /mnt/pve/NAS/services/personal-dashboard/investment-screener/manifests/marke
 ```
 
 Confirm `mode` matches the registry (asx-yahoo-timeseries / nasdaq-eodhd-fundamentals / nyse-eodhd-fundamentals), `fixture=false`, a recent `completed_at`, and `coverage.usable > 0`.
+
+### TSE EODHD enabling gate
+
+Do **not** set `tse.enabled=true` until a future authenticated EODHD discovery returns a Japan/Tokyo exchange code and a bounded fundamentals smoke confirms a real symbol shape for representative JPX local codes. Required receipts before enabling:
+
+- `exchanges-list` has a Japan/Tokyo/JPX candidate and a concrete EODHD `Code`.
+- At least Toyota `7203.<code>` returns EODHD fundamentals identity data; preferably also a Standard/Growth sample.
+- `universe/tse-listed-equities.seed.json` maps every active JPX seed row to `mapped`, `unmapped`, or `failed` with non-secret reasons; excluded JPX rows remain in metadata with their exclusion reason.
+- Accounting stays balanced: `mapped + unmapped + failed + excluded == source_row_count` and `unaccounted_count == 0`.
+- Only after review may recurring hydration be enabled. Until then, TSE EODHD mode is an honest fail-closed state, not a production hydration target.
 
 ### Dry-run the full owner (bounded, no NAS, no provider scrape)
 

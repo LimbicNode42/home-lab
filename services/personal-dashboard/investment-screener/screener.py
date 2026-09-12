@@ -223,6 +223,9 @@ TSE_YAHOO_MODE = "tse-yahoo-chart-smoke"
 TSE_SOURCE_NAME = "JPX listed issues workbook"
 TSE_SOURCE_URL = "https://www.jpx.co.jp/english/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_e.xlsx"
 TSE_EQUITY_SECURITY_TYPE = "tse_listed_equity"
+TSE_EODHD_UNSUPPORTED_CONVENTION = "no EODHD Japan/Tokyo exchange code discovered; TSE EODHD hydration remains disabled"
+TSE_EODHD_DISCOVERY_REQUIRED_REASON = "eodhd_exchange_discovery_required"
+TSE_EODHD_UNAVAILABLE_REASON = "eodhd_japan_exchange_not_available"
 TSE_INCLUDED_SECTIONS = {
     "Prime Market (Domestic)",
     "Standard Market(Domestic)",
@@ -1452,6 +1455,103 @@ def _tse_exclusion_record(row: dict, reason: str) -> dict:
     }
 
 
+def _is_tse_eodhd_exchange_candidate(exchange: dict) -> bool:
+    text = " ".join(
+        str(exchange.get(key) or "")
+        for key in ("Name", "Code", "Country", "Currency", "Exchange", "MIC", "OperatingMIC")
+    ).lower()
+    return any(token in text for token in ("japan", "tokyo", "jpx", "xtks", "xjpx"))
+
+
+def resolve_tse_eodhd_exchange_discovery(
+    exchanges: list[dict],
+    source_url: str,
+    retrieved_at: str,
+    probe_symbols: Optional[list[str]] = None,
+) -> dict:
+    """Resolve the EODHD exchange-list result for TSE/JPX without leaking tokens."""
+    safe_source_url = redact_url_secrets(source_url)
+    candidate_keys = ("Name", "Code", "Country", "Currency", "Exchange", "MIC", "OperatingMIC")
+    candidates = [
+        {key: exchange.get(key) for key in candidate_keys if exchange.get(key) is not None}
+        for exchange in exchanges
+        if isinstance(exchange, dict) and _is_tse_eodhd_exchange_candidate(exchange)
+    ]
+    exchange_code = str(candidates[0].get("Code") or "").strip() if candidates else None
+    if exchange_code:
+        status = "supported"
+        provider_symbol_convention = f"EODHD {{local_code}}.{exchange_code} from authenticated exchanges-list"
+        symbol_shape = f"{{local_code}}.{exchange_code}"
+    else:
+        status = "unsupported_by_authenticated_exchanges_list"
+        provider_symbol_convention = TSE_EODHD_UNSUPPORTED_CONVENTION
+        symbol_shape = None
+    return {
+        "status": status,
+        "source_name": "EODHD exchanges-list",
+        "source_url": safe_source_url,
+        "retrieved_at": retrieved_at,
+        "exchange_count": len(exchanges),
+        "candidate_count": len(candidates),
+        "candidates": candidates,
+        "exchange_code": exchange_code,
+        "symbol_shape": symbol_shape,
+        "probe_symbols": list(probe_symbols or []),
+        "provider_symbol_convention": provider_symbol_convention,
+    }
+
+
+def apply_tse_eodhd_exchange_mapping(
+    entries: list[dict],
+    seed_metadata: dict,
+    discovery: dict,
+) -> tuple[list[dict], dict]:
+    """Apply a discovered EODHD TSE suffix or account every row as unmapped."""
+    exchange_code = discovery.get("exchange_code") if discovery.get("status") == "supported" else None
+    mapped_entries: list[dict] = []
+    mapped_count = 0
+    unmapped_count = 0
+    failed_count = 0
+    for entry in entries:
+        updated = dict(entry)
+        local_code = str(updated.get("local_code") or updated.get("tse_code") or "").strip()
+        if exchange_code and local_code:
+            updated["eodhd_ticker"] = f"{local_code}.{exchange_code}"
+            updated["eodhd_mapping_status"] = "mapped"
+            updated["eodhd_unmapped_reason"] = None
+            mapped_count += 1
+        elif local_code:
+            updated["eodhd_ticker"] = None
+            updated["eodhd_mapping_status"] = "unmapped"
+            updated["eodhd_unmapped_reason"] = TSE_EODHD_UNAVAILABLE_REASON
+            unmapped_count += 1
+        else:
+            updated["eodhd_ticker"] = None
+            updated["eodhd_mapping_status"] = "failed"
+            updated["eodhd_unmapped_reason"] = "missing_local_code"
+            failed_count += 1
+        mapped_entries.append(updated)
+    excluded_count = int(seed_metadata.get("excluded_count") or 0)
+    source_count = int(seed_metadata.get("source_row_count") or seed_metadata.get("row_count") or (len(entries) + excluded_count))
+    accounted_count = mapped_count + unmapped_count + failed_count + excluded_count
+    accounting = {
+        "status": discovery.get("status"),
+        "exchange_code": exchange_code,
+        "provider_symbol_convention": discovery.get("provider_symbol_convention"),
+        "mapped_count": mapped_count,
+        "unmapped_count": unmapped_count,
+        "failed_count": failed_count,
+        "excluded_count": excluded_count,
+        "active_seed_count": len(entries),
+        "source_row_count": source_count,
+        "accounted_count": accounted_count,
+        "unaccounted_count": max(source_count - accounted_count, 0),
+        "unmapped_reason": None if exchange_code else TSE_EODHD_UNAVAILABLE_REASON,
+        "discovery": discovery,
+    }
+    return mapped_entries, accounting
+
+
 def normalise_tse_jpx_rows(
     rows: list[dict],
     source_url: str,
@@ -1498,6 +1598,8 @@ def normalise_tse_jpx_rows(
             "local_code": local_code,
             "yahoo_ticker": ticker,
             "eodhd_ticker": None,
+            "eodhd_mapping_status": "unmapped",
+            "eodhd_unmapped_reason": TSE_EODHD_DISCOVERY_REQUIRED_REASON,
             "fmp_ticker": None,
             "name": name_raw,
             "name_raw": name_raw,
@@ -1548,7 +1650,7 @@ def normalise_tse_jpx_rows(
         "complete_exchange_listing": False,
         "complete_security_type_filtered_listing": True,
         "security_type_filter": sorted(TSE_INCLUDED_SECTIONS),
-        "provider_symbol_convention": "Yahoo {local_code}.T smoke alias; EODHD suffix requires authenticated exchanges-list",
+        "provider_symbol_convention": "Yahoo {local_code}.T smoke alias; EODHD requires authenticated exchanges-list discovery",
         "generated_by": "investment-screener/screener.py normalise_tse_jpx_rows",
     }
     return entries, metadata
@@ -1583,12 +1685,18 @@ def select_tse_universe_batch(
     if provider_key == "yahoo":
         convention = "yahoo {local_code}.T smoke alias; not denominator source"
     elif provider_key == "eodhd":
-        convention = "eodhd exchange suffix undiscovered; authenticated exchanges-list required"
+        convention = TSE_EODHD_UNSUPPORTED_CONVENTION
     else:
         convention = f"{provider_key} provider symbol must be present in seed entry"
     tickers = [symbol for symbol in (_select_provider_symbol(entry, provider_key) for entry in selected_entries) if symbol]
     missing = [
-        {"company_id": entry.get("company_id"), "local_code": entry.get("local_code"), "reason": "missing_provider_symbol", "provider": provider_key}
+        {
+            "company_id": entry.get("company_id"),
+            "local_code": entry.get("local_code"),
+            "reason": entry.get("eodhd_unmapped_reason") if provider_key == "eodhd" and entry.get("eodhd_unmapped_reason") else "missing_provider_symbol",
+            "provider": provider_key,
+            "mapping_status": entry.get("eodhd_mapping_status") if provider_key == "eodhd" else None,
+        }
         for entry in selected_entries
         if not _select_provider_symbol(entry, provider_key)
     ]

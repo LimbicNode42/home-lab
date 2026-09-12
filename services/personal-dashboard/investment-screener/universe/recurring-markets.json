@@ -100,7 +100,7 @@
       "sleep_seconds": 0.75,
       "max_generated_age_hours": 26,
       "credential_env": "EODHD_API_KEY",
-      "disabled_reason": "EODHD Japan exchange suffix is not verified; authenticated EODHD exchanges-list discovery must identify the Tokyo/Japan code before recurring hydration is enabled. Yahoo .T aliases are bounded-smoke only."
+      "disabled_reason": "Authenticated EODHD discovery found no Japan/Tokyo exchange code (70 exchanges-list entries, 0 JP candidates; Toyota suffix probes returned 404). Enable only if a future EODHD exchange code is verified and TSE seed mapping remains fully accounted. Yahoo .T aliases are bounded-smoke only."
     },
     {
       "id": "us",
