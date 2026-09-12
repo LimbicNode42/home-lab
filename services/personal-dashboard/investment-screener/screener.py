@@ -1360,6 +1360,188 @@ def normalise_lse_issuer_rows(
     return entries, metadata
 
 
+def _lse_provider_code(row: dict) -> str:
+    return str(
+        row.get("Code")
+        or row.get("code")
+        or row.get("Ticker")
+        or row.get("Symbol")
+        or row.get("symbol")
+        or ""
+    ).strip().upper()
+
+
+def _lse_provider_name(row: dict) -> str:
+    return str(row.get("Name") or row.get("name") or row.get("Company Name") or "").strip()
+
+
+def _lse_provider_isin(row: dict) -> Optional[str]:
+    value = row.get("Isin") or row.get("ISIN") or row.get("isin")
+    text = str(value or "").strip().upper()
+    return text or None
+
+
+def _normalise_lse_provider_ticker(code: str, provider: str) -> str:
+    code = str(code or "").strip().upper()
+    if not code:
+        return ""
+    if provider.lower() == "eodhd":
+        return code if code.endswith(".LSE") else f"{code}.LSE"
+    return code
+
+
+def reconcile_lse_provider_symbols(
+    seed_entries: list[dict],
+    provider_rows: list[dict],
+    provider: str,
+    provider_source_url: str,
+    retrieved_at: str,
+    provider_sha256: str,
+    seed_metadata: Optional[dict] = None,
+) -> tuple[list[dict], dict]:
+    """Overlay a reviewed LSE provider symbol reference onto issuer seed rows.
+
+    Matching is deliberately conservative: only exact normalized issuer-name keys
+    are accepted because the committed LSE issuer workbook has no TIDM/ISIN. A
+    provider row supplies the ticker; names only choose between provider-supplied
+    candidates. Duplicate provider names become ``mapping_ambiguous`` rather than
+    guessed. Rows without a unique provider record remain ``unmapped``.
+    """
+    provider_key = str(provider or "unknown").strip().lower() or "unknown"
+    public_source_url = redact_url_secrets(provider_source_url)
+    reference = {
+        "provider": provider_key,
+        "source_url": public_source_url,
+        "retrieved_at": retrieved_at,
+        "sha256": provider_sha256,
+        "row_count": len(provider_rows),
+        "matching_rule": "exact_lse_name_match_key_only_no_fuzzy_or_ticker_guessing",
+    }
+
+    failed_provider_rows: list[dict] = []
+    by_name_key: dict[str, list[dict]] = {}
+    seen_tickers: set[str] = set()
+    for idx, row in enumerate(provider_rows, start=1):
+        if not isinstance(row, dict):
+            failed_provider_rows.append({"row_index": idx, "reason": "provider_row_not_object"})
+            continue
+        code = _lse_provider_code(row)
+        name = _lse_provider_name(row)
+        name_key = _slugify_identity(name)
+        if not code:
+            failed_provider_rows.append({"row_index": idx, "name": name or None, "reason": "missing_provider_code"})
+            continue
+        if not name_key:
+            failed_provider_rows.append({"row_index": idx, "code": code, "reason": "missing_provider_name"})
+            continue
+        ticker = _normalise_lse_provider_ticker(code, provider_key)
+        if ticker in seen_tickers:
+            failed_provider_rows.append({"row_index": idx, "code": code, "ticker": ticker, "reason": "duplicate_provider_ticker"})
+            continue
+        seen_tickers.add(ticker)
+        by_name_key.setdefault(name_key, []).append({
+            "code": code,
+            "ticker": ticker,
+            "name": name,
+            "name_match_key": name_key,
+            "isin": _lse_provider_isin(row),
+            "currency": str(row.get("Currency") or row.get("currency") or "").strip() or None,
+            "exchange": str(row.get("Exchange") or row.get("exchange") or "").strip() or None,
+            "type": str(row.get("Type") or row.get("type") or "").strip() or None,
+        })
+
+    mapped_entries: list[dict] = []
+    mapped = unmapped = ambiguous = excluded = failed = 0
+    accounting: list[dict] = []
+    for entry in seed_entries:
+        current = dict(entry)
+        if current.get("active") is False or current.get("excluded") is True:
+            excluded += 1
+            status = "excluded"
+            reason = str(current.get("exclusion_reason") or current.get("reason") or "excluded_in_seed")
+        else:
+            name_key = str(current.get("name_match_key") or _slugify_identity(current.get("name"))).strip()
+            candidates = by_name_key.get(name_key, [])
+            if len(candidates) == 1:
+                candidate = candidates[0]
+                ticker = candidate["ticker"]
+                current["ticker"] = ticker
+                if provider_key == "eodhd":
+                    current["eodhd_ticker"] = ticker
+                else:
+                    current[f"{provider_key}_ticker"] = ticker
+                current["provider_symbol"] = ticker
+                current["provider_code"] = candidate["code"]
+                current["isin"] = candidate["isin"]
+                current["currency"] = candidate["currency"] or current.get("currency")
+                current["mapping_provenance"] = {**reference, "provider_name": candidate["name"], "provider_type": candidate["type"], "provider_exchange": candidate["exchange"]}
+                mapped += 1
+                status = "mapped"
+                reason = "unique_exact_provider_name_match"
+            elif len(candidates) > 1:
+                current["eodhd_ticker"] = None if provider_key == "eodhd" else current.get("eodhd_ticker")
+                current["mapping_candidates"] = [
+                    {"provider_code": c["code"], "provider_symbol": c["ticker"], "isin": c["isin"], "currency": c["currency"]}
+                    for c in candidates
+                ]
+                ambiguous += 1
+                status = "mapping_ambiguous"
+                reason = "multiple_provider_rows_share_exact_name_match_key"
+            else:
+                unmapped += 1
+                status = "unmapped"
+                reason = "no_provider_row_with_exact_name_match_key"
+        current["mapping_status"] = status
+        current["mapping_reason"] = reason
+        mapped_entries.append(current)
+        accounting.append({
+            "company_id": current.get("company_id"),
+            "issuer_id": current.get("issuer_id"),
+            "name": current.get("name"),
+            "status": status,
+            "reason": reason,
+            "provider": provider_key,
+            "provider_symbol": current.get("provider_symbol"),
+            "isin": current.get("isin"),
+        })
+
+    failed = len(failed_provider_rows)
+    seed_count = len(seed_entries)
+    accounted_seed_count = mapped + unmapped + ambiguous + excluded
+    if mapped and not ambiguous and not unmapped and not failed:
+        denominator_status = "complete_security_type_filtered_listing"
+    elif mapped:
+        denominator_status = "mapped_subset_provider_symbol_review_required"
+    else:
+        denominator_status = "complete_issuer_listing_requires_symbol_mapping"
+    report = {
+        "schema_version": "investment-screener-lse-provider-symbol-mapping/v1",
+        "provider": provider_key,
+        "provider_reference": reference,
+        "seed": {
+            "schema_version": (seed_metadata or {}).get("schema_version"),
+            "source_sha256": (seed_metadata or {}).get("source_sha256") or (seed_metadata or {}).get("sha256"),
+            "row_count": seed_count,
+            "denominator_label": (seed_metadata or {}).get("denominator_label") or LSE_DENOMINATOR_LABEL,
+        },
+        "seed_count": seed_count,
+        "mapped_count": mapped,
+        "unmapped_count": unmapped,
+        "mapping_ambiguous_count": ambiguous,
+        "failed_count": failed,
+        "excluded_count": excluded,
+        "accounted_seed_count": accounted_seed_count,
+        "unaccounted_seed_count": max(seed_count - accounted_seed_count, 0),
+        "failed_provider_rows": failed_provider_rows,
+        "accounting": accounting,
+        "denominator_status": denominator_status,
+        "provider_symbol_convention": "EODHD LSE symbols are provider Code suffixed with .LSE; only provider-supplied codes are persisted",
+        "matching_rule": "exact name_match_key equality only; no fuzzy/name-to-ticker guessing",
+        "generated_by": "investment-screener/screener.py reconcile_lse_provider_symbols",
+    }
+    return mapped_entries, report
+
+
 def load_lse_universe_seed(path: Path) -> dict:
     with open(path, encoding="utf8") as fh:
         data = json.load(fh)
@@ -1394,18 +1576,29 @@ def select_lse_universe_batch(
     full_count = len(active)
     end = full_count if max_tickers is None else min(full_count, batch_offset + max_tickers)
     selected_entries = active[batch_offset:end]
-    tickers = [symbol for symbol in (_select_provider_symbol(entry, provider) for entry in selected_entries) if symbol]
+    def lse_reviewed_provider_symbol(entry: dict) -> Optional[str]:
+        # Once a mapping stage has run, only rows explicitly marked mapped may
+        # drive provider calls. This prevents ambiguous/unreviewed aliases from
+        # sneaking into hydration just because a ticker-shaped field exists.
+        if entry.get("mapping_status") not in (None, "mapped"):
+            return None
+        return _select_provider_symbol(entry, provider)
+
+    tickers = [symbol for symbol in (lse_reviewed_provider_symbol(entry) for entry in selected_entries) if symbol]
     missing = [
         {
             "company_id": entry.get("company_id"),
             "issuer_id": entry.get("issuer_id"),
             "name": entry.get("name"),
-            "reason": "missing_provider_symbol",
+            "reason": entry.get("mapping_status") if entry.get("mapping_status") not in (None, "mapped") else "missing_provider_symbol",
             "provider": provider,
         }
         for entry in selected_entries
-        if not _select_provider_symbol(entry, provider)
+        if not lse_reviewed_provider_symbol(entry)
     ]
+    mapped_count = sum(1 for entry in active if entry.get("mapping_status") == "mapped" and _select_provider_symbol(entry, provider))
+    ambiguous_count = sum(1 for entry in active if entry.get("mapping_status") == "mapping_ambiguous")
+    unmapped_count = full_count - mapped_count - ambiguous_count
     return {
         "entries": selected_entries,
         "tickers": tickers,
@@ -1413,6 +1606,9 @@ def select_lse_universe_batch(
         "eligible_count": full_count,
         "selected_count": len(tickers),
         "attempted_seed_count": len(selected_entries),
+        "mapped_count": mapped_count,
+        "unmapped_count": max(unmapped_count, 0),
+        "mapping_ambiguous_count": ambiguous_count,
         "missing_provider_symbol_count": len(missing),
         "missing_provider_symbols": missing,
         "batch_offset": batch_offset,
@@ -4798,6 +4994,10 @@ def build_file_first_run_payload(
             "excluded_security_type_count": batch_metadata.get("excluded_security_type_count"),
             "denominator_label": denominator_label,
             "denominator_status": denominator_status,
+            "mapped_count": batch_metadata.get("mapped_count"),
+            "unmapped_count": batch_metadata.get("unmapped_count") or batch_metadata.get("missing_provider_symbol_count"),
+            "mapping_ambiguous_count": batch_metadata.get("mapping_ambiguous_count"),
+            "provider_symbol_convention": batch_metadata.get("provider_symbol_convention"),
         },
         "companies": companies,
         "observations": observations,
@@ -4819,6 +5019,10 @@ def build_file_first_run_payload(
             "unaccounted": unaccounted,
             "stale": 0,
             "missing_required_fields": len(exclusions),
+            "mapped_count": batch_metadata.get("mapped_count"),
+            "unmapped_count": batch_metadata.get("unmapped_count") or batch_metadata.get("missing_provider_symbol_count"),
+            "mapping_ambiguous_count": batch_metadata.get("mapping_ambiguous_count"),
+            "provider_symbol_convention": batch_metadata.get("provider_symbol_convention"),
             "percent": round((usable / denominator) * 100, 1) if denominator else None,
         },
         "source_caveats": source_caveats,

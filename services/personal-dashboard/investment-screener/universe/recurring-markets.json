@@ -80,7 +80,7 @@
       "sleep_seconds": 0.75,
       "max_generated_age_hours": 26,
       "credential_env": "EODHD_API_KEY",
-      "disabled_reason": "LSE issuer workbook is the official denominator but has no TIDM/ISIN/provider symbols; enable only after reviewed provider-symbol mapping accounts every issuer as mapped, unmapped, failed, or excluded."
+      "disabled_reason": "LSE issuer workbook is the official denominator. Current reviewed mapping artifact lse-provider-symbol-mapping.accounting.json accounts all 1522 issuers as unmapped because no approved provider symbol reference/API access was available; enable only after a regenerated provider-symbol mapping accounts every issuer as mapped, unmapped, failed, ambiguous, or excluded and the resulting partial/full coverage wording is reviewed."
     },
     {
       "id": "tse",
