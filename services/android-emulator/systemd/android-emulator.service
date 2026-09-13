@@ -1,0 +1,19 @@
+[Unit]
+Description=Headless Android emulator (agent_feedback AVD)
+After=android-xvfb.service
+Requires=android-xvfb.service
+
+[Service]
+Type=simple
+Environment=ANDROID_SDK_ROOT=/opt/android-sdk
+Environment=ANDROID_HOME=/opt/android-sdk
+Environment=HOME=/root
+Environment=DISPLAY=:99
+Environment=PATH=/opt/android-sdk/emulator:/opt/android-sdk/platform-tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/opt/android-sdk/emulator/emulator -avd agent_feedback -gpu swiftshader_indirect -no-audio -no-boot-anim -no-snapshot-load -port 5554
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

@@ -198,3 +198,83 @@ The safe browser path is the Home Dashboard proxy, not the raw tori noVNC URL:
 The dashboard requires its existing reverse-proxy auth header before serving `/mobile-viewer/`, accepting the WebSocket upgrade, accepting control POSTs, or returning screenshots. It injects the noVNC token only on the server-side upstream WebSocket request. `x11vnc` stays bound to loopback, but now runs without `-viewonly`; the dashboard controls and noVNC canvas are intentionally interactive after authentication. ADB stays loopback-only on `tori` and is not exposed as a network service.
 
 Rollback: restore `-viewonly` in `/opt/android-emulator/scripts/start-vnc.sh`, restart only `android-vnc.service`, and revert the dashboard `mobileWorkflow.viewer.mode` to `authenticated_novnc`/read-only. If dashboard controls misbehave, unset the `MOBILE_CONTROL_*` env vars or roll back the dashboard container image/config without touching Hermes gateway.
+
+## Persistent browser-interactive host spike verification (2026-09-13)
+
+This spike keeps the implementation on the existing `tori` Android emulator host rather
+than creating a new Proxmox VM. The parent research still recommends a dedicated VM for
+a production always-on product host, but a new VM, package-install pass, GPU passthrough,
+or WAN exposure would require explicit approval. No existing AVD state was wiped or
+migrated during this spike.
+
+### Live preflight
+
+- Node: `tori` / `192.168.0.20`, Proxmox kernel `7.0.0-3-pve`.
+- Virtualization: `/dev/kvm` present and CPU virtualization flags detected (`vmx|svm`
+  count: 4).
+- Capacity at verification time: 7.7 GiB RAM total, 3.2 GiB available, 29 GiB swap;
+  root filesystem 458 GiB total / 239 GiB available.
+- Persistent AVD state: `/root/.android/avd/agent_feedback.avd/`, observed size 2.7 GiB.
+- Active display/stream: VNC framebuffer `tori:99`, 1080x1920.
+- Exposed ports: x11vnc only on `127.0.0.1:5900`; emulator console/ADB only on
+  `127.0.0.1:5554/5555`; token-gated noVNC on `0.0.0.0:6080`; token-gated control bridge
+  on `192.168.0.20:6081`.
+- Services verified active/enabled: `android-xvfb`, `android-emulator`, `android-vnc`,
+  `android-novnc`, `android-control`.
+- Auth boundary: no raw unauthenticated WAN route. Operator fallback is trusted-LAN
+  noVNC with token from `/opt/android-emulator/novnc/vnc_tokens` (0600, not committed).
+  The dashboard integration task should keep `/mobile-viewer/` as the preferred
+  authenticated path and must not leak the token or upstream host details.
+
+### Real touch-stream acceptance test
+
+Browser automation was unavailable on the worker host during this run, so the acceptance
+probe connected to the same noVNC/websockify endpoint as a browser would: WebSocket
+`/websockify?token=<redacted>`, RFB 3.8, noVNC token gate, then a VNC pointer down/up event.
+ADB was used only to set up/observe Android state, not to perform the accepted UI action.
+
+Result:
+
+- RFB/WebSocket handshake succeeded against `192.168.0.20:6080`; server reported
+  `1080x1920`, name `tori:99`.
+- Before stream input, Android focus was
+  `com.android.settings/.homepage.SettingsHomepageActivity`.
+- A pointer click through the noVNC/RFB stream at `(540,330)` changed Android top-resumed
+  activity to `com.android.settings/.SubSettings`.
+
+That verifies the viewer path is interactive: browser/noVNC pointer events map to the
+Android touch/input stack. This is not merely screenshot refresh plus ADB commands in a
+cheap coat.
+
+### Reproducible service files captured in Git
+
+Non-secret live host artifacts are mirrored under `services/android-emulator/`:
+
+- `scripts/start-emulator.sh`, `start-vnc.sh`, `start-novnc.sh`
+- `scripts/control-server.py`, `publish-dashboard-status.sh`, `emulator-matrix.sh`
+- `systemd/android-xvfb.service`, `android-emulator.service`, `android-vnc.service`,
+  `android-novnc.service`, `android-control.service`
+- `systemd/android-dashboard-status.service`, `android-dashboard-status.timer`
+- `matrix.json`
+
+The noVNC token file, emulator userdata, logs, screenshots, and runtime status files are
+not committed.
+
+### Rollback
+
+1. Disable browser ingress only: `systemctl stop android-novnc.service`.
+2. Restore view-only mode: add `-viewonly` back to `/opt/android-emulator/scripts/start-vnc.sh`
+   and restart `android-vnc.service`.
+3. Full stop, preserving userdata: stop `android-novnc`, `android-vnc`,
+   `android-emulator`, then `android-xvfb` in that order.
+4. Revert Git changes under `services/android-emulator/` and redeploy the prior scripts/units
+   if needed. Do not delete `/root/.android/avd/agent_feedback.avd/` unless explicitly approved.
+
+### Limitations / approval gates
+
+- This remains a PoC/transitional host on `tori`, not the recommended production dedicated VM.
+- `tori` is capacity-constrained; do not run matrix AVDs concurrently with `agent_feedback`.
+- The noVNC operator fallback is LAN/token-gated, not a full identity-aware auth boundary.
+  Dashboard/Cloudflare/Tailscale auth belongs in the dependent integration task.
+- New Proxmox VM creation, GPU passthrough, WAN/Cloudflare exposure, backup scheduling, or
+  AVD state migration/wipe still require explicit approval.

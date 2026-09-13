@@ -12,6 +12,8 @@ Environment=ANDROID_NOVNC_TOKEN_FILE=/opt/android-emulator/novnc/vnc_tokens
 Environment=ANDROID_ADB=/opt/android-sdk/platform-tools/adb
 Environment=ANDROID_DEVICE_ID=emulator-5554
 Environment=ANDROID_CONTROL_TIMEOUT=20
+Environment=ANDROID_SCREENSHOT_ATTEMPTS=3
+Environment=ANDROID_SCREENSHOT_BACKOFF=0.75
 ExecStart=/usr/bin/python3 /opt/android-emulator/scripts/control-server.py
 Restart=on-failure
 RestartSec=3
