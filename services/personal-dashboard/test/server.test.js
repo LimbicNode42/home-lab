@@ -873,6 +873,55 @@ test('GET /api/investment-screener/coverage exposes LSE configured denominator a
 });
 
 
+test('GET /api/investment-screener/coverage exposes TSE configured JPX denominator and source labels', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'investment-coverage-tse-'));
+  const rankedPath = join(dir, 'latest_ranked.json');
+  await writeFile(rankedPath, JSON.stringify({
+    mode: 'tse-yahoo-chart-smoke',
+    generated_at: '2026-09-13T08:00:00Z',
+    source_summary: { providers: ['yahoo-finance'], universe_source: 'unsafe override ignored' },
+    coverage: {
+      denominator: 3712,
+      denominator_label: 'TSE/JPX listed equities from JPX listed-issues workbook; Prime/Standard/Growth domestic+foreign only',
+      denominator_status: 'complete_security_type_filtered_listing',
+      usable: 1,
+      scraped: 1,
+      scored: 1,
+      failed: 4,
+      excluded: 729,
+      caveats: ['Yahoo .T aliases are bounded smoke only; JPX workbook remains the denominator.']
+    },
+    candidates: [
+      { rank: 1, ticker: '7203.T', name: 'TOYOTA MOTOR CORPORATION', market: 'TSE', exchange: 'JPX', region: 'JP', currency: 'JPY', sector: 'Transportation Equipment', score: 88 }
+    ]
+  }), 'utf8');
+
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerRankedFile: rankedPath });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/investment-screener/coverage?market=TSE`);
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+    assert.equal(response.status, 200);
+    assert.equal(body.source_summary.mode, 'tse-yahoo-chart-smoke');
+    assert.equal(body.source_summary.mode_label, 'Yahoo Finance TSE .T bounded smoke');
+    assert.deepEqual(body.source_summary.providers, ['yahoo-finance']);
+    assert.equal(body.coverage.market, 'TSE');
+    assert.equal(body.coverage.denominator, 3712);
+    assert.equal(body.coverage.denominator_status, 'complete_security_type_filtered_listing');
+    assert.match(body.coverage.denominator_label, /TSE\/JPX listed equities from JPX listed-issues workbook/);
+    assert.match(body.coverage.coverage_label, /1 \/ 3712/);
+    assert.equal(serialized.includes('unsafe override ignored'), false);
+    assert.equal(serialized.includes('/root/'), false);
+    assert.equal(serialized.includes('DATABASE_URL'), false);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+
 test('GET /api/investment-screener/coverage preserves sanitized freshness metadata and warnings', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'investment-coverage-freshness-'));
   const rankedPath = join(dir, 'latest_ranked.json');

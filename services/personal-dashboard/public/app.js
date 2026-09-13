@@ -1087,8 +1087,9 @@ function updateInvestmentPaginationControls(payload) {
 
 
 function humanizeInvestmentDenominatorStatus(status) {
-  if (status === 'complete_security_type_filtered_listing') return 'security-type-filtered full listing';
+  if (status === 'complete_security_type_filtered_listing') return 'reviewed security-type-filtered listed-equity universe';
   if (status === 'complete_exchange_listing') return 'full exchange listing';
+  if (status === 'complete_issuer_listing_requires_symbol_mapping') return 'complete issuer listing requiring provider-symbol mapping';
   if (status === 'known_sample_universe') return 'known sample universe';
   if (status === 'sample') return 'fixture/sample universe';
   return status || 'unknown';
