@@ -32,6 +32,10 @@ already builds the Flutter app on, uses the same SDK, and persists userdata acro
 restarts with no Proxmox guest to babysit. If Ben later wants multi-tenant or
 isolated Android surfaces, redroid is the documented fall-forward.
 
+BlueStacks was rejected for this case: it is a Windows/Mac consumer app player
+(gamer-oriented, no clean Linux/server/on-prem hosting story), so the self-hosted
+AVD path above is the chosen shape.
+
 ## Connect procedure
 
 1. Preferred: open the Home Dashboard Overview tile and use `/mobile-viewer/`.
@@ -104,6 +108,87 @@ cleanly via the enabled units.
 - Logs: `/opt/android-emulator/logs/`.
 - All four units are `enabled` (WantedBy=multi-user.target), verified
   `systemctl is-enabled` = enabled on 2026-09-05.
+
+## Upgrade
+
+The emulator toolchain lives under `/opt/android-sdk` on `tori`; the AVD runs
+Android 16 (API 36) from system image `system-images;android-36;google_apis;x86_64`.
+Upgrades are manual and not yet automated. Stop the stack first, then bump the
+component you need:
+
+```bash
+# On tori, as root. Stop the stack before touching the SDK/AVD.
+sudo systemctl stop android-novnc android-vnc android-emulator android-xvfb
+
+# 1) SDK / emulator toolchain (sdkmanager is under /opt/android-sdk/cmdline-tools/latest/bin)
+/opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --update
+/opt/android-sdk/cmdline-tools/latest/bin/sdkmanager "emulator" "platform-tools"
+
+# 2) New system image (only if bumping the Android release / API level)
+/opt/android-sdk/cmdline-tools/latest/bin/sdkmanager "system-images;android-<API>;google_apis;x86_64"
+# then create a new AVD against it (avdmanager) and point android-emulator.service at it
+
+# 3) Installed app (com.limbicnode.unified_inbox_mobile)
+adb -s emulator-5554 install -r /path/to/unified_inbox_mobile.apk
+
+sudo systemctl start android-xvfb android-emulator android-vnc android-novnc
+```
+
+Notes:
+
+- Bumping the system image / API level is a new-AVD operation, not an in-place
+  upgrade: create the AVD with `avdmanager`, then update `AVD_NAME` in
+  `services/android-emulator/scripts/start-emulator.sh` and the `-avd` argument in
+  `services/android-emulator/systemd/android-emulator.service`. The existing
+  `agent_feedback` userdata does not carry across an API-level change.
+- The app is a Flutter build; rebuild the APK from the unified-inbox mobile source
+  and `adb install -r` over the existing package to preserve app data.
+- After any upgrade, re-run the post-deploy verification checklist below.
+
+## Backup / restore
+
+**Current state: there is no scheduled backup of the AVD userdata.** The AVD lives
+at `/root/.android/avd/agent_feedback.avd/` on `tori` (~2.7 GiB) and survives
+reboots, but it is not copied to the NAS. A recurring NAS backup still requires
+Ben's explicit approval (it is on the approval list from the research card) — do
+not schedule one without it.
+
+Manual backup (graceful stop, then copy the AVD dir to the NAS). `tori` mounts the
+NAS export at `/mnt/pve/NAS` (not `/mnt/nas`):
+
+```bash
+# On tori, as root.
+# 1) Graceful stop so userdata is flushed to a clean state.
+adb -s emulator-5554 emu kill          # or: sudo systemctl stop android-emulator
+sudo systemctl stop android-novnc android-vnc android-xvfb
+
+# 2) Snapshot the AVD dir to the NAS (tar preserves sparse/permissions).
+mkdir -p /mnt/pve/NAS/backups/android-emulator
+tar -czf "/mnt/pve/NAS/backups/android-emulator/agent_feedback-$(date +%Y%m%d-%H%M%S).tar.gz" \
+  -C /root/.android/avd agent_feedback.avd
+
+# 3) Bring the stack back up.
+sudo systemctl start android-xvfb android-emulator android-vnc android-novnc
+```
+
+Restore (reverse the copy, then start):
+
+```bash
+# On tori, as root. Stop the stack first (see above).
+sudo systemctl stop android-novnc android-vnc android-emulator android-xvfb
+tar -xzf /mnt/pve/NAS/backups/android-emulator/agent_feedback-<timestamp>.tar.gz \
+  -C /root/.android/avd
+sudo systemctl start android-xvfb android-emulator android-vnc android-novnc
+```
+
+Notes:
+
+- The AVD dir is the only durable state worth backing up; scripts, systemd units,
+  and `matrix.json` are already in Git under `services/android-emulator/`.
+- Do not run the emulator with live userdata on the NAS/NFS mount — keep active
+  state on `tori` local block storage and back it up to the NAS, not the reverse.
+- A NAS->NAS backup of this path is not a concern here (the AVD is host-local on
+  `tori`), but a scheduled job must still be approved before it is created.
 
 ## Post-deploy verification checklist
 
