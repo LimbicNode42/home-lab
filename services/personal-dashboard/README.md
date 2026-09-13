@@ -324,8 +324,8 @@ The panel appears in its own top-level **Investment Screener** tab. It loads aut
 
 Default behavior:
 
-- **Market**: `All markets`, with `Australia / ASX` as the current first-class populated option.
-- **Exchange / Region / Sector / Industry**: visible but disabled in the current dashboard because the sanitized ranked output does not yet export those fields safely.
+- **Market**: `All markets`, with ASX, NASDAQ, NYSE, LSE, and TSE/JPX exposed as first-class market buckets.
+- **Exchange / Region / Sector / Industry**: visible and filterable when the mounted sanitized export carries those fields. Empty results are shown as empty results, not as provider success.
 - **Score focus**: `Composite score`.
 - **Weight preset**: `Balanced`.
 - **Suggestions**: `Top 6`.
@@ -334,7 +334,7 @@ Available controls:
 
 | Control | What it does |
 | --- | --- |
-| Market | Filters candidates by the `market` field already present in the sanitized ranked JSON. Current UI options are `All markets` and `Australia / ASX`; US, Japan, and Switzerland are not shown as active choices until the mounted dashboard export actually contains those markets. The API still accepts any plain label matching the validation regex for future exports. |
+| Market | Filters candidates by the `market` field already present in the sanitized ranked JSON. Current UI options are `All markets`, `Australia / ASX`, `United States / NASDAQ`, `United States / NYSE`, `United Kingdom / LSE`, and `Japan / TSE (JPX)`. TSE can be selected before a production export exists; empty/error states must remain truthful about whether the latest artifact is EODHD-gated or bounded Yahoo `.T` smoke. The API still accepts any plain label matching the validation regex for future exports. |
 | Exchange / Region / Sector / Industry | Disabled with coming-later copy until those fields are present in the sanitized ranked export. The backend accepts those query keys only to return a clear unsupported-filter error instead of pretending an empty result is meaningful. |
 | Score focus | Re-sorts the already-sanitized candidates by a public sub-score. Supported safe values are `composite`/default, `quality`, `valuation`, `growth`, `graham_safety`, `durability`, and `risk_adjustments`. |
 | Weight preset | Applies the same public sub-score sort as a preset tilt. Supported safe values are `balanced`/default, `quality`, `valuation`, `growth`, `graham_safety`, `durability`, and `risk_adjustments`. |
@@ -353,7 +353,7 @@ The panel renders ranked candidates with ticker, name, market/currency, score, s
 | --- | --- | --- |
 | `q` | Plain text company/ticker search matching `/^[\p{L}\p{N}][\p{L}\p{N} ._&'()-]{0,119}$/u` | Case-insensitive contains search over sanitized ticker, name, market, and currency fields. |
 | `market` | Plain market label matching `/^[a-z0-9][a-z0-9 ._-]{0,79}$/i` | Exact, case-insensitive match against candidate `market`. |
-| `exchange`, `region`, `sector`, `industry` | Any non-empty value currently rejected | Returns `400 unsupported_investment_screener_filter` because these fields are not available in the sanitized dashboard export yet. |
+| `exchange`, `region`, `sector`, `industry` | Plain sanitized labels from the active export facets | Exact, case-insensitive match against the corresponding sanitized candidate fields. Missing candidate fields stay missing; the API does not invent classification data. |
 | `metric` | `composite`, `quality`, `valuation`, `growth`, `graham_safety`, `durability`, `risk_adjustments` | Re-sorts by the selected public sub-score unless `composite` is selected. |
 | `weight` | `balanced`, `quality`, `valuation`, `growth`, `graham_safety`, `durability`, `risk_adjustments` | Re-sorts by the selected tilt unless `balanced` is selected. |
 | `topN` | Integer `1` through `100` | Backward-compatible alias for page size when `limit` is absent. |
@@ -376,7 +376,7 @@ The screener CLI `--output` file is now the dashboard-safe ranked JSON object co
 
 ```json
 {
-  "mode": "fixture|live|asx-yahoo-timeseries|nasdaq-eodhd-fundamentals|nyse-eodhd-fundamentals|lse-eodhd-fundamentals|unknown",
+  "mode": "fixture|live|asx-yahoo-timeseries|nasdaq-eodhd-fundamentals|nyse-eodhd-fundamentals|lse-eodhd-fundamentals|tse-eodhd-fundamentals|tse-yahoo-chart-smoke|unknown",
   "generated_at": "ISO timestamp",
   "data_as_of": "ISO timestamp, source string, or null",
   "limitations": ["safe strings, including filter/top_n notes when relevant"],
@@ -407,7 +407,7 @@ The screener CLI `--output` file is now the dashboard-safe ranked JSON object co
 }
 ```
 
-The dashboard API reads that object, sanitizes it again, caps sanitized `candidates` and `excluded` to 500 rows each before API filtering/pagination, normalizes `mode` to `fixture`, `live`, `asx-yahoo-timeseries`, `nasdaq-eodhd-fundamentals`, `nyse-eodhd-fundamentals`, `lse-eodhd-fundamentals`, or `unknown`, and adds the dashboard-only fields `disclaimer` and `doc_links`. When API query filters are active, it also adds `applied_filters` and `messages`, for example:
+The dashboard API reads that object, sanitizes it again, caps sanitized `candidates` and `excluded` to 500 rows each before API filtering/pagination, normalizes `mode` to `fixture`, `live`, `asx-yahoo-timeseries`, `nasdaq-eodhd-fundamentals`, `nyse-eodhd-fundamentals`, `lse-eodhd-fundamentals`, `tse-eodhd-fundamentals`, `tse-yahoo-chart-smoke`, or `unknown`, and adds the dashboard-only fields `disclaimer` and `doc_links`. When API query filters are active, it also adds `applied_filters` and `messages`, for example:
 
 ```json
 {
@@ -451,7 +451,7 @@ python3 -m unittest tests/test_screener.py -v
 
 The screener config includes `suggestion_count.min` and `suggestion_count.max` bounds for `--top-n` / `--count`; the current artifact documents a max of 25. CLI filter support covers `market`, `exchange`, `region`, `sector`, and `industry` only where those fields exist in the supplied universe. The built-in fixture has `market`; exchange/region/sector/industry require richer input rows. If a requested field is absent, the CLI exits with an explicit error rather than returning mystery-empty output. If supported filters match no rows, the CLI succeeds and writes a valid ranked JSON object with empty `candidates`/`excluded` lists plus the applied filter note in `limitations`.
 
-Live Yahoo Finance mode remains prototype-only and guarded by `--allow-unofficial-yahoo-live`. It uses unofficial Yahoo endpoints with basic caching/retry/throttling and should not be treated as reliable coverage. Keep it out of unattended dashboard publication unless Ben has explicitly approved the data-source risk.
+Live Yahoo Finance mode remains prototype-only and guarded by `--allow-unofficial-yahoo-live`. It uses unofficial Yahoo endpoints with basic caching/retry/throttling and should not be treated as reliable coverage. TSE `tse-yahoo-chart-smoke` is likewise bounded-smoke/prototype only: it may prove `{local_code}.T` quote/freshness handling for a small reviewed slice, but JPX remains the denominator and recurring/full TSE hydration stays gated until an approved provider/source contract exists. Keep unofficial Yahoo output out of unattended dashboard publication unless Ben has explicitly approved the data-source risk.
 
 ### Data caveats
 

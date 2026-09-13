@@ -33,9 +33,9 @@ Use the plain-text report only as a fallback or when comparing output outside th
 
 | Control | What it changes | What it does not change |
 | --- | --- | --- |
-| Market | Limits visible candidates to a market label in the current export. | Does not fetch new markets or enrich missing market data. |
-| Exchange | Currently disabled until safely exported. | Does not imply exchange is unknown forever. |
-| Region | Currently disabled until safely exported. | Does not infer geography from ticker suffix. |
+| Market | Limits visible candidates to a market label in the current export. Current first-class buckets are ASX, NASDAQ, NYSE, LSE, and TSE/JPX. | Does not fetch new markets or enrich missing market data. |
+| Exchange | Limits visible candidates to a sanitized exchange label from the current export, including JPX when a TSE artifact is present. | Does not infer exchange from ticker suffix or provider naming. |
+| Region | Limits visible candidates to a sanitized region label from the current export, including JP for TSE/JPX. | Does not infer geography from ticker suffix. |
 | Sector | Limits visible candidates to one or more GICS sector labels from the universe seed (hold Ctrl/Cmd to multi-select). | Does not classify companies client-side or invent a sector for an unclassified name. |
 | Industry | Limits visible candidates to one or more industry labels from the universe seed (multi-select). | Does not classify companies client-side or invent an industry for an unclassified name. |
 | Score focus | Re-sorts by a public sub-score. | Does not recompute the underlying score. |

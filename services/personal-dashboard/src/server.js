@@ -1657,7 +1657,7 @@ const INVESTMENT_SCREENER_DOC_LINKS = [
   { label: 'NYSE source and identity rules', url: '/api/docs/investment-screener-nyse-source-identity', doc_id: 'investment-screener-nyse-source-identity' },
   { label: 'LSE and TSE source and identity rules', url: '/api/docs/investment-screener-lse-tse-source-identity', doc_id: 'investment-screener-lse-tse-source-identity' }
 ];
-const INVESTMENT_SCREENER_MODE_VALUES = new Set(['fixture', 'live', 'asx-yahoo-timeseries', 'us-eodhd-fundamentals', 'nasdaq-eodhd-fundamentals', 'nyse-eodhd-fundamentals', 'lse-eodhd-fundamentals', 'unknown']);
+const INVESTMENT_SCREENER_MODE_VALUES = new Set(['fixture', 'live', 'asx-yahoo-timeseries', 'us-eodhd-fundamentals', 'nasdaq-eodhd-fundamentals', 'nyse-eodhd-fundamentals', 'lse-eodhd-fundamentals', 'tse-eodhd-fundamentals', 'tse-yahoo-chart-smoke', 'unknown']);
 const INVESTMENT_SCREENER_FILTERABLE_FIELDS = new Set(['market', 'exchange', 'region', 'sector', 'industry']);
 const INVESTMENT_SCREENER_UNAVAILABLE_FIELDS = new Set([]);
 const INVESTMENT_SCREENER_METRIC_VALUES = new Set(['composite', 'quality', 'valuation', 'growth', 'graham_safety', 'durability', 'risk_adjustments']);
@@ -1667,6 +1667,7 @@ const INVESTMENT_SCREENER_ASX_UNIVERSE_FILE = resolve(__dirname, '..', 'investme
 const INVESTMENT_SCREENER_NASDAQ_UNIVERSE_FILE = resolve(__dirname, '..', 'investment-screener', 'universe', 'nasdaq-listed-equities.seed.json');
 const INVESTMENT_SCREENER_NYSE_UNIVERSE_FILE = resolve(__dirname, '..', 'investment-screener', 'universe', 'nyse-listed-equities.seed.json');
 const INVESTMENT_SCREENER_LSE_UNIVERSE_FILE = resolve(__dirname, '..', 'investment-screener', 'universe', 'lse-listed-issuers.seed.json');
+const INVESTMENT_SCREENER_TSE_UNIVERSE_FILE = resolve(__dirname, '..', 'investment-screener', 'universe', 'tse-listed-equities.seed.json');
 const INVESTMENT_SCREENER_MODE_LABELS = {
   fixture: 'Fixture/sample data',
   'asx-yahoo-timeseries': 'Yahoo Finance ASX bootstrap scrape',
@@ -1674,6 +1675,8 @@ const INVESTMENT_SCREENER_MODE_LABELS = {
   'nasdaq-eodhd-fundamentals': 'EODHD NASDAQ fundamentals',
   'nyse-eodhd-fundamentals': 'EODHD NYSE fundamentals',
   'lse-eodhd-fundamentals': 'EODHD LSE fundamentals',
+  'tse-eodhd-fundamentals': 'EODHD TSE fundamentals (exchange-code gated)',
+  'tse-yahoo-chart-smoke': 'Yahoo Finance TSE .T bounded smoke',
   live: 'Live scrape/export',
   cached: 'Cached provider data',
   'manual-seed': 'Manual universe seed',
@@ -1734,8 +1737,17 @@ function safeMarket(value, fallback = 'ASX') {
 
 function investmentSourceForMarket(market) {
   const safe = safeMarket(market);
-  if (safe === 'NASDAQ' || safe === 'NYSE' || safe === 'LSE' || safe === 'US') return 'eodhd';
+  if (safe === 'NASDAQ' || safe === 'NYSE' || safe === 'LSE' || safe === 'TSE' || safe === 'US') return 'eodhd';
   return 'yahoo-finance';
+}
+
+function investmentSourcesForMarket(market) {
+  const safe = safeMarket(market);
+  const primary = investmentSourceForMarket(safe);
+  if (safe === 'TSE') {
+    return [primary, 'yahoo-finance'];
+  }
+  return [primary];
 }
 
 // GICS-style sector/industry labels are free-text ("Health Care Equipment & Services",
@@ -1788,15 +1800,19 @@ async function configuredInvestmentUniverse(market = 'ASX') {
       return { count: null, label: 'unknown', status: 'unknown', version: null };
     }
   }
-  if (safe === 'NASDAQ' || safe === 'NYSE' || safe === 'LSE') {
+  if (safe === 'NASDAQ' || safe === 'NYSE' || safe === 'LSE' || safe === 'TSE') {
     const seedFile = safe === 'LSE'
       ? INVESTMENT_SCREENER_LSE_UNIVERSE_FILE
-      : (safe === 'NYSE' ? INVESTMENT_SCREENER_NYSE_UNIVERSE_FILE : INVESTMENT_SCREENER_NASDAQ_UNIVERSE_FILE);
+      : (safe === 'TSE'
+        ? INVESTMENT_SCREENER_TSE_UNIVERSE_FILE
+        : (safe === 'NYSE' ? INVESTMENT_SCREENER_NYSE_UNIVERSE_FILE : INVESTMENT_SCREENER_NASDAQ_UNIVERSE_FILE));
     const defaultLabel = safe === 'LSE'
       ? 'LSE listed issuers from official issuer workbook; provider-symbol mapping required'
-      : (safe === 'NYSE'
-        ? 'NYSE listed equities (security-type-filtered, reviewed static seed)'
-        : 'NASDAQ listed equities (security-type-filtered, reviewed static seed)');
+      : (safe === 'TSE'
+        ? 'TSE/JPX listed equities from JPX listed-issues workbook; Prime/Standard/Growth domestic+foreign only'
+        : (safe === 'NYSE'
+          ? 'NYSE listed equities (security-type-filtered, reviewed static seed)'
+          : 'NASDAQ listed equities (security-type-filtered, reviewed static seed)'));
     try {
       const parsed = JSON.parse(await readFile(seedFile, 'utf8'));
       const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
@@ -2036,7 +2052,7 @@ async function coverageFromArtifact(raw, fileMtime, market = 'ASX') {
     denominatorLabelOverride = configuredUniverse.label;
     denominatorStatusOverride = configuredUniverse.status;
   }
-  if (selectedMarket === 'LSE' && configuredUniverse.count !== null) {
+  if ((selectedMarket === 'LSE' || selectedMarket === 'TSE') && configuredUniverse.count !== null) {
     summary.universe_source = configuredUniverse.label;
     summary.universe_version = configuredUniverse.version;
   }
@@ -2662,7 +2678,16 @@ function payloadFromDuckDbSummary(summary) {
 
 async function coverageFromDuckDbDataRoot(dataRoot, market = 'ASX') {
   if (!dataRoot) return null;
-  const summary = await buildInvestmentScreenerDuckDbSummary({ dataRoot, market: safeMarket(market), source: investmentSourceForMarket(market) });
+  let summary = null;
+  for (const source of investmentSourcesForMarket(market)) {
+    try {
+      summary = await buildInvestmentScreenerDuckDbSummary({ dataRoot, market: safeMarket(market), source });
+      break;
+    } catch {
+      // Try the next reviewed source for this market; never leak storage paths or diagnostics.
+    }
+  }
+  if (!summary) return null;
   const payload = payloadFromDuckDbSummary(summary);
   return {
     market: payload.coverage.market,
@@ -2677,7 +2702,16 @@ async function coverageFromDuckDbDataRoot(dataRoot, market = 'ASX') {
 async function rankedFromDuckDbDataRoot(dataRoot, searchParams = null) {
   if (!dataRoot) return null;
   const market = safeMarket(searchParams?.get?.('market') ?? 'ASX');
-  const summary = await buildInvestmentScreenerDuckDbSummary({ dataRoot, market, source: investmentSourceForMarket(market) });
+  let summary = null;
+  for (const source of investmentSourcesForMarket(market)) {
+    try {
+      summary = await buildInvestmentScreenerDuckDbSummary({ dataRoot, market, source });
+      break;
+    } catch {
+      // Try the next reviewed source for this market; never leak storage paths or diagnostics.
+    }
+  }
+  if (!summary) return null;
   return applyInvestmentScreenerFilters(payloadFromDuckDbSummary(summary), searchParams);
 }
 
