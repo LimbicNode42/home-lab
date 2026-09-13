@@ -188,6 +188,8 @@ services/personal-dashboard/docs/products/investment-screener/data-source-covera
 services/personal-dashboard/docs/products/investment-screener/historical-pipeline-architecture.md
 services/personal-dashboard/docs/products/investment-screener/interpreting-results.md
 services/personal-dashboard/docs/products/investment-screener/operations-limitations.md
+services/personal-dashboard/docs/products/investment-screener/lse-tse-universe-source-and-identity-rules.md
+services/personal-dashboard/docs/products/investment-screener/nyse-universe-source-and-identity-rules.md
 services/personal-dashboard/docs/products/reports/finnick.md
 services/personal-dashboard/docs/products/reports/homelab-health.md
 services/personal-dashboard/docs/runbook.md
@@ -202,9 +204,15 @@ services/personal-dashboard/investment-screener/tests/__init__.py
 services/personal-dashboard/investment-screener/tests/test_asx_screener.py
 services/personal-dashboard/investment-screener/tests/test_postgres_history_storage.py
 services/personal-dashboard/investment-screener/tests/test_recurring_markets.py
+services/personal-dashboard/investment-screener/tests/test_lse_tse_screener.py
 services/personal-dashboard/investment-screener/universe/asx-listed-companies.seed.json
 services/personal-dashboard/investment-screener/universe/asx-watchlist.json
 services/personal-dashboard/investment-screener/universe/recurring-markets.json
+services/personal-dashboard/investment-screener/universe/lse-listed-issuers.seed.json
+services/personal-dashboard/investment-screener/universe/lse-provider-symbol-mapping.accounting.json
+services/personal-dashboard/investment-screener/universe/nasdaq-listed-equities.seed.json
+services/personal-dashboard/investment-screener/universe/nyse-listed-equities.seed.json
+services/personal-dashboard/investment-screener/universe/tse-listed-equities.seed.json
 services/personal-dashboard/kanban-state-bridge-plan.md
 services/personal-dashboard/package-lock.json
 services/personal-dashboard/package.json

@@ -695,7 +695,8 @@ test('GET /api/investment-screener/ranked returns representative sanitized ranke
       { label: 'Investment screener product guide', url: '/api/docs/investment-screener-overview', doc_id: 'investment-screener-overview' },
       { label: 'Interpreting screener results', url: '/api/docs/investment-screener-interpreting-results', doc_id: 'investment-screener-interpreting-results' },
       { label: 'Investment screener operations', url: '/api/docs/investment-screener-operations-limitations', doc_id: 'investment-screener-operations-limitations' },
-      { label: 'NYSE source and identity rules', url: '/api/docs/investment-screener-nyse-source-identity', doc_id: 'investment-screener-nyse-source-identity' }
+      { label: 'NYSE source and identity rules', url: '/api/docs/investment-screener-nyse-source-identity', doc_id: 'investment-screener-nyse-source-identity' },
+      { label: 'LSE and TSE source and identity rules', url: '/api/docs/investment-screener-lse-tse-source-identity', doc_id: 'investment-screener-lse-tse-source-identity' }
     ]);
   } finally {
     await server.close();
@@ -833,6 +834,43 @@ test('GET /api/investment-screener/coverage clamps inconsistent artifact counts 
   }
 });
 
+
+
+test('GET /api/investment-screener/coverage exposes LSE configured denominator and EODHD source labels', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'investment-coverage-lse-'));
+  const rankedPath = join(dir, 'latest_ranked.json');
+  await writeFile(rankedPath, JSON.stringify({
+    mode: 'lse-eodhd-fundamentals',
+    generated_at: '2026-09-13T08:00:00Z',
+    source_summary: { providers: ['eodhd'], universe_source: 'unsafe override ignored' },
+    candidates: [
+      { rank: 1, ticker: 'HSBA.LSE', name: 'HSBC Holdings plc', market: 'LSE', exchange: 'LSE', region: 'GB', currency: 'GBp', score: 88 }
+    ]
+  }), 'utf8');
+
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerRankedFile: rankedPath });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/investment-screener/coverage?market=LSE`);
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+    assert.equal(response.status, 200);
+    assert.equal(body.source_summary.mode, 'lse-eodhd-fundamentals');
+    assert.equal(body.source_summary.mode_label, 'EODHD LSE fundamentals');
+    assert.deepEqual(body.source_summary.providers, ['eodhd']);
+    assert.equal(body.coverage.market, 'LSE');
+    assert.equal(body.coverage.denominator, 1522);
+    assert.equal(body.coverage.denominator_status, 'complete_issuer_listing_requires_symbol_mapping');
+    assert.match(body.coverage.denominator_label, /LSE listed issuers from official issuer workbook/);
+    assert.match(body.coverage.coverage_label, /1 \/ 1522/);
+    assert.equal(serialized.includes('unsafe override ignored'), false);
+    assert.equal(serialized.includes('complete_issuer_listing_requires_symbol_mapping'), true);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 
 test('GET /api/investment-screener/coverage preserves sanitized freshness metadata and warnings', async () => {

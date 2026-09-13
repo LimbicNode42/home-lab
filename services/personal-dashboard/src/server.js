@@ -421,6 +421,7 @@ const DEFAULT_DOCS_MANIFEST = [
   { id: 'investment-screener-operations-limitations', title: 'Investment Screener Operations and Limitations', category: 'Investment Screener', path: 'services/personal-dashboard/docs/products/investment-screener/operations-limitations.md' },
   { id: 'investment-screener-data-source-coverage', title: 'Investment Screener Data Source and Coverage', category: 'Investment Screener', path: 'services/personal-dashboard/docs/products/investment-screener/data-source-coverage.md' },
   { id: 'investment-screener-nyse-source-identity', title: 'NYSE Screener Source and Identity Rules', category: 'Investment Screener', path: 'services/personal-dashboard/docs/products/investment-screener/nyse-universe-source-and-identity-rules.md' },
+  { id: 'investment-screener-lse-tse-source-identity', title: 'LSE and TSE Screener Source and Identity Rules', category: 'Investment Screener', path: 'services/personal-dashboard/docs/products/investment-screener/lse-tse-universe-source-and-identity-rules.md' },
   { id: 'service-catalog', title: 'Service Catalog', category: 'Operations', path: 'docs/service-catalog.md' },
   { id: 'backup-coverage', title: 'Backup Coverage Matrix', category: 'Operations', path: 'docs/backup-coverage-matrix.md' }
 ];
@@ -1653,9 +1654,10 @@ const INVESTMENT_SCREENER_DOC_LINKS = [
   { label: 'Investment screener product guide', url: '/api/docs/investment-screener-overview', doc_id: 'investment-screener-overview' },
   { label: 'Interpreting screener results', url: '/api/docs/investment-screener-interpreting-results', doc_id: 'investment-screener-interpreting-results' },
   { label: 'Investment screener operations', url: '/api/docs/investment-screener-operations-limitations', doc_id: 'investment-screener-operations-limitations' },
-  { label: 'NYSE source and identity rules', url: '/api/docs/investment-screener-nyse-source-identity', doc_id: 'investment-screener-nyse-source-identity' }
+  { label: 'NYSE source and identity rules', url: '/api/docs/investment-screener-nyse-source-identity', doc_id: 'investment-screener-nyse-source-identity' },
+  { label: 'LSE and TSE source and identity rules', url: '/api/docs/investment-screener-lse-tse-source-identity', doc_id: 'investment-screener-lse-tse-source-identity' }
 ];
-const INVESTMENT_SCREENER_MODE_VALUES = new Set(['fixture', 'live', 'asx-yahoo-timeseries', 'us-eodhd-fundamentals', 'nasdaq-eodhd-fundamentals', 'nyse-eodhd-fundamentals', 'unknown']);
+const INVESTMENT_SCREENER_MODE_VALUES = new Set(['fixture', 'live', 'asx-yahoo-timeseries', 'us-eodhd-fundamentals', 'nasdaq-eodhd-fundamentals', 'nyse-eodhd-fundamentals', 'lse-eodhd-fundamentals', 'unknown']);
 const INVESTMENT_SCREENER_FILTERABLE_FIELDS = new Set(['market', 'exchange', 'region', 'sector', 'industry']);
 const INVESTMENT_SCREENER_UNAVAILABLE_FIELDS = new Set([]);
 const INVESTMENT_SCREENER_METRIC_VALUES = new Set(['composite', 'quality', 'valuation', 'growth', 'graham_safety', 'durability', 'risk_adjustments']);
@@ -1664,12 +1666,14 @@ const INVESTMENT_SCREENER_QUERY_KEYS = new Set(['market', 'exchange', 'region', 
 const INVESTMENT_SCREENER_ASX_UNIVERSE_FILE = resolve(__dirname, '..', 'investment-screener', 'universe', 'asx-watchlist.json');
 const INVESTMENT_SCREENER_NASDAQ_UNIVERSE_FILE = resolve(__dirname, '..', 'investment-screener', 'universe', 'nasdaq-listed-equities.seed.json');
 const INVESTMENT_SCREENER_NYSE_UNIVERSE_FILE = resolve(__dirname, '..', 'investment-screener', 'universe', 'nyse-listed-equities.seed.json');
+const INVESTMENT_SCREENER_LSE_UNIVERSE_FILE = resolve(__dirname, '..', 'investment-screener', 'universe', 'lse-listed-issuers.seed.json');
 const INVESTMENT_SCREENER_MODE_LABELS = {
   fixture: 'Fixture/sample data',
   'asx-yahoo-timeseries': 'Yahoo Finance ASX bootstrap scrape',
   'us-eodhd-fundamentals': 'EODHD US fundamentals',
   'nasdaq-eodhd-fundamentals': 'EODHD NASDAQ fundamentals',
   'nyse-eodhd-fundamentals': 'EODHD NYSE fundamentals',
+  'lse-eodhd-fundamentals': 'EODHD LSE fundamentals',
   live: 'Live scrape/export',
   cached: 'Cached provider data',
   'manual-seed': 'Manual universe seed',
@@ -1730,7 +1734,7 @@ function safeMarket(value, fallback = 'ASX') {
 
 function investmentSourceForMarket(market) {
   const safe = safeMarket(market);
-  if (safe === 'NASDAQ' || safe === 'NYSE' || safe === 'US') return 'eodhd';
+  if (safe === 'NASDAQ' || safe === 'NYSE' || safe === 'LSE' || safe === 'US') return 'eodhd';
   return 'yahoo-finance';
 }
 
@@ -1784,11 +1788,15 @@ async function configuredInvestmentUniverse(market = 'ASX') {
       return { count: null, label: 'unknown', status: 'unknown', version: null };
     }
   }
-  if (safe === 'NASDAQ' || safe === 'NYSE') {
-    const seedFile = safe === 'NYSE' ? INVESTMENT_SCREENER_NYSE_UNIVERSE_FILE : INVESTMENT_SCREENER_NASDAQ_UNIVERSE_FILE;
-    const defaultLabel = safe === 'NYSE'
-      ? 'NYSE listed equities (security-type-filtered, reviewed static seed)'
-      : 'NASDAQ listed equities (security-type-filtered, reviewed static seed)';
+  if (safe === 'NASDAQ' || safe === 'NYSE' || safe === 'LSE') {
+    const seedFile = safe === 'LSE'
+      ? INVESTMENT_SCREENER_LSE_UNIVERSE_FILE
+      : (safe === 'NYSE' ? INVESTMENT_SCREENER_NYSE_UNIVERSE_FILE : INVESTMENT_SCREENER_NASDAQ_UNIVERSE_FILE);
+    const defaultLabel = safe === 'LSE'
+      ? 'LSE listed issuers from official issuer workbook; provider-symbol mapping required'
+      : (safe === 'NYSE'
+        ? 'NYSE listed equities (security-type-filtered, reviewed static seed)'
+        : 'NASDAQ listed equities (security-type-filtered, reviewed static seed)');
     try {
       const parsed = JSON.parse(await readFile(seedFile, 'utf8'));
       const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
@@ -1800,7 +1808,7 @@ async function configuredInvestmentUniverse(market = 'ASX') {
       return {
         count: safeInteger(metadata.normalized_active_count) ?? active.length,
         label,
-        status: safeText(metadata.denominator_status, 'complete_security_type_filtered_listing', 80),
+        status: safeText(metadata.denominator_status, safe === 'LSE' ? 'complete_issuer_listing_requires_symbol_mapping' : 'complete_security_type_filtered_listing', 80),
         version: [label, sourceSha ? `sha256:${sourceSha}` : null, retrievedAt ? `retrieved_at:${retrievedAt}` : null].filter(Boolean).join(' ')
       };
     } catch {
@@ -2027,6 +2035,10 @@ async function coverageFromArtifact(raw, fileMtime, market = 'ASX') {
     denominatorOverride = configuredUniverse.count;
     denominatorLabelOverride = configuredUniverse.label;
     denominatorStatusOverride = configuredUniverse.status;
+  }
+  if (selectedMarket === 'LSE' && configuredUniverse.count !== null) {
+    summary.universe_source = configuredUniverse.label;
+    summary.universe_version = configuredUniverse.version;
   }
   const coverage = finalizeCoverage({
     market: selectedMarket,

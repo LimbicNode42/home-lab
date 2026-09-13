@@ -376,7 +376,7 @@ The screener CLI `--output` file is now the dashboard-safe ranked JSON object co
 
 ```json
 {
-  "mode": "fixture|live|asx-yahoo-timeseries|unknown",
+  "mode": "fixture|live|asx-yahoo-timeseries|nasdaq-eodhd-fundamentals|nyse-eodhd-fundamentals|lse-eodhd-fundamentals|unknown",
   "generated_at": "ISO timestamp",
   "data_as_of": "ISO timestamp, source string, or null",
   "limitations": ["safe strings, including filter/top_n notes when relevant"],
@@ -407,7 +407,7 @@ The screener CLI `--output` file is now the dashboard-safe ranked JSON object co
 }
 ```
 
-The dashboard API reads that object, sanitizes it again, caps sanitized `candidates` and `excluded` to 500 rows each before API filtering/pagination, normalizes `mode` to `fixture`, `live`, `asx-yahoo-timeseries`, or `unknown`, and adds the dashboard-only fields `disclaimer` and `doc_links`. When API query filters are active, it also adds `applied_filters` and `messages`, for example:
+The dashboard API reads that object, sanitizes it again, caps sanitized `candidates` and `excluded` to 500 rows each before API filtering/pagination, normalizes `mode` to `fixture`, `live`, `asx-yahoo-timeseries`, `nasdaq-eodhd-fundamentals`, `nyse-eodhd-fundamentals`, `lse-eodhd-fundamentals`, or `unknown`, and adds the dashboard-only fields `disclaimer` and `doc_links`. When API query filters are active, it also adds `applied_filters` and `messages`, for example:
 
 ```json
 {
