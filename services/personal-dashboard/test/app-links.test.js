@@ -61,7 +61,7 @@ test('dashboard investment screener exposes selectable sector and industry filte
 });
 
 
-test('dashboard investment screener exposes exchange and region filters for ASX and NASDAQ', async () => {
+test('dashboard investment screener exposes exchange and region filters for ASX, NASDAQ, NYSE, and LSE', async () => {
   const indexSource = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
   assert.match(indexSource, /<select id="investment-exchange-filter"[^>]*>/);
   assert.match(indexSource, /<select id="investment-region-filter"[^>]*>/);
@@ -74,15 +74,18 @@ test('dashboard investment screener exposes exchange and region filters for ASX 
 });
 
 
-test('dashboard investment screener market selector exposes ASX, NASDAQ, and NYSE without generic US collapse', async () => {
+test('dashboard investment screener market selector exposes ASX, NASDAQ, NYSE, and LSE without generic US collapse', async () => {
   const indexSource = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
   assert.match(indexSource, /<option value="ASX">Australia \/ ASX<\/option>/);
   assert.match(indexSource, /<option value="NASDAQ">United States \/ NASDAQ<\/option>/);
   assert.match(indexSource, /<option value="NYSE">United States \/ NYSE<\/option>/);
+  assert.match(indexSource, /<option value="LSE">United Kingdom \/ LSE<\/option>/);
   assert.match(indexSource, /<option value="NYSE">NYSE<\/option>/);
+  assert.match(indexSource, /<option value="LSE">LSE<\/option>/);
+  assert.match(indexSource, /<option value="GB">United Kingdom<\/option>/);
   assert.doesNotMatch(indexSource, /<option value="US">US<\/option>/);
-  assert.match(indexSource, /ASX, NASDAQ, and NYSE are separate exchange buckets/i);
-  assert.match(indexSource, /security-type-filtered full listed-equity universes/i);
+  assert.match(indexSource, /ASX, NASDAQ, NYSE, and LSE are separate exchange buckets/i);
+  assert.match(indexSource, /LSE uses an official issuer denominator with reviewed provider-symbol mapping/i);
   assert.doesNotMatch(indexSource, /NASDAQ-100 constituents/i);
 });
 
