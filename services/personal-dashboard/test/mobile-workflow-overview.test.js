@@ -457,3 +457,162 @@ test('GET /api/mobile-workflow/screenshot requires auth and returns PNG from ser
     await server.close();
   }
 });
+
+test('viewer status derives auth-required when emulator is running and fresh behind reverse-proxy auth', async () => {
+  const configPath = await writeConfig({
+    ...mobileWorkflowConfig,
+    mobileWorkflow: {
+      ...mobileWorkflowConfig.mobileWorkflow,
+      viewer: { mode: 'authenticated_interactive', label: 'Interactive viewer', instruction: 'Authenticated controls enabled.', href: '/mobile-viewer/' }
+    }
+  });
+  const dir = await mkdtemp(join(tmpdir(), 'dashboard-mobile-viewer-status-'));
+  const statusFile = join(dir, 'status.json');
+  await writeFile(statusFile, JSON.stringify({
+    generatedAt: '2026-09-01T06:30:00.000Z',
+    runtime: { state: 'running', adbDeviceId: 'emulator-5554', bootCompleted: true, detail: 'booted' },
+    lastSuccessfulCycleAt: '2026-09-01T03:00:00.000Z'
+  }), 'utf8');
+  const app = await createApp({ configPath, authMode: 'reverse-proxy', proxyUserHeader: 'x-forwarded-user', mobileWorkflowStatusFile: statusFile });
+  const server = await listen(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/mobile-workflow/status`, { headers: { 'x-forwarded-user': 'ben' } });
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.viewerStatus, 'auth-required');
+  } finally {
+    await server.close();
+  }
+});
+
+test('viewer status derives ready when emulator is running, fresh, and auth is disabled', async () => {
+  const configPath = await writeConfig({
+    ...mobileWorkflowConfig,
+    mobileWorkflow: {
+      ...mobileWorkflowConfig.mobileWorkflow,
+      viewer: { mode: 'authenticated_interactive', label: 'Interactive viewer', instruction: 'Authenticated controls enabled.', href: '/mobile-viewer/' }
+    }
+  });
+  const dir = await mkdtemp(join(tmpdir(), 'dashboard-mobile-viewer-ready-'));
+  const statusFile = join(dir, 'status.json');
+  await writeFile(statusFile, JSON.stringify({
+    generatedAt: '2026-09-01T06:30:00.000Z',
+    runtime: { state: 'running', adbDeviceId: 'emulator-5554', bootCompleted: true, detail: 'booted' },
+    lastSuccessfulCycleAt: '2026-09-01T03:00:00.000Z'
+  }), 'utf8');
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, mobileWorkflowStatusFile: statusFile });
+  const server = await listen(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/mobile-workflow/status`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.viewerStatus, 'ready');
+  } finally {
+    await server.close();
+  }
+});
+
+test('viewer status derives unavailable when emulator is not running', async () => {
+  const configPath = await writeConfig({
+    ...mobileWorkflowConfig,
+    mobileWorkflow: {
+      ...mobileWorkflowConfig.mobileWorkflow,
+      viewer: { mode: 'authenticated_interactive', label: 'Interactive viewer', instruction: 'Authenticated controls enabled.', href: '/mobile-viewer/' }
+    }
+  });
+  const dir = await mkdtemp(join(tmpdir(), 'dashboard-mobile-viewer-unavailable-'));
+  const statusFile = join(dir, 'status.json');
+  await writeFile(statusFile, JSON.stringify({
+    generatedAt: '2026-09-01T06:30:00.000Z',
+    runtime: { state: 'not_running', adbDeviceId: null, bootCompleted: false, detail: 'stopped' },
+    lastSuccessfulCycleAt: null
+  }), 'utf8');
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, mobileWorkflowStatusFile: statusFile });
+  const server = await listen(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/mobile-workflow/status`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.viewerStatus, 'unavailable');
+  } finally {
+    await server.close();
+  }
+});
+
+test('viewer status derives booting when emulator is booting', async () => {
+  const configPath = await writeConfig({
+    ...mobileWorkflowConfig,
+    mobileWorkflow: {
+      ...mobileWorkflowConfig.mobileWorkflow,
+      viewer: { mode: 'authenticated_interactive', label: 'Interactive viewer', instruction: 'Authenticated controls enabled.', href: '/mobile-viewer/' }
+    }
+  });
+  const dir = await mkdtemp(join(tmpdir(), 'dashboard-mobile-viewer-booting-'));
+  const statusFile = join(dir, 'status.json');
+  await writeFile(statusFile, JSON.stringify({
+    generatedAt: '2026-09-01T06:30:00.000Z',
+    runtime: { state: 'booting', adbDeviceId: 'emulator-5554', bootCompleted: false, detail: 'booting' },
+    lastSuccessfulCycleAt: null
+  }), 'utf8');
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, mobileWorkflowStatusFile: statusFile });
+  const server = await listen(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/mobile-workflow/status`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.viewerStatus, 'booting');
+  } finally {
+    await server.close();
+  }
+});
+
+test('viewer status derives blocked when viewer mode is review_required', async () => {
+  const configPath = await writeConfig(mobileWorkflowConfig);
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, mobileWorkflowStatusFile: null });
+  const server = await listen(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/mobile-workflow/status`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.viewerStatus, 'blocked');
+  } finally {
+    await server.close();
+  }
+});
+
+test('viewer status derives degraded when emulator is running but cache is stale', async () => {
+  const configPath = await writeConfig({
+    ...mobileWorkflowConfig,
+    mobileWorkflow: {
+      ...mobileWorkflowConfig.mobileWorkflow,
+      runtime: { state: 'running', adbDeviceId: 'emulator-5554', bootCompleted: true, detail: 'booted' },
+      viewer: { mode: 'authenticated_interactive', label: 'Interactive viewer', instruction: 'Authenticated controls enabled.', href: '/mobile-viewer/' }
+    }
+  });
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, mobileWorkflowStatusFile: null });
+  const server = await listen(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/mobile-workflow/status`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    // no cache file -> cacheStatus not_configured -> not fresh -> degraded (running but stale)
+    assert.equal(body.viewerStatus, 'degraded');
+  } finally {
+    await server.close();
+  }
+});
+
+test('app.js renders viewer status labels and no longer claims no safe viewer exists', () => {
+  assert.match(appSource, /MOBILE_VIEWER_STATUS_LABELS/);
+  assert.match(appSource, /viewerStatus/);
+  assert.match(appSource, /Blocked — review required/);
+  assert.match(appSource, /Auth required/);
+  assert.doesNotMatch(appSource, /No safe direct emulator viewer link is configured yet/);
+  assert.doesNotMatch(appSource, /must be placed behind dashboard authentication before linking/);
+});

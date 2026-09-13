@@ -110,7 +110,7 @@ const DEFAULT_CONFIG = {
     viewer: {
       mode: 'review_required',
       label: 'Emulator viewer requires review',
-      instruction: 'Use the proven headless cycle on tori for now. Interactive noVNC/web controls must be placed behind dashboard authentication before linking.',
+      instruction: 'The interactive emulator viewer is configured but awaiting review before it can be linked from the dashboard.',
       href: null
     }
   }

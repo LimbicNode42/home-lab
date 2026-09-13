@@ -3115,6 +3115,27 @@ async function readUnifiedInboxStatus({ config, statusUrl, fetchImpl = globalThi
 const MOBILE_RUNTIME_STATES = new Set(['not_running', 'booting', 'running', 'unknown']);
 const MOBILE_CACHE_STATUSES = new Set(['fresh', 'not_configured', 'missing', 'malformed', 'read_error']);
 
+// Derive a single, browser-safe viewer status from the configured viewer mode,
+// the published emulator runtime state, cache freshness, and the dashboard auth
+// boundary. This is the source of truth the tile renders; it never exposes
+// upstream URLs, tokens, or filesystem paths.
+function deriveMobileViewerStatus({ enabled, viewer, runtime, cacheStatus, authMode }) {
+  if (!enabled) return 'unavailable';
+  const mode = viewer?.mode ?? null;
+  const href = viewer?.href ?? null;
+  if (mode === 'review_required') return 'blocked';
+  if (!href) return 'unavailable';
+  const state = runtime?.state ?? 'unknown';
+  if (state === 'not_running' || state === 'unknown') return 'unavailable';
+  if (state === 'booting') return 'booting';
+  // state === 'running'
+  const fresh = cacheStatus === 'fresh';
+  const booted = runtime?.bootCompleted === true;
+  if (!fresh || !booted) return 'degraded';
+  if (authMode === 'reverse-proxy') return 'auth-required';
+  return 'ready';
+}
+
 function sanitizeMobileText(value, fallback = null) {
   if (typeof value !== 'string') return fallback;
   const trimmed = value.trim();
@@ -3164,12 +3185,13 @@ function sanitizeMobileMatrix(rawMatrix) {
   };
 }
 
-function mobileWorkflowPayload({ config, statusFilePayload = null, cacheStatus, message, fileMtimeMs = null }) {
+function mobileWorkflowPayload({ config, statusFilePayload = null, cacheStatus, message, fileMtimeMs = null, authMode = 'reverse-proxy' }) {
   if (!config?.enabled) {
     return {
       enabled: false,
       title: config?.title ?? 'Flutter mobile workflow',
       cacheStatus: 'not_configured',
+      viewerStatus: 'unavailable',
       message: 'Flutter mobile workflow overview is not configured on this dashboard.'
     };
   }
@@ -3177,6 +3199,13 @@ function mobileWorkflowPayload({ config, statusFilePayload = null, cacheStatus, 
   const runtime = sanitizeMobileRuntime(statusFilePayload?.runtime, config.runtime ?? {});
   const matrix = sanitizeMobileMatrix(statusFilePayload?.matrix);
   const generatedAt = sanitizeIsoTimestamp(statusFilePayload?.generatedAt) ?? (fileMtimeMs ? new Date(fileMtimeMs).toISOString() : null);
+  const viewerStatus = deriveMobileViewerStatus({
+    enabled: true,
+    viewer: config.viewer,
+    runtime,
+    cacheStatus,
+    authMode
+  });
   return {
     enabled: true,
     title: config.title,
@@ -3187,19 +3216,21 @@ function mobileWorkflowPayload({ config, statusFilePayload = null, cacheStatus, 
     deviceMatrix: config.deviceMatrix,
     lastSuccessfulCycleAt: sanitizeIsoTimestamp(statusFilePayload?.lastSuccessfulCycleAt) ?? config.lastSuccessfulCycleAt ?? null,
     viewer: config.viewer,
+    viewerStatus,
     generatedAt,
     cacheStatus: MOBILE_CACHE_STATUSES.has(cacheStatus) ? cacheStatus : 'read_error',
     message: sanitizeMobileText(message, null)
   };
 }
 
-async function readMobileWorkflowStatus({ config, statusFile }) {
+async function readMobileWorkflowStatus({ config, statusFile, authMode = 'reverse-proxy' }) {
   if (!statusFile) {
     return {
       statusCode: 200,
       payload: mobileWorkflowPayload({
         config,
         cacheStatus: 'not_configured',
+        authMode,
         message: 'No mobile workflow status cache is configured; showing the last reviewed desired state.'
       })
     };
@@ -3213,6 +3244,7 @@ async function readMobileWorkflowStatus({ config, statusFile }) {
         payload: mobileWorkflowPayload({
           config,
           cacheStatus: 'missing',
+          authMode,
           message: 'Mobile workflow status cache is not a regular file; showing the last reviewed desired state.'
         })
       };
@@ -3220,7 +3252,7 @@ async function readMobileWorkflowStatus({ config, statusFile }) {
     const parsed = JSON.parse(await readFile(statusFile, 'utf8'));
     return {
       statusCode: 200,
-      payload: mobileWorkflowPayload({ config, statusFilePayload: parsed, cacheStatus: 'fresh', fileMtimeMs: info.mtimeMs })
+      payload: mobileWorkflowPayload({ config, statusFilePayload: parsed, cacheStatus: 'fresh', fileMtimeMs: info.mtimeMs, authMode })
     };
   } catch (err) {
     if (err.code === 'ENOENT') {
@@ -3229,6 +3261,7 @@ async function readMobileWorkflowStatus({ config, statusFile }) {
         payload: mobileWorkflowPayload({
           config,
           cacheStatus: 'missing',
+          authMode,
           message: 'No mobile workflow status cache has been published yet; no emulator is assumed to be running.'
         })
       };
@@ -3239,6 +3272,7 @@ async function readMobileWorkflowStatus({ config, statusFile }) {
         payload: mobileWorkflowPayload({
           config,
           cacheStatus: 'malformed',
+          authMode,
           message: 'Mobile workflow status cache is malformed; dashboard is using the last reviewed desired state.'
         })
       };
@@ -3248,6 +3282,7 @@ async function readMobileWorkflowStatus({ config, statusFile }) {
       payload: mobileWorkflowPayload({
         config,
         cacheStatus: 'read_error',
+        authMode,
         message: 'Unable to read mobile workflow status cache; dashboard is using the last reviewed desired state.'
       })
     };
@@ -3376,7 +3411,7 @@ export async function createApp(options = {}) {
       }
 
       if (request.method === 'GET' && url.pathname === '/api/mobile-workflow/status') {
-        const result = await readMobileWorkflowStatus({ config: config.mobileWorkflow, statusFile: mobileWorkflowStatusFile });
+        const result = await readMobileWorkflowStatus({ config: config.mobileWorkflow, statusFile: mobileWorkflowStatusFile, authMode });
         return json(response, result.statusCode, result.payload);
       }
 

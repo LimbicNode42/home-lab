@@ -368,6 +368,22 @@ function mobileWorkflowBadgeClass(state) {
   return 'neutral';
 }
 
+const MOBILE_VIEWER_STATUS_LABELS = {
+  'blocked': 'Blocked — review required',
+  'unavailable': 'Unavailable',
+  'booting': 'Booting',
+  'auth-required': 'Auth required',
+  'ready': 'Ready',
+  'degraded': 'Degraded'
+};
+
+function mobileViewerStatusBadgeClass(status) {
+  if (status === 'ready') return 'up';
+  if (status === 'auth-required' || status === 'booting') return 'neutral';
+  if (status === 'degraded') return 'neutral';
+  return 'down';
+}
+
 
 async function sendMobileControl(action, payload = {}) {
   return postJson('/api/mobile-workflow/control', { action, ...payload });
@@ -497,8 +513,11 @@ function renderMobileWorkflowOverview(status, config = mobileWorkflowConfig) {
   }
 
   const viewer = payload.viewer || {};
+  const viewerStatus = payload.viewerStatus || (viewer.href ? 'ready' : 'unavailable');
+  const viewerStatusLabel = MOBILE_VIEWER_STATUS_LABELS[viewerStatus] || viewerStatus;
   const viewerChildren = [
     el('h3', { text: viewer.label || 'Emulator viewer' }),
+    el('span', { className: `badge ${mobileViewerStatusBadgeClass(viewerStatus)}`, text: viewerStatusLabel }),
     el('p', { className: 'muted', text: viewer.instruction || 'No reviewed emulator viewing surface is configured yet.' })
   ];
   if (viewer.href) {
@@ -506,8 +525,10 @@ function renderMobileWorkflowOverview(status, config = mobileWorkflowConfig) {
     if (viewer.mode === 'authenticated_interactive') {
       viewerChildren.push(buildMobileControlPanel());
     }
+  } else if (viewerStatus === 'blocked') {
+    viewerChildren.push(el('p', { className: 'error', text: 'The interactive viewer is configured but awaiting review before it can be linked.' }));
   } else {
-    viewerChildren.push(el('p', { className: 'error', text: 'No safe direct emulator viewer link is configured yet.' }));
+    viewerChildren.push(el('p', { className: 'muted', text: 'No emulator viewer is available right now.' }));
   }
 
   mobileWorkflowOverview.append(el('div', { className: 'mobile-workflow-grid' }, [
