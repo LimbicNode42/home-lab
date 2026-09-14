@@ -919,7 +919,7 @@ test('GET /api/investment-screener/coverage exposes TSE configured JPX denominat
   const dir = await mkdtemp(join(tmpdir(), 'investment-coverage-tse-'));
   const rankedPath = join(dir, 'latest_ranked.json');
   await writeFile(rankedPath, JSON.stringify({
-    mode: 'tse-yahoo-chart-smoke',
+    mode: 'tse-yahoo-timeseries',
     generated_at: '2026-09-13T08:00:00Z',
     source_summary: { providers: ['yahoo-finance'], universe_source: 'unsafe override ignored' },
     coverage: {
@@ -931,7 +931,7 @@ test('GET /api/investment-screener/coverage exposes TSE configured JPX denominat
       scored: 1,
       failed: 4,
       excluded: 729,
-      caveats: ['Yahoo .T aliases are bounded smoke only; JPX workbook remains the denominator.']
+      caveats: ['Yahoo .T aliases are staged fundamentals only; JPX workbook remains the denominator.']
     },
     candidates: [
       { rank: 1, ticker: '7203.T', name: 'TOYOTA MOTOR CORPORATION', market: 'TSE', exchange: 'JPX', region: 'JP', currency: 'JPY', sector: 'Transportation Equipment', score: 88 }
@@ -946,8 +946,8 @@ test('GET /api/investment-screener/coverage exposes TSE configured JPX denominat
     const body = await response.json();
     const serialized = JSON.stringify(body);
     assert.equal(response.status, 200);
-    assert.equal(body.source_summary.mode, 'tse-yahoo-chart-smoke');
-    assert.equal(body.source_summary.mode_label, 'Yahoo Finance TSE .T bounded smoke');
+    assert.equal(body.source_summary.mode, 'tse-yahoo-timeseries');
+    assert.equal(body.source_summary.mode_label, 'Yahoo Finance TSE .T staged fundamentals');
     assert.deepEqual(body.source_summary.providers, ['yahoo-finance']);
     assert.equal(body.coverage.market, 'TSE');
     assert.equal(body.coverage.denominator, 3712);

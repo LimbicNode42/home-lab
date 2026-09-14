@@ -345,7 +345,10 @@ function coverageForRun(run, now = new Date()) {
   const scored = run.scores.filter((score) => score.composite_score !== null).length;
   const excluded = run.scores.filter((score) => score.excluded).length;
   const selectedCount = Number.isInteger(Number(run.universe.selected_count)) ? Number(run.universe.selected_count) : null;
-  const denominator = selectedCount || run.universe.count || run.companies.length;
+    // The denominator is the full configured universe, not the hydrated batch size.
+    // A bounded staged run (e.g. 25 of 3712 TSE) must report coverage against the
+    // full universe so percent stays truthful instead of inflating to ~100%.
+    const denominator = run.universe.count || run.universe.full_count || selectedCount || run.companies.length;
   const status = sanitizeText(supplied.denominator_status, null, 80) ?? (run.fixture ? 'sample' : (run.universe.complete_exchange_listing ? 'complete_exchange_listing' : 'known_sample_universe'));
   const freshness = freshnessForRun(run, now);
   const warnings = [...(Array.isArray(supplied.warnings) ? sanitizeTextArray(supplied.warnings, 12, 240) : [])];

@@ -67,3 +67,8 @@ id_ed25519
 
 # Node.js dependencies
 services/personal-dashboard/node_modules/
+
+# Investment screener: transient LSE public-mapping checkpoint cache (resumable
+# ~40-min mapping pass). The reviewed seed + accounting artifacts are committed;
+# the raw per-issuer search/details cache is a large, regenerable scratch file.
+services/personal-dashboard/investment-screener/universe/lse-public-symbol-mapping.checkpoint.json

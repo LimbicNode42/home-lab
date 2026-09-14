@@ -333,7 +333,7 @@ test('buildInvestmentScreenerDuckDbSummary reads ranked and coverage summaries f
 });
 
 
-test('publishInvestmentScreenerRun uses selected batch size as coverage denominator for partial exchange runs', async () => {
+test('publishInvestmentScreenerRun uses full universe count as coverage denominator for partial exchange runs', async () => {
   const dataRoot = await mkdtemp(join(tmpdir(), 'screener-storage-batch-denominator-'));
   try {
     const batchRun = {
@@ -360,13 +360,16 @@ test('publishInvestmentScreenerRun uses selected batch size as coverage denomina
 
     assert.equal(published.manifest.universe.count, 1838);
     assert.equal(published.manifest.universe.selected_count, 200);
-    assert.equal(published.manifest.coverage.denominator, 200);
+    // The denominator is the full configured universe (1838), not the hydrated
+    // batch size (200), so a staged run reports truthful coverage against the
+    // whole exchange rather than inflating percent to ~100% of the batch.
+    assert.equal(published.manifest.coverage.denominator, 1838);
     assert.equal(published.manifest.coverage.usable, 2);
-    assert.equal(published.manifest.coverage.percent, 1);
-    assert.equal(published.latest.coverage.denominator, 200);
-    assert.equal(latestRanked.coverage.denominator, 200);
+    assert.equal(published.manifest.coverage.percent, 0.1);
+    assert.equal(published.latest.coverage.denominator, 1838);
+    assert.equal(latestRanked.coverage.denominator, 1838);
     assert.equal(latestRanked.coverage.denominator_status, 'staged_batch');
-    assert.equal(latestCoverage.coverage.denominator, 200);
+    assert.equal(latestCoverage.coverage.denominator, 1838);
   } finally {
     await rm(dataRoot, { recursive: true, force: true });
   }
@@ -439,9 +442,9 @@ test('buildInvestmentScreenerDuckDbSummary preserves manifest coverage counts wh
     const summary = await buildInvestmentScreenerDuckDbSummary({ dataRoot, market: 'ASX', source: 'yahoo-finance' });
 
     assert.equal(summary.ranked_candidates.length, 100, 'ranked payload remains capped for UI/API size');
-    assert.equal(summary.coverage.denominator, 200);
+    assert.equal(summary.coverage.denominator, 1838);
     assert.equal(summary.coverage.usable, 120);
-    assert.equal(summary.coverage.percent, 60);
+    assert.equal(summary.coverage.percent, 6.5);
   } finally {
     await rm(dataRoot, { recursive: true, force: true });
   }

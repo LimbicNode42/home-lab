@@ -222,7 +222,7 @@ TSE_UNIVERSE_SEED_SCHEMA_VERSION = "investment-screener-tse-universe-seed/v1"
 TSE_IDENTITY_RULE = "company_id=tse:{local_code}; yahoo_ticker={local_code}.T; eodhd_ticker requires authenticated exchange-code discovery"
 TSE_DENOMINATOR_LABEL = "TSE/JPX listed equities from JPX listed-issues workbook; Prime/Standard/Growth domestic+foreign only"
 TSE_MODE = "tse-eodhd-fundamentals"
-TSE_YAHOO_MODE = "tse-yahoo-chart-smoke"
+TSE_YAHOO_MODE = "tse-yahoo-timeseries"
 TSE_SOURCE_NAME = "JPX listed issues workbook"
 TSE_SOURCE_URL = "https://www.jpx.co.jp/english/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_e.xlsx"
 TSE_EQUITY_SECURITY_TYPE = "tse_listed_equity"
@@ -1744,6 +1744,16 @@ def select_lse_universe_batch(
     ambiguous_count = sum(1 for entry in active if entry.get("mapping_status") == "mapping_ambiguous")
     unmapped_count = full_count - mapped_count - ambiguous_count
     convention = LSE_PUBLIC_YAHOO_CONVENTION if provider.lower() == "yahoo" else "provider-confirmed TIDM/ISIN mapping required; no name guessing"
+    # Truthful denominator status: a full-universe LSE run is only a complete
+    # security-type-filtered listing when every active issuer is mapped to a
+    # provider symbol. A partial mapping is reported as a mapped subset, never
+    # silently relabelled as a complete listing.
+    if mapped_count and (unmapped_count or ambiguous_count):
+        denominator_status = "mapped_subset_provider_symbol_review_required"
+    elif mapped_count and not unmapped_count and not ambiguous_count:
+        denominator_status = "complete_security_type_filtered_listing"
+    else:
+        denominator_status = "complete_issuer_listing_requires_symbol_mapping"
     return {
         "entries": selected_entries,
         "tickers": tickers,
@@ -1759,8 +1769,8 @@ def select_lse_universe_batch(
         "batch_offset": batch_offset,
         "batch_end_exclusive": end,
         "complete_exchange_listing": False,
-        "complete_security_type_filtered_listing": False,
-        "denominator_status": "complete_issuer_listing_requires_symbol_mapping",
+        "complete_security_type_filtered_listing": bool(mapped_count and not unmapped_count and not ambiguous_count),
+        "denominator_status": denominator_status,
         "denominator_label": denominator_label or LSE_DENOMINATOR_LABEL,
         "provider_symbol_convention": convention,
         "security_type_filter": None,
@@ -2024,7 +2034,7 @@ def select_tse_universe_batch(
     selected_entries = active[batch_offset:end]
     provider_key = provider.lower()
     if provider_key == "yahoo":
-        convention = "yahoo {local_code}.T smoke alias; not denominator source"
+        convention = "Yahoo Finance TSE symbols use {local_code}.T; JPX listed-issues workbook remains the denominator"
     elif provider_key == "eodhd":
         convention = TSE_EODHD_UNSUPPORTED_CONVENTION
     else:

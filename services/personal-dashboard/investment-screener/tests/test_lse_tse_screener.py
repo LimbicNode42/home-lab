@@ -285,6 +285,26 @@ class LseProviderMappingTests(unittest.TestCase):
         self.assertEqual(selected["missing_provider_symbol_count"], 1)
         self.assertEqual(selected["provider_symbol_convention"], "Yahoo Finance LSE symbols use {LSE TIDM}.L from London Stock Exchange public instrument API")
 
+    def test_lse_selection_denominator_status_reflects_partial_vs_complete_mapping(self):
+        # Partial mapping (one mapped, one unmapped) must be reported as a mapped
+        # subset, never silently relabelled as a complete listing.
+        partial = [
+            {"company_id": "lse:hsbc", "issuer_id": "lse:hsbc", "name": "HSBC", "name_match_key": "hsbc", "active": True, "universe_rank": 1, "yahoo_ticker": "HSBA.L", "mapping_status": "mapped"},
+            {"company_id": "lse:foo", "issuer_id": "lse:foo", "name": "Foo", "name_match_key": "foo", "active": True, "universe_rank": 2, "mapping_status": "unmapped"},
+        ]
+        selected = scr.select_lse_universe_batch(partial, max_tickers=2, provider="yahoo")
+        self.assertEqual(selected["denominator_status"], "mapped_subset_provider_symbol_review_required")
+        self.assertFalse(selected["complete_security_type_filtered_listing"])
+
+        # Complete mapping (all active issuers mapped) is a complete listing.
+        complete = [
+            {"company_id": "lse:hsbc", "issuer_id": "lse:hsbc", "name": "HSBC", "name_match_key": "hsbc", "active": True, "universe_rank": 1, "yahoo_ticker": "HSBA.L", "mapping_status": "mapped"},
+            {"company_id": "lse:bp", "issuer_id": "lse:bp", "name": "BP", "name_match_key": "bp", "active": True, "universe_rank": 2, "yahoo_ticker": "BP.L", "mapping_status": "mapped"},
+        ]
+        selected = scr.select_lse_universe_batch(complete, max_tickers=2, provider="yahoo")
+        self.assertEqual(selected["denominator_status"], "complete_security_type_filtered_listing")
+        self.assertTrue(selected["complete_security_type_filtered_listing"])
+
     def test_lse_file_first_payload_surfaces_mapping_accounting_fields(self):
         payload = scr.build_file_first_run_payload(
             [],
@@ -440,18 +460,28 @@ class TseSeedContractTests(unittest.TestCase):
         selected = scr.select_tse_universe_batch(entries, max_tickers=1, provider="yahoo")
         self.assertEqual(selected["tickers"], ["7203.T"])
         self.assertEqual(selected["missing_provider_symbol_count"], 0)
-        self.assertEqual(selected["provider_symbol_convention"], "yahoo {local_code}.T smoke alias; not denominator source")
+        self.assertEqual(selected["provider_symbol_convention"], "Yahoo Finance TSE symbols use {local_code}.T; JPX listed-issues workbook remains the denominator")
 
 
 class LseTseRegistryTests(unittest.TestCase):
-    def test_embedded_registry_lists_lse_and_tse_disabled_until_mapping_or_exchange_discovery(self):
+    def test_embedded_registry_lists_lse_and_tse_enabled_on_yahoo_public_path(self):
         reg = rm.load_registry(_SCREENER_DIR / "universe" / "recurring-markets.json")
-        disabled = {m["id"]: m for m in rm.disabled_markets(reg)}
-        self.assertIn("lse", disabled)
-        self.assertIn("tse", disabled)
-        self.assertEqual(disabled["lse"]["denominator_status"], "complete_issuer_listing_requires_symbol_mapping")
-        self.assertEqual(disabled["tse"]["denominator_status"], "complete_security_type_filtered_listing")
-        self.assertIn("EODHD", disabled["tse"]["disabled_reason"])
+        enabled = {m["id"]: m for m in rm.enabled_markets(reg)}
+        self.assertIn("lse", enabled)
+        self.assertIn("tse", enabled)
+        self.assertEqual(enabled["lse"]["source"], "yahoo-finance")
+        self.assertEqual(enabled["lse"]["mode"], "lse-yahoo-timeseries")
+        self.assertEqual(enabled["lse"]["denominator_status"], "mapped_subset_provider_symbol_review_required")
+        self.assertIsNone(enabled["lse"]["credential_env"])
+
+    def test_embedded_registry_enables_tse_on_yahoo_public_path(self):
+        reg = rm.load_registry(_SCREENER_DIR / "universe" / "recurring-markets.json")
+        enabled = {m["id"]: m for m in rm.enabled_markets(reg)}
+        self.assertIn("tse", enabled)
+        self.assertEqual(enabled["tse"]["source"], "yahoo-finance")
+        self.assertEqual(enabled["tse"]["mode"], "tse-yahoo-timeseries")
+        self.assertIsNone(enabled["tse"]["credential_env"])
+        self.assertEqual(enabled["tse"]["denominator_status"], "complete_security_type_filtered_listing")
 
 
 if __name__ == "__main__":

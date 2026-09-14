@@ -315,7 +315,7 @@ Initial disabled/smoke-only draft:
 }
 ```
 
-If implementation starts with Yahoo-only quote smoke, use `source=yahoo-finance`, modes `lse-yahoo-chart-smoke` and `tse-yahoo-chart-smoke`, `DRY_RUN=1`, and `enabled=false` for recurring full hydration. Do not route Yahoo smoke through the existing full monthly job.
+Approved (Ben 2026-09-14): Yahoo Finance public endpoints are the reviewed alternate for staged/full LSE+JPX hydration cadence. Use `source=yahoo-finance`, modes `lse-yahoo-timeseries` and `tse-yahoo-timeseries`. TSE is `enabled=true` (JPX listed-issues workbook denominator, `complete_security_type_filtered_listing`). LSE is `enabled=true` with the regenerated `lse-public-symbol-mapping.seed.json` (exact LSE TIDM/ISIN -> `{TIDM}.L`, fail-closed) and a truthful `mapped_subset_provider_symbol_review_required` denominator while 1185/1522 issuers are mapped. EODHD remains the preferred authenticated path when access is restored; do not block on it now.
 
 ## LSE provider-symbol mapping reconciliation status (2026-09-13)
 

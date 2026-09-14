@@ -378,7 +378,7 @@ The screener CLI `--output` file is now the dashboard-safe ranked JSON object co
 
 ```json
 {
-  "mode": "fixture|live|asx-yahoo-timeseries|nasdaq-eodhd-fundamentals|nyse-eodhd-fundamentals|lse-eodhd-fundamentals|tse-eodhd-fundamentals|tse-yahoo-chart-smoke|unknown",
+  "mode": "fixture|live|asx-yahoo-timeseries|nasdaq-eodhd-fundamentals|nyse-eodhd-fundamentals|lse-eodhd-fundamentals|tse-eodhd-fundamentals|tse-yahoo-timeseries|unknown",
   "generated_at": "ISO timestamp",
   "data_as_of": "ISO timestamp, source string, or null",
   "limitations": ["safe strings, including filter/top_n notes when relevant"],
@@ -409,7 +409,7 @@ The screener CLI `--output` file is now the dashboard-safe ranked JSON object co
 }
 ```
 
-The dashboard API reads that object, sanitizes it again, caps sanitized `candidates` and `excluded` to 500 rows each before API filtering/pagination, normalizes `mode` to `fixture`, `live`, `asx-yahoo-timeseries`, `nasdaq-eodhd-fundamentals`, `nyse-eodhd-fundamentals`, `lse-eodhd-fundamentals`, `tse-eodhd-fundamentals`, `tse-yahoo-chart-smoke`, or `unknown`, and adds the dashboard-only fields `disclaimer` and `doc_links`. When API query filters are active, it also adds `applied_filters` and `messages`, for example:
+The dashboard API reads that object, sanitizes it again, caps sanitized `candidates` and `excluded` to 500 rows each before API filtering/pagination, normalizes `mode` to `fixture`, `live`, `asx-yahoo-timeseries`, `nasdaq-eodhd-fundamentals`, `nyse-eodhd-fundamentals`, `lse-eodhd-fundamentals`, `tse-eodhd-fundamentals`, `tse-yahoo-timeseries`, or `unknown`, and adds the dashboard-only fields `disclaimer` and `doc_links`. When API query filters are active, it also adds `applied_filters` and `messages`, for example:
 
 ```json
 {
@@ -453,7 +453,7 @@ python3 -m unittest tests/test_screener.py -v
 
 The screener config includes `suggestion_count.min` and `suggestion_count.max` bounds for `--top-n` / `--count`; the current artifact documents a max of 25. CLI filter support covers `market`, `exchange`, `region`, `sector`, and `industry` only where those fields exist in the supplied universe. The built-in fixture has `market`; exchange/region/sector/industry require richer input rows. If a requested field is absent, the CLI exits with an explicit error rather than returning mystery-empty output. If supported filters match no rows, the CLI succeeds and writes a valid ranked JSON object with empty `candidates`/`excluded` lists plus the applied filter note in `limitations`.
 
-Live Yahoo Finance mode remains prototype-only and guarded by `--allow-unofficial-yahoo-live`. It uses unofficial Yahoo endpoints with basic caching/retry/throttling and should not be treated as reliable coverage. TSE `tse-yahoo-chart-smoke` is likewise bounded-smoke/prototype only: it may prove `{local_code}.T` quote/freshness handling for a small reviewed slice, but JPX remains the denominator and recurring/full TSE hydration stays gated until an approved provider/source contract exists. Keep unofficial Yahoo output out of unattended dashboard publication unless Ben has explicitly approved the data-source risk.
+Live Yahoo Finance mode remains prototype-only and guarded by `--allow-unofficial-yahoo-live`. It uses unofficial Yahoo endpoints with basic caching/retry/throttling and should not be treated as reliable coverage. LSE `lse-yahoo-timeseries` and TSE `tse-yahoo-timeseries` are the approved (Ben 2026-09-14) Yahoo public-endpoint paths for staged/full LSE+JPX hydration: JPX remains the TSE denominator, the LSE issuer workbook remains the LSE denominator, and LSE coverage is reported as a truthful `mapped_subset_provider_symbol_review_required` subset until every issuer is mapped. EODHD remains the preferred authenticated path when access is restored. Keep unofficial Yahoo output out of unattended dashboard publication unless Ben has explicitly approved the data-source risk.
 
 ### Data caveats
 

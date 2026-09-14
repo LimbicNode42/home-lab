@@ -1657,7 +1657,7 @@ const INVESTMENT_SCREENER_DOC_LINKS = [
   { label: 'NYSE source and identity rules', url: '/api/docs/investment-screener-nyse-source-identity', doc_id: 'investment-screener-nyse-source-identity' },
   { label: 'LSE and TSE source and identity rules', url: '/api/docs/investment-screener-lse-tse-source-identity', doc_id: 'investment-screener-lse-tse-source-identity' }
 ];
-const INVESTMENT_SCREENER_MODE_VALUES = new Set(['fixture', 'live', 'asx-yahoo-timeseries', 'us-eodhd-fundamentals', 'nasdaq-eodhd-fundamentals', 'nyse-eodhd-fundamentals', 'lse-eodhd-fundamentals', 'lse-yahoo-timeseries', 'tse-eodhd-fundamentals', 'tse-yahoo-chart-smoke', 'unknown']);
+const INVESTMENT_SCREENER_MODE_VALUES = new Set(['fixture', 'live', 'asx-yahoo-timeseries', 'us-eodhd-fundamentals', 'nasdaq-eodhd-fundamentals', 'nyse-eodhd-fundamentals', 'lse-eodhd-fundamentals', 'lse-yahoo-timeseries', 'tse-eodhd-fundamentals', 'tse-yahoo-timeseries', 'unknown']);
 const INVESTMENT_SCREENER_FILTERABLE_FIELDS = new Set(['market', 'exchange', 'region', 'sector', 'industry']);
 const INVESTMENT_SCREENER_UNAVAILABLE_FIELDS = new Set([]);
 const INVESTMENT_SCREENER_METRIC_VALUES = new Set(['composite', 'quality', 'valuation', 'growth', 'graham_safety', 'durability', 'risk_adjustments']);
@@ -1677,7 +1677,7 @@ const INVESTMENT_SCREENER_MODE_LABELS = {
   'lse-eodhd-fundamentals': 'EODHD LSE fundamentals',
   'lse-yahoo-timeseries': 'Yahoo Finance LSE .L staged fundamentals',
   'tse-eodhd-fundamentals': 'EODHD TSE fundamentals (exchange-code gated)',
-  'tse-yahoo-chart-smoke': 'Yahoo Finance TSE .T bounded smoke',
+  'tse-yahoo-timeseries': 'Yahoo Finance TSE .T staged fundamentals',
   live: 'Live scrape/export',
   cached: 'Cached provider data',
   'manual-seed': 'Manual universe seed',
@@ -1738,15 +1738,18 @@ function safeMarket(value, fallback = 'ASX') {
 
 function investmentSourceForMarket(market) {
   const safe = safeMarket(market);
-  if (safe === 'NASDAQ' || safe === 'NYSE' || safe === 'LSE' || safe === 'TSE' || safe === 'US') return 'eodhd';
+  if (safe === 'NASDAQ' || safe === 'NYSE' || safe === 'US') return 'eodhd';
+  // LSE and TSE are hydrated via Yahoo Finance public endpoints (approved
+  // 2026-09-14); EODHD remains the preferred authenticated path when access is
+  // restored, but is not the active source for these markets today.
   return 'yahoo-finance';
 }
 
 function investmentSourcesForMarket(market) {
   const safe = safeMarket(market);
   const primary = investmentSourceForMarket(safe);
-  if (safe === 'TSE') {
-    return [primary, 'yahoo-finance'];
+  if (safe === 'TSE' || safe === 'LSE') {
+    return [primary, 'eodhd'];
   }
   return [primary];
 }
@@ -2787,14 +2790,18 @@ async function readInvestmentScreenerCompany({ dataRoot = null, ticker, searchPa
   if (!dataRoot) {
     return { statusCode: 503, payload: { error: 'investment_screener_not_configured', message: 'Investment screener data root is not configured' } };
   }
+  const market = safeMarket(searchParams?.get?.('market') ?? 'ASX');
   try {
-    const detail = await readInvestmentScreenerCompanyDetail({
-      dataRoot,
-      ticker,
-      market: safeMarket(searchParams?.get?.('market') ?? 'ASX'),
-      source: investmentSourceForMarket(safeMarket(searchParams?.get?.('market') ?? 'ASX'))
-    });
-    return { statusCode: 200, payload: detail };
+    for (const source of investmentSourcesForMarket(market)) {
+      try {
+        const detail = await readInvestmentScreenerCompanyDetail({ dataRoot, ticker, market, source });
+        return { statusCode: 200, payload: detail };
+      } catch (err) {
+        if (err?.code === 'not_found' || err?.code === 'invalid_ticker' || err?.code === 'not_configured') throw err;
+        // Try the next reviewed source for this market; never leak storage paths or diagnostics.
+      }
+    }
+    return { statusCode: 404, payload: { error: 'investment_screener_company_not_found', message: 'No company detail is available for that ticker in the latest screener artifacts.' } };
   } catch (err) {
     if (err?.code === 'invalid_ticker') {
       return { statusCode: 400, payload: { error: 'invalid_investment_screener_ticker', message: 'Investment screener ticker must be a plain market symbol.' } };

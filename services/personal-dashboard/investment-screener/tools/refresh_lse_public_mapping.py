@@ -4,6 +4,12 @@
 This uses the London Stock Exchange public API as an identifier source only. It
 maps fail-closed: exact issuer-name key plus a unique ordinary-share instrument,
 otherwise the row remains unmapped/ambiguous and is accounted for.
+
+Robustness: the LSE public API intermittently resets connections mid-run. A
+full 1,522-issuer pass takes ~40 minutes, so this tool checkpoints its
+search/details cache to disk after every issuer and resumes from it on restart.
+Transient fetch errors are retried with backoff; only after retries are
+exhausted is a row recorded as a fetch error (still accounted, never guessed).
 """
 
 from __future__ import annotations
@@ -14,6 +20,7 @@ import importlib.util
 import json
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -32,11 +39,24 @@ HEADERS = {
     "Referer": "https://www.londonstockexchange.com/",
 }
 
+RETRY_ATTEMPTS = 4
+RETRY_BACKOFF_BASE = 2.0  # seconds; exponential: 2, 4, 8, 16
+
 
 def fetch_json(url: str, timeout: int = 20) -> dict:
-    request = urllib.request.Request(url, headers=HEADERS)
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return json.loads(response.read().decode("utf-8"))
+    last_exc: Exception | None = None
+    for attempt in range(RETRY_ATTEMPTS):
+        try:
+            request = urllib.request.Request(url, headers=HEADERS)
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ConnectionError) as exc:
+            last_exc = exc
+            if attempt < RETRY_ATTEMPTS - 1:
+                delay = RETRY_BACKOFF_BASE * (2 ** attempt)
+                print(f"  retry {attempt + 1}/{RETRY_ATTEMPTS - 1} after {delay:.0f}s ({type(exc).__name__})", file=sys.stderr)
+                time.sleep(delay)
+    raise last_exc  # type: ignore[misc]
 
 
 def search_lse(query: str, size: int = 10) -> list[dict]:
@@ -50,11 +70,27 @@ def instrument_details(tidm: str) -> dict:
     return fetch_json(url)
 
 
+def load_checkpoint(path: Path) -> dict:
+    if path.exists():
+        try:
+            return json.loads(path.read_text(encoding="utf8"))
+        except Exception:
+            return {}
+    return {}
+
+
+def save_checkpoint(path: Path, search_results: dict, details: dict) -> None:
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps({"search_results": search_results, "details": details}, sort_keys=True) + "\n", encoding="utf8")
+    tmp.replace(path)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", default=str(ROOT / "universe" / "lse-listed-issuers.seed.json"))
     parser.add_argument("--output", default=str(ROOT / "universe" / "lse-public-symbol-mapping.seed.json"))
     parser.add_argument("--accounting-output", default=str(ROOT / "universe" / "lse-public-symbol-mapping.accounting.json"))
+    parser.add_argument("--checkpoint", default=str(ROOT / "universe" / "lse-public-symbol-mapping.checkpoint.json"))
     parser.add_argument("--max-issuers", type=int, default=None, help="Optional bounded smoke limit")
     parser.add_argument("--start-offset", type=int, default=0, help="Zero-based seed offset for bounded smoke slices")
     parser.add_argument("--sleep-seconds", type=float, default=0.2)
@@ -68,16 +104,24 @@ def main() -> int:
     if args.max_issuers:
         entries = entries[: args.max_issuers]
 
-    search_results: dict[str, list[dict]] = {}
-    details: dict[str, dict] = {}
+    checkpoint_path = Path(args.checkpoint)
+    checkpoint = load_checkpoint(checkpoint_path)
+    search_results: dict[str, list[dict]] = checkpoint.get("search_results") or {}
+    details: dict[str, dict] = checkpoint.get("details") or {}
+
     for index, entry in enumerate(entries, start=1):
         name = str(entry.get("name") or "").strip()
         query = name.casefold()
         if not name:
             search_results[query] = []
+            save_checkpoint(checkpoint_path, search_results, details)
             continue
-        rows = search_lse(name)
-        search_results[query] = rows
+        if query in search_results:
+            # Already resolved in a prior (resumed) pass; still refresh details if missing.
+            rows = search_results[query]
+        else:
+            rows = search_lse(name)
+            search_results[query] = rows
         seed_key = str(entry.get("name_match_key") or scr._slugify_identity(name)).strip()
         for row in rows:
             issuer_key = scr._slugify_identity(row.get("issuername") or row.get("issuerName") or "")
@@ -89,6 +133,7 @@ def main() -> int:
                     details[tidm] = instrument_details(tidm)
                 except Exception as exc:  # keep mapping fail-closed/accounted
                     details[tidm] = {"tidm": tidm, "_fetch_error": scr._redact_secrets_in_text(str(exc))}
+        save_checkpoint(checkpoint_path, search_results, details)
         if args.sleep_seconds and index != len(entries):
             time.sleep(args.sleep_seconds)
         if index % 100 == 0:
