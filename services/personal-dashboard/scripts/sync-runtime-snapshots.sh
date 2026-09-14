@@ -12,6 +12,7 @@ INVESTMENT_SCREENER_HOST_DIR=${INVESTMENT_SCREENER_HOST_DIR:-/mnt/nas/services/p
 KANBAN_DB_HOST_DIR=${KANBAN_DB_HOST_DIR:-/mnt/nas/services/personal-dashboard/kanban}
 HOMELAB_HEALTH_HOST_DIR=${HOMELAB_HEALTH_HOST_DIR:-/mnt/nas/services/personal-dashboard/homelab-health}
 MOBILE_WORKFLOW_STATUS_HOST_DIR=${MOBILE_WORKFLOW_STATUS_HOST_DIR:-/mnt/nas/services/personal-dashboard/mobile-workflow}
+METAMCP_STATUS_HOST_DIR=${METAMCP_STATUS_HOST_DIR:-/mnt/nas/services/personal-dashboard/metamcp}
 
 copy_snapshot() {
   source_path=$1
@@ -85,6 +86,7 @@ cleanup() {
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/finnick/latest_report.txt.tmp.$$" \
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/homelab-health/latest_report.txt.tmp.$$" \
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/mobile-workflow/status.json.tmp.$$" \
+    "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/metamcp/status.json.tmp.$$" \
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/kanban/kanban.db.tmp.$$"
   rm -rf \
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/investment-screener.tmp.$$" \
@@ -115,5 +117,8 @@ copy_snapshot "$HOMELAB_HEALTH_HOST_DIR/latest_report.txt" \
 copy_optional_snapshot "$MOBILE_WORKFLOW_STATUS_HOST_DIR/status.json" \
   "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/mobile-workflow/status.json" \
   "Mobile workflow status"
+copy_optional_snapshot "$METAMCP_STATUS_HOST_DIR/status.json" \
+  "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/metamcp/status.json" \
+  "MetaMCP publisher snapshot"
 
 printf '%s\n' "Synced personal-dashboard runtime snapshots to $PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR"

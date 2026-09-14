@@ -101,6 +101,8 @@ Environment variables:
 | `DASHBOARD_ALLOW_DISABLED_AUTH` | unset | Must be `true` to allow disabled auth in production. Avoid this outside a private dev tunnel. |
 | `DASHBOARD_STATUS_CACHE_TTL_MS` | `30000` | Status result cache TTL. |
 | `DASHBOARD_STATUS_PROBE_TIMEOUT_MS` | `2500` | Per-probe timeout. |
+| `METAMCP_STATUS_FILE` | unset | Absolute path inside the container to the MetaMCP publisher snapshot. Set to `/app/metamcp/status.json` in the critical deployment; `GET /api/metamcp/status` combines this snapshot with live gateway health and reports up/down/degraded/unknown. |
+| `METAMCP_STATUS_STALE_AFTER_MS` | `900000` | Freshness threshold for the MetaMCP publisher snapshot. Stale or missing snapshots degrade the MetaMCP product surface even when the gateway health probe is up. |
 | `FINNICK_REPORT_FILE` | unset | Absolute path inside the container to the Finnick report file. Set to `/app/finnick/latest_report.txt` in the critical deployment (read from a read-only directory bind). If unset, `GET /api/finnick/report` returns 503. |
 | `PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR` | `/var/lib/personal-dashboard/runtime-cache` | Host-local cache populated by `scripts/sync-runtime-snapshots.sh` and mounted read-only to `/app/config`, `/app/finnick`, `/app/investment-screener`, and `/app/kanban`. Keep this off NAS/NFS. |
 | `WRITING_POSTS_HOST_DIR` | `/var/lib/personal-dashboard/writing` | Host-local writable Blog/Drafts store mounted at `/app/writing`; `run-critical-docker.sh` seeds it from the existing container `/app/data/writing-posts.json` before recreate when needed. Keep it separate from `/app/data` and preserve the JSON file. |

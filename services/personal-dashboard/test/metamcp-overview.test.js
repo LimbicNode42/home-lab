@@ -163,3 +163,151 @@ test('styles.css defines MetaMCP overview grid/card styling', () => {
   assert.match(stylesSource, /\.metamcp-grid/);
   assert.match(stylesSource, /\.metamcp-domain-list/);
 });
+
+
+async function writeMetaMcpStatusFile(payload) {
+  const dir = await mkdtemp(join(tmpdir(), 'dashboard-metamcp-status-'));
+  const path = join(dir, 'status.json');
+  await writeFile(path, JSON.stringify(payload), 'utf8');
+  return path;
+}
+
+async function metamcpStatusApp({ statusFile, probeStatus = 200, authMode = 'disabled', staleAfterMs = 15 * 60 * 1000 } = {}) {
+  const probe = await listen((_request, response) => {
+    response.writeHead(probeStatus).end();
+  });
+  const configPath = await writeConfig({
+    ...metamcpConfig,
+    statusChecks: [{ id: 'metamcp-gateway', label: 'MetaMCP gateway', targetUrl: `${probe.baseUrl}/health`, displayUrl: 'http://metamcp.local:12008', acceptableStatuses: [200] }]
+  });
+  const app = await createApp({
+    configPath,
+    authMode,
+    nodeEnv: 'test',
+    allowDisabledAuth: true,
+    metaMcpStatusFile: statusFile,
+    metaMcpStatusStaleAfterMs: staleAfterMs,
+    statusCacheTtlMs: 0,
+    statusProbeTimeoutMs: 100
+  });
+  const server = await listen(app);
+  return { server, probe };
+}
+
+const liveMetaMcpSnapshot = {
+  generatedAt: new Date().toISOString(),
+  counts: { namespaces: 2, servers: 3 },
+  namespaces: [{ name: 'financial-data' }, { name: 'homelab' }],
+  servers: [
+    { name: 'eodhd', namespace: 'financial-data', transport: 'STREAMABLE_HTTP', errorStatus: 'ok' },
+    { name: 'git', namespace: 'homelab', transport: 'STDIO', errorStatus: 'ok' },
+    { name: 'memory', namespace: 'homelab', transport: 'STDIO', errorStatus: 'ok' }
+  ]
+};
+
+test('GET /api/metamcp/status reports live gateway and fresh publisher snapshot', async () => {
+  const statusFile = await writeMetaMcpStatusFile(liveMetaMcpSnapshot);
+  const { server, probe } = await metamcpStatusApp({ statusFile });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/metamcp/status`);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.status, 'up');
+    assert.equal(body.gateway.status, 'up');
+    assert.equal(body.gateway.displayUrl, 'http://metamcp.local:12008');
+    assert.equal(body.registry.counts.servers, 3);
+    assert.deepEqual(body.registry.namespaces.map((namespace) => namespace.name), ['financial-data', 'homelab']);
+    assert.equal(body.cacheStatus, 'fresh');
+  } finally {
+    await server.close();
+    await probe.close();
+  }
+});
+
+test('GET /api/metamcp/status reports degraded when publisher snapshot is stale', async () => {
+  const statusFile = await writeMetaMcpStatusFile({ ...liveMetaMcpSnapshot, generatedAt: '2026-01-01T00:00:00.000Z' });
+  const { server, probe } = await metamcpStatusApp({ statusFile, staleAfterMs: 1000 });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/metamcp/status`);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.status, 'degraded');
+    assert.equal(body.registry.freshness.stale, true);
+    assert.match(body.message, /stale/i);
+  } finally {
+    await server.close();
+    await probe.close();
+  }
+});
+
+test('GET /api/metamcp/status reports degraded when publisher snapshot is missing', async () => {
+  const missingFile = join(tmpdir(), `missing-metamcp-${Date.now()}.json`);
+  const { server, probe } = await metamcpStatusApp({ statusFile: missingFile });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/metamcp/status`);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.status, 'degraded');
+    assert.equal(body.cacheStatus, 'missing');
+    assert.match(body.message, /No MetaMCP publisher snapshot/i);
+  } finally {
+    await server.close();
+    await probe.close();
+  }
+});
+
+test('GET /api/metamcp/status reports down when gateway health is down', async () => {
+  const statusFile = await writeMetaMcpStatusFile(liveMetaMcpSnapshot);
+  const { server, probe } = await metamcpStatusApp({ statusFile, probeStatus: 503 });
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/metamcp/status`);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.status, 'down');
+    assert.equal(body.gateway.status, 'down');
+    assert.equal(body.gateway.httpStatus, 503);
+  } finally {
+    await server.close();
+    await probe.close();
+  }
+});
+
+test('GET /api/metamcp/status keeps auth boundary and does not leak raw targets or secrets', async () => {
+  const statusFile = await writeMetaMcpStatusFile({
+    ...liveMetaMcpSnapshot,
+    namespaces: [{ name: 'homelab' }, { name: '192.168.0.20' }, { name: '/root/secret' }],
+    servers: [
+      { name: 'git', namespace: 'homelab', transport: 'STDIO', errorStatus: 'ok' },
+      { name: '192.168.0.20', namespace: 'token=secret', transport: '/mnt/nas/private', errorStatus: 'ok' }
+    ]
+  });
+  const { server, probe } = await metamcpStatusApp({ statusFile, authMode: 'reverse-proxy' });
+
+  try {
+    const unauthorized = await fetch(`${server.baseUrl}/api/metamcp/status`);
+    assert.equal(unauthorized.status, 401);
+
+    const response = await fetch(`${server.baseUrl}/api/metamcp/status`, { headers: { 'x-forwarded-user': 'ben@example.test' } });
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+
+    assert.equal(response.status, 200);
+    assert.equal(body.gateway.displayUrl, 'http://metamcp.local:12008');
+    assert.equal(serialized.includes('192.168.0.20'), false);
+    assert.equal(serialized.includes('token=secret'), false);
+    assert.equal(serialized.includes('/root/'), false);
+    assert.equal(serialized.includes('/mnt/nas'), false);
+    assert.equal(serialized.includes('targetUrl'), false);
+  } finally {
+    await server.close();
+    await probe.close();
+  }
+});

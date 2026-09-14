@@ -3148,6 +3148,160 @@ function sanitizeIsoTimestamp(value) {
   return Number.isNaN(time) ? null : new Date(time).toISOString();
 }
 
+const METAMCP_CACHE_STATUSES = new Set(['fresh', 'not_configured', 'missing', 'malformed', 'read_error']);
+const METAMCP_RUNTIME_STATES = new Set(['up', 'down', 'degraded', 'unknown']);
+
+function sanitizeMetaMcpText(value, fallback = null, maxLength = 160) {
+  if (typeof value !== 'string' && typeof value !== 'number') return fallback;
+  const trimmed = String(value).trim();
+  if (!trimmed) return fallback;
+  if (/bearer|token|password|api[_-]?key|authorization|DATABASE_URL|\/root\/|\/mnt\/nas|\/app\/|stderr/i.test(trimmed)) {
+    return fallback;
+  }
+  // Browser-visible MetaMCP status should not expose raw host IPs or local paths.
+  if (/\b(?:\d{1,3}\.){3}\d{1,3}\b/.test(trimmed)) return fallback;
+  return trimmed.slice(0, maxLength);
+}
+
+function sanitizeMetaMcpState(value, fallback = 'unknown') {
+  const state = sanitizeMetaMcpText(value, fallback, 40);
+  return METAMCP_RUNTIME_STATES.has(state) ? state : fallback;
+}
+
+function sanitizeMetaMcpIdentifier(value, fallback = null) {
+  const text = sanitizeMetaMcpText(value, fallback, 80);
+  if (!text || !/^[A-Za-z0-9][A-Za-z0-9._ -]{0,79}$/.test(text)) return fallback;
+  return text;
+}
+
+function sanitizeMetaMcpTimestamp(value) {
+  const text = sanitizeMetaMcpText(value, null, 80);
+  if (!text) return null;
+  const time = Date.parse(text);
+  return Number.isNaN(time) ? null : new Date(time).toISOString();
+}
+
+function publicMetaMcpGateway(check) {
+  if (!check) {
+    return { status: 'unknown', displayUrl: 'http://metamcp.local:12008', checkedAt: new Date().toISOString() };
+  }
+  return {
+    id: 'metamcp-gateway',
+    label: 'MetaMCP gateway',
+    status: check.status === 'up' ? 'up' : (check.status === 'down' ? 'down' : 'unknown'),
+    ...(Number.isInteger(check.httpStatus) ? { httpStatus: check.httpStatus } : {}),
+    ...(sanitizeMetaMcpText(check.error, null, 80) ? { error: sanitizeMetaMcpText(check.error, null, 80) } : {}),
+    ...(Number.isFinite(Number(check.latencyMs)) ? { latencyMs: Number(check.latencyMs) } : {}),
+    displayUrl: sanitizeMetaMcpText(check.displayUrl, 'http://metamcp.local:12008', 120) ?? 'http://metamcp.local:12008',
+    checkedAt: new Date().toISOString()
+  };
+}
+
+function sanitizeMetaMcpSnapshot(raw = {}, fileMtimeMs = null, now = new Date(), staleAfterMs = 15 * 60 * 1000) {
+  const rawNamespaces = Array.isArray(raw.namespaces) ? raw.namespaces : [];
+  const rawServers = Array.isArray(raw.servers) ? raw.servers : [];
+  const namespaces = rawNamespaces
+    .map((entry) => sanitizeMetaMcpIdentifier(entry?.name ?? entry?.namespace ?? entry))
+    .filter(Boolean)
+    .slice(0, 30)
+    .map((name) => ({ name }));
+  const servers = rawServers
+    .map((server) => {
+      const name = sanitizeMetaMcpIdentifier(server?.name ?? server?.id);
+      if (!name) return null;
+      return {
+        name,
+        namespace: sanitizeMetaMcpIdentifier(server?.namespace, null),
+        transport: sanitizeMetaMcpIdentifier(server?.transport, null),
+        errorStatus: sanitizeMetaMcpText(server?.errorStatus ?? server?.status, 'unknown', 40) ?? 'unknown'
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 80);
+  const generatedAt = sanitizeMetaMcpTimestamp(raw.generatedAt ?? raw.generated_at) ?? (fileMtimeMs ? new Date(fileMtimeMs).toISOString() : null);
+  const generatedTime = generatedAt ? Date.parse(generatedAt) : NaN;
+  const ageSeconds = Number.isNaN(generatedTime) ? null : Math.max(0, Math.round((now.getTime() - generatedTime) / 1000));
+  const stale = ageSeconds === null ? true : ageSeconds * 1000 > staleAfterMs;
+  const rawNamespaceCount = Number(raw.counts?.namespaces ?? namespaces.length);
+  const rawServerCount = Number(raw.counts?.servers ?? servers.length);
+  const unhealthyServers = servers.filter((server) => !['ok', 'healthy', 'up'].includes(String(server.errorStatus).toLowerCase())).length;
+  return {
+    generatedAt,
+    checkedAt: now.toISOString(),
+    freshness: {
+      ageSeconds,
+      stale,
+      staleAfterSeconds: Math.round(staleAfterMs / 1000)
+    },
+    counts: {
+      namespaces: Number.isInteger(rawNamespaceCount) && rawNamespaceCount >= 0 ? rawNamespaceCount : namespaces.length,
+      servers: Number.isInteger(rawServerCount) && rawServerCount >= 0 ? rawServerCount : servers.length,
+      unhealthyServers
+    },
+    namespaces,
+    servers
+  };
+}
+
+function metaMcpStatusPayload({ config, gateway, registry = null, cacheStatus, message }) {
+  const gatewayStatus = sanitizeMetaMcpState(gateway?.status, 'unknown');
+  let status = 'unknown';
+  if (gatewayStatus === 'down') {
+    status = 'down';
+  } else if (!registry || cacheStatus !== 'fresh' || registry.freshness?.stale || registry.counts?.unhealthyServers > 0) {
+    status = gatewayStatus === 'up' ? 'degraded' : 'unknown';
+  } else if (gatewayStatus === 'up') {
+    status = 'up';
+  }
+  return {
+    enabled: config?.enabled !== false,
+    title: sanitizeMetaMcpText(config?.title, 'MetaMCP aggregator', 120),
+    version: sanitizeMetaMcpText(config?.version, 'unknown', 80),
+    status,
+    gateway,
+    registry: registry ?? {
+      generatedAt: null,
+      checkedAt: new Date().toISOString(),
+      freshness: { ageSeconds: null, stale: true, staleAfterSeconds: null },
+      counts: { namespaces: null, servers: null, unhealthyServers: null },
+      namespaces: [],
+      servers: []
+    },
+    access: config?.access ? { localUrl: config.access.localUrl, links: config.access.links } : null,
+    cacheStatus: METAMCP_CACHE_STATUSES.has(cacheStatus) ? cacheStatus : 'read_error',
+    message: sanitizeMetaMcpText(message, null, 240)
+  };
+}
+
+async function readMetaMcpStatus({ config, statusFile, statusService, staleAfterMs }) {
+  const statusPayload = statusService ? await statusService.getStatus() : { checks: [] };
+  const gateway = publicMetaMcpGateway(Array.isArray(statusPayload.checks) ? statusPayload.checks.find((check) => check.id === 'metamcp-gateway') : null);
+  if (!config?.enabled) {
+    return { statusCode: 200, payload: metaMcpStatusPayload({ config, gateway, cacheStatus: 'not_configured', message: 'MetaMCP overview is not configured on this dashboard.' }) };
+  }
+  if (!statusFile) {
+    return { statusCode: 200, payload: metaMcpStatusPayload({ config, gateway, cacheStatus: 'not_configured', message: 'MetaMCP publisher snapshot is not configured; showing gateway health only.' }) };
+  }
+  try {
+    const info = await stat(statusFile);
+    if (!info.isFile()) {
+      return { statusCode: 200, payload: metaMcpStatusPayload({ config, gateway, cacheStatus: 'missing', message: 'MetaMCP publisher snapshot is not a regular file; showing gateway health only.' }) };
+    }
+    const parsed = JSON.parse(await readFile(statusFile, 'utf8'));
+    const registry = sanitizeMetaMcpSnapshot(parsed, info.mtimeMs, new Date(), staleAfterMs);
+    const message = registry.freshness.stale ? 'MetaMCP publisher snapshot is stale; gateway health is live but registry data may be old.' : null;
+    return { statusCode: 200, payload: metaMcpStatusPayload({ config, gateway, registry, cacheStatus: 'fresh', message }) };
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      return { statusCode: 200, payload: metaMcpStatusPayload({ config, gateway, cacheStatus: 'missing', message: 'No MetaMCP publisher snapshot has been published yet; showing gateway health only.' }) };
+    }
+    if (err instanceof SyntaxError) {
+      return { statusCode: 502, payload: metaMcpStatusPayload({ config, gateway, cacheStatus: 'malformed', message: 'MetaMCP publisher snapshot is malformed; showing gateway health only.' }) };
+    }
+    return { statusCode: 502, payload: metaMcpStatusPayload({ config, gateway, cacheStatus: 'read_error', message: 'Unable to read MetaMCP publisher snapshot; showing gateway health only.' }) };
+  }
+}
+
 function sanitizeMobileMatrix(rawMatrix) {
   if (!rawMatrix || typeof rawMatrix !== 'object' || Array.isArray(rawMatrix)) return null;
   const activeProfileId = sanitizeMobileText(rawMatrix.activeProfileId, null);
@@ -3270,6 +3424,10 @@ export async function createApp(options = {}) {
   const mobileWorkflowStatusFile = Object.prototype.hasOwnProperty.call(options, 'mobileWorkflowStatusFile')
     ? options.mobileWorkflowStatusFile
     : (process.env.MOBILE_WORKFLOW_STATUS_FILE ?? null);
+  const metaMcpStatusFile = Object.prototype.hasOwnProperty.call(options, 'metaMcpStatusFile')
+    ? options.metaMcpStatusFile
+    : (process.env.METAMCP_STATUS_FILE ?? null);
+  const metaMcpStatusStaleAfterMs = Number(options.metaMcpStatusStaleAfterMs ?? process.env.METAMCP_STATUS_STALE_AFTER_MS ?? 15 * 60 * 1000);
   const mobileViewerUpstreamUrl = Object.prototype.hasOwnProperty.call(options, 'mobileViewerUpstreamUrl')
     ? options.mobileViewerUpstreamUrl
     : (process.env.MOBILE_VIEWER_UPSTREAM_URL ?? 'http://192.168.0.20:6080');
@@ -3378,6 +3536,11 @@ export async function createApp(options = {}) {
 
       if (request.method === 'GET' && url.pathname === '/api/mobile-workflow/status') {
         const result = await readMobileWorkflowStatus({ config: config.mobileWorkflow, statusFile: mobileWorkflowStatusFile });
+        return json(response, result.statusCode, result.payload);
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/metamcp/status') {
+        const result = await readMetaMcpStatus({ config: config.metaMcp, statusFile: metaMcpStatusFile, statusService, staleAfterMs: metaMcpStatusStaleAfterMs });
         return json(response, result.statusCode, result.payload);
       }
 
