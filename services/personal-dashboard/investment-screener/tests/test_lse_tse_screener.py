@@ -195,6 +195,96 @@ class LseProviderMappingTests(unittest.TestCase):
         self.assertEqual(selected["selected_count"], 1)
         self.assertEqual(selected["missing_provider_symbol_count"], 1)
         self.assertEqual(selected["missing_provider_symbols"][0]["reason"], "mapping_ambiguous")
+
+    def test_lse_public_instrument_mapping_uses_exact_issuer_and_isin(self):
+        seed_entries, seed_metadata = scr.normalise_lse_issuer_rows(
+            [
+                {"Company Name": "HSBC Holdings plc", "Market": "MAIN MARKET"},
+                {"Company Name": "No Provider Match plc", "Market": "AIM"},
+            ],
+            source_url="https://docs.londonstockexchange.com/list.xlsx",
+            retrieved_at="2026-09-12T19:20:00Z",
+            source_sha256="seedsha",
+            source_as_at="2026-07-31",
+        )
+        search_results = {
+            "hsbc holdings plc": [
+                {"tidm": "HSBA", "issuername": "HSBC HOLDINGS PLC", "category": "EQUITY", "islse": True}
+            ],
+            "no provider match plc": [],
+        }
+        instrument_details = {
+            "HSBA": {
+                "tidm": "HSBA",
+                "isin": "GB0005405286",
+                "currency": "GBX",
+                "category": "EQUITY",
+                "mifir": "SHRS",
+                "description": "HSBC HLDGS PLC ORD $0.50 (UK REG)",
+            }
+        }
+
+        mapped_entries, report = scr.reconcile_lse_public_instruments(
+            seed_entries,
+            search_results_by_query=search_results,
+            instrument_details_by_tidm=instrument_details,
+            retrieved_at="2026-09-14T12:00:00Z",
+            seed_metadata=seed_metadata,
+        )
+
+        by_id = {entry["company_id"]: entry for entry in mapped_entries}
+        self.assertEqual(by_id["lse:hsbc-holdings-plc"]["ticker"], "HSBA.L")
+        self.assertEqual(by_id["lse:hsbc-holdings-plc"]["yahoo_ticker"], "HSBA.L")
+        self.assertEqual(by_id["lse:hsbc-holdings-plc"]["lse_tidm"], "HSBA")
+        self.assertEqual(by_id["lse:hsbc-holdings-plc"]["isin"], "GB0005405286")
+        self.assertEqual(by_id["lse:hsbc-holdings-plc"]["currency"], "GBX")
+        self.assertEqual(by_id["lse:hsbc-holdings-plc"]["mapping_status"], "mapped")
+        self.assertEqual(by_id["lse:no-provider-match-plc"]["mapping_status"], "unmapped")
+        self.assertEqual(report["mapped_count"], 1)
+        self.assertEqual(report["unmapped_count"], 1)
+        self.assertEqual(report["unaccounted_seed_count"], 0)
+        self.assertEqual(report["provider_symbol_convention"], "Yahoo Finance LSE symbols use {LSE TIDM}.L from London Stock Exchange public instrument API")
+        self.assertNotIn("/root/", json.dumps(report))
+
+    def test_lse_public_mapping_ambiguous_ord_candidates_fail_closed(self):
+        seed_entries, seed_metadata = scr.normalise_lse_issuer_rows(
+            [{"Company Name": "BP PLC", "Market": "MAIN MARKET"}],
+            source_url="fixture",
+            retrieved_at="now",
+            source_sha256="seedsha",
+            source_as_at="2026-07-31",
+        )
+        search_results = {
+            "bp plc": [
+                {"tidm": "BP.", "issuername": "BP PLC", "category": "EQUITY", "islse": True},
+                {"tidm": "BPA", "issuername": "BP PLC", "category": "EQUITY", "islse": True},
+            ]
+        }
+        details = {
+            "BP.": {"tidm": "BP.", "isin": "GB0007980591", "category": "EQUITY", "mifir": "SHRS", "description": "BP PLC ORD $0.25"},
+            "BPA": {"tidm": "BPA", "isin": "GB0000000000", "category": "EQUITY", "mifir": "SHRS", "description": "BP PLC ORD TEST"},
+        }
+
+        mapped_entries, report = scr.reconcile_lse_public_instruments(seed_entries, search_results, details, "now", seed_metadata)
+
+        self.assertIsNone(mapped_entries[0]["yahoo_ticker"])
+        self.assertEqual(mapped_entries[0]["mapping_status"], "mapping_ambiguous")
+        self.assertEqual(report["mapping_ambiguous_count"], 1)
+        self.assertEqual(report["mapped_count"], 0)
+
+    def test_lse_selection_can_use_reviewed_public_yahoo_symbol(self):
+        entries = [
+            {"company_id": "lse:hsbc", "issuer_id": "lse:hsbc", "name": "HSBC", "name_match_key": "hsbc", "active": True, "universe_rank": 1, "yahoo_ticker": "HSBA.L", "mapping_status": "mapped"},
+            {"company_id": "lse:ambiguous", "issuer_id": "lse:ambiguous", "name": "Ambiguous", "name_match_key": "ambiguous", "active": True, "universe_rank": 2, "yahoo_ticker": "AMB.L", "mapping_status": "mapping_ambiguous"},
+        ]
+
+        selected = scr.select_lse_universe_batch(entries, max_tickers=2, provider="yahoo")
+
+        self.assertEqual(selected["tickers"], ["HSBA.L"])
+        self.assertEqual(selected["selected_count"], 1)
+        self.assertEqual(selected["missing_provider_symbol_count"], 1)
+        self.assertEqual(selected["provider_symbol_convention"], "Yahoo Finance LSE symbols use {LSE TIDM}.L from London Stock Exchange public instrument API")
+
     def test_lse_file_first_payload_surfaces_mapping_accounting_fields(self):
         payload = scr.build_file_first_run_payload(
             [],

@@ -922,6 +922,41 @@ test('GET /api/investment-screener/coverage exposes TSE configured JPX denominat
 });
 
 
+
+test('GET /api/investment-screener/coverage exposes LSE Yahoo staged mode label and sanitized public mapping', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'investment-coverage-lse-yahoo-'));
+  const rankedPath = join(dir, 'latest_ranked.json');
+  await writeFile(rankedPath, JSON.stringify({
+    mode: 'lse-yahoo-timeseries',
+    generated_at: '2026-09-14T12:00:00Z',
+    source_summary: { providers: ['yahoo-finance'], source_families: ['yahoo-finance'], universe_source: 'lse-public-instrument-mapping' },
+    coverage: { denominator: 1522, usable: 1, scraped: 1, scored: 1, denominator_status: 'mapped_subset_provider_symbol_review_required', denominator_label: 'LSE listed issuers from official issuer workbook; provider-symbol mapping required' },
+    candidates: [
+      { rank: 1, ticker: 'HSBA.L', lse_tidm: 'HSBA', isin: 'GB0005405286', name: 'HSBC Holdings plc', market: 'LSE', exchange: 'LSE', region: 'GB', currency: 'GBX', score: 88 }
+    ]
+  }), 'utf8');
+
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerRankedFile: rankedPath });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/investment-screener/coverage?market=LSE`);
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+    assert.equal(response.status, 200);
+    assert.equal(body.source_summary.mode, 'lse-yahoo-timeseries');
+    assert.equal(body.source_summary.mode_label, 'Yahoo Finance LSE .L staged fundamentals');
+    assert.deepEqual(body.source_summary.providers, ['yahoo-finance']);
+    assert.equal(body.coverage.market, 'LSE');
+    assert.equal(body.coverage.denominator, 1522);
+    assert.equal(body.coverage.coverage_label.includes('1 / 1522'), true);
+    assert.equal(serialized.includes('/root/'), false);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('GET /api/investment-screener/coverage preserves sanitized freshness metadata and warnings', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'investment-coverage-freshness-'));
   const rankedPath = join(dir, 'latest_ranked.json');

@@ -1657,7 +1657,7 @@ const INVESTMENT_SCREENER_DOC_LINKS = [
   { label: 'NYSE source and identity rules', url: '/api/docs/investment-screener-nyse-source-identity', doc_id: 'investment-screener-nyse-source-identity' },
   { label: 'LSE and TSE source and identity rules', url: '/api/docs/investment-screener-lse-tse-source-identity', doc_id: 'investment-screener-lse-tse-source-identity' }
 ];
-const INVESTMENT_SCREENER_MODE_VALUES = new Set(['fixture', 'live', 'asx-yahoo-timeseries', 'us-eodhd-fundamentals', 'nasdaq-eodhd-fundamentals', 'nyse-eodhd-fundamentals', 'lse-eodhd-fundamentals', 'tse-eodhd-fundamentals', 'tse-yahoo-chart-smoke', 'unknown']);
+const INVESTMENT_SCREENER_MODE_VALUES = new Set(['fixture', 'live', 'asx-yahoo-timeseries', 'us-eodhd-fundamentals', 'nasdaq-eodhd-fundamentals', 'nyse-eodhd-fundamentals', 'lse-eodhd-fundamentals', 'lse-yahoo-timeseries', 'tse-eodhd-fundamentals', 'tse-yahoo-chart-smoke', 'unknown']);
 const INVESTMENT_SCREENER_FILTERABLE_FIELDS = new Set(['market', 'exchange', 'region', 'sector', 'industry']);
 const INVESTMENT_SCREENER_UNAVAILABLE_FIELDS = new Set([]);
 const INVESTMENT_SCREENER_METRIC_VALUES = new Set(['composite', 'quality', 'valuation', 'growth', 'graham_safety', 'durability', 'risk_adjustments']);
@@ -1675,6 +1675,7 @@ const INVESTMENT_SCREENER_MODE_LABELS = {
   'nasdaq-eodhd-fundamentals': 'EODHD NASDAQ fundamentals',
   'nyse-eodhd-fundamentals': 'EODHD NYSE fundamentals',
   'lse-eodhd-fundamentals': 'EODHD LSE fundamentals',
+  'lse-yahoo-timeseries': 'Yahoo Finance LSE .L staged fundamentals',
   'tse-eodhd-fundamentals': 'EODHD TSE fundamentals (exchange-code gated)',
   'tse-yahoo-chart-smoke': 'Yahoo Finance TSE .T bounded smoke',
   live: 'Live scrape/export',

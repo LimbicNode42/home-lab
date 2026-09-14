@@ -108,8 +108,8 @@ PARTIAL_BUCKET_CAVEAT = (
 
 DASHBOARD_EXPORT_LIMITATIONS = [
     "Candidates are for human investigation only; not recommendations, ratings, trading signals, or financial advice.",
-    "Coverage is incomplete; ASX bootstrap uses Yahoo chart and fundamentals-timeseries (unofficial endpoint).",
-    "Yahoo fundamentals-timeseries values should be verified against ASX announcements and company reports.",
+    "Coverage may be incomplete; Yahoo fundamentals-timeseries is an unofficial public endpoint where used.",
+    "Yahoo fundamentals-timeseries values should be verified against official exchange announcements/company reports before acting.",
     "Coverage may mix markets/currencies without FX normalization.",
 ]
 
@@ -212,6 +212,9 @@ LSE_UNIVERSE_SEED_SCHEMA_VERSION = "investment-screener-lse-universe-seed/v1"
 LSE_IDENTITY_RULE = "issuer_id=lse:{name_match_key}; provider tickers are aliases only until TIDM/ISIN mapping is validated"
 LSE_DENOMINATOR_LABEL = "LSE listed issuers from official issuer workbook; provider-symbol mapping required"
 LSE_MODE = "lse-eodhd-fundamentals"
+LSE_YAHOO_MODE = "lse-yahoo-timeseries"
+LSE_PUBLIC_YAHOO_CONVENTION = "Yahoo Finance LSE symbols use {LSE TIDM}.L from London Stock Exchange public instrument API"
+LSE_PUBLIC_API_SOURCE_URL = "https://api.londonstockexchange.com/api/gw/lse/search/autocomplete"
 LSE_SOURCE_NAME = "London Stock Exchange issuer list workbook"
 LSE_SOURCE_URL = "https://docs.londonstockexchange.com/sites/default/files/reports/Issuer%20list_111.xlsx"
 LSE_SECURITY_TYPE = "shares_depositary_or_other_equity_like_from_lse_issuer_workbook"
@@ -255,7 +258,7 @@ US_EODHD_MODE = "us-eodhd-fundamentals"
 
 
 def _market_for_mode(mode: str) -> str:
-    if mode == LSE_MODE:
+    if mode in {LSE_MODE, LSE_YAHOO_MODE}:
         return "LSE"
     if mode in {TSE_MODE, TSE_YAHOO_MODE}:
         return "TSE"
@@ -1542,6 +1545,147 @@ def reconcile_lse_provider_symbols(
     return mapped_entries, report
 
 
+def normalise_lse_yahoo_ticker(tidm: str) -> str:
+    code = str(tidm or "").strip().upper()
+    if not code:
+        return ""
+    if code.endswith(".L"):
+        return code
+    code = code.rstrip(".")
+    return f"{code}.L"
+
+
+def _lse_public_candidate_is_ordinary_share(candidate: dict, details: dict) -> bool:
+    category = str(details.get("category") or candidate.get("category") or "").strip().upper()
+    mifir = str(details.get("mifir") or "").strip().upper()
+    description = str(details.get("description") or candidate.get("description") or "").upper()
+    if category and category != "EQUITY":
+        return False
+    if mifir and mifir != "SHRS":
+        return False
+    blocked = (" PRF" in description or " PREFERENCE" in description or " WARRANT" in description or " WTS" in description or " RIGHT" in description)
+    if blocked:
+        return False
+    return " ORD" in f" {description}" or mifir == "SHRS"
+
+
+def reconcile_lse_public_instruments(
+    seed_entries: list[dict],
+    search_results_by_query: dict[str, list[dict]],
+    instrument_details_by_tidm: dict[str, dict],
+    retrieved_at: str,
+    seed_metadata: Optional[dict] = None,
+) -> tuple[list[dict], dict]:
+    """Map LSE issuer rows to official LSE TIDM/ISIN with strict exact matching.
+
+    The public LSE API is used only as an identifier source. A seed row maps only
+    when exactly one LSE ordinary-share instrument has an exact issuer-name match.
+    Multiple exact candidates remain fail-closed as mapping_ambiguous.
+    """
+    reference = {
+        "provider": "london_stock_exchange_public_api",
+        "source_url": LSE_PUBLIC_API_SOURCE_URL,
+        "retrieved_at": retrieved_at,
+        "matching_rule": "exact_lse_issuername_match_key_and_unique_ordinary_share_candidate",
+    }
+    mapped_entries: list[dict] = []
+    mapped = unmapped = ambiguous = excluded = failed = 0
+    accounting: list[dict] = []
+    for entry in seed_entries:
+        current = dict(entry)
+        if current.get("active") is False or current.get("excluded") is True:
+            excluded += 1
+            status = "excluded"
+            reason = str(current.get("exclusion_reason") or current.get("reason") or "excluded_in_seed")
+        else:
+            query_key = str(current.get("name") or "").strip().casefold()
+            seed_key = str(current.get("name_match_key") or _slugify_identity(current.get("name"))).strip()
+            candidates: list[dict] = []
+            for row in search_results_by_query.get(query_key, []) or []:
+                if not isinstance(row, dict):
+                    continue
+                if row.get("islse") is False:
+                    continue
+                issuer_key = _slugify_identity(row.get("issuername") or row.get("issuerName") or "")
+                tidm = str(row.get("tidm") or row.get("code") or "").strip().upper()
+                if not tidm or issuer_key != seed_key:
+                    continue
+                details = instrument_details_by_tidm.get(tidm) or {}
+                if _lse_public_candidate_is_ordinary_share(row, details):
+                    merged = {**row, **details, "tidm": tidm}
+                    candidates.append(merged)
+            # Deduplicate exact same TIDM returned more than once by autocomplete.
+            deduped = {str(c.get("tidm") or "").upper(): c for c in candidates}
+            candidates = [deduped[k] for k in sorted(deduped)]
+            if len(candidates) == 1:
+                candidate = candidates[0]
+                tidm = str(candidate.get("tidm") or "").strip().upper()
+                yahoo_ticker = normalise_lse_yahoo_ticker(tidm)
+                current["lse_tidm"] = tidm
+                current["ticker"] = yahoo_ticker
+                current["yahoo_ticker"] = yahoo_ticker
+                current["provider_symbol"] = yahoo_ticker
+                current["isin"] = str(candidate.get("isin") or "").strip().upper() or None
+                current["currency"] = str(candidate.get("currency") or "").strip().upper() or current.get("currency")
+                current["mapping_provenance"] = {**reference, "provider_name": candidate.get("issuername"), "tidm": tidm}
+                mapped += 1
+                status = "mapped"
+                reason = "unique_exact_lse_public_ordinary_share_match"
+            elif len(candidates) > 1:
+                current["mapping_candidates"] = [
+                    {"lse_tidm": c.get("tidm"), "yahoo_ticker": normalise_lse_yahoo_ticker(c.get("tidm")), "isin": c.get("isin"), "currency": c.get("currency")}
+                    for c in candidates
+                ]
+                ambiguous += 1
+                status = "mapping_ambiguous"
+                reason = "multiple_exact_lse_public_ordinary_share_candidates"
+            else:
+                unmapped += 1
+                status = "unmapped"
+                reason = "no_unique_lse_public_ordinary_share_candidate"
+        current["mapping_status"] = status
+        current["mapping_reason"] = reason
+        mapped_entries.append(current)
+        accounting.append({
+            "company_id": current.get("company_id"),
+            "issuer_id": current.get("issuer_id"),
+            "name": current.get("name"),
+            "status": status,
+            "reason": reason,
+            "provider": "london_stock_exchange_public_api",
+            "lse_tidm": current.get("lse_tidm"),
+            "provider_symbol": current.get("provider_symbol"),
+            "isin": current.get("isin"),
+        })
+    seed_count = len(seed_entries)
+    accounted_seed_count = mapped + unmapped + ambiguous + excluded
+    report = {
+        "schema_version": "investment-screener-lse-public-instrument-mapping/v1",
+        "provider": "london_stock_exchange_public_api",
+        "provider_reference": reference,
+        "seed": {
+            "schema_version": (seed_metadata or {}).get("schema_version"),
+            "source_sha256": (seed_metadata or {}).get("source_sha256") or (seed_metadata or {}).get("sha256"),
+            "row_count": seed_count,
+            "denominator_label": (seed_metadata or {}).get("denominator_label") or LSE_DENOMINATOR_LABEL,
+        },
+        "seed_count": seed_count,
+        "mapped_count": mapped,
+        "unmapped_count": unmapped,
+        "mapping_ambiguous_count": ambiguous,
+        "failed_count": failed,
+        "excluded_count": excluded,
+        "accounted_seed_count": accounted_seed_count,
+        "unaccounted_seed_count": max(seed_count - accounted_seed_count, 0),
+        "accounting": accounting,
+        "denominator_status": "mapped_subset_provider_symbol_review_required" if mapped and (unmapped or ambiguous or failed) else ("complete_security_type_filtered_listing" if mapped else "complete_issuer_listing_requires_symbol_mapping"),
+        "provider_symbol_convention": LSE_PUBLIC_YAHOO_CONVENTION,
+        "matching_rule": "exact LSE issuername/name_match_key equality and unique ordinary-share candidate; no fuzzy/name-to-ticker guessing",
+        "generated_by": "investment-screener/screener.py reconcile_lse_public_instruments",
+    }
+    return mapped_entries, report
+
+
 def load_lse_universe_seed(path: Path) -> dict:
     with open(path, encoding="utf8") as fh:
         data = json.load(fh)
@@ -1599,6 +1743,7 @@ def select_lse_universe_batch(
     mapped_count = sum(1 for entry in active if entry.get("mapping_status") == "mapped" and _select_provider_symbol(entry, provider))
     ambiguous_count = sum(1 for entry in active if entry.get("mapping_status") == "mapping_ambiguous")
     unmapped_count = full_count - mapped_count - ambiguous_count
+    convention = LSE_PUBLIC_YAHOO_CONVENTION if provider.lower() == "yahoo" else "provider-confirmed TIDM/ISIN mapping required; no name guessing"
     return {
         "entries": selected_entries,
         "tickers": tickers,
@@ -1617,7 +1762,7 @@ def select_lse_universe_batch(
         "complete_security_type_filtered_listing": False,
         "denominator_status": "complete_issuer_listing_requires_symbol_mapping",
         "denominator_label": denominator_label or LSE_DENOMINATOR_LABEL,
-        "provider_symbol_convention": "provider-confirmed TIDM/ISIN mapping required; no name guessing",
+        "provider_symbol_convention": convention,
         "security_type_filter": None,
         "exclude_security_types": None,
         "excluded_security_type_count": 0,
@@ -2778,8 +2923,9 @@ def build_plain_text_report(
     """Build a human-readable plain-text report from ranked companies."""
     now = export.get("generated_at", "")
     data_as_of = export.get("data_as_of", "unknown")
+    market = _market_for_mode(str(export.get("mode") or ""))
     lines = ["=" * 70]
-    lines.append("ASX Investment Screener Report")
+    lines.append(f"{market} Investment Screener Report")
     lines.append(f"Generated: {now}")
     lines.append(f"Data as of: {data_as_of}")
     if watchlist_path:
@@ -3023,6 +3169,75 @@ def build_company_from_yahoo_timeseries(ticker: str, timeseries: dict, quote: di
         "current_liabilities": ts_field("current_liabilities"),
     }
 
+
+
+def apply_lse_seed_identity(companies: list[dict], seed_entries: list[dict]) -> list[dict]:
+    by_ticker = {str(entry.get("yahoo_ticker") or entry.get("ticker") or "").upper(): entry for entry in seed_entries if entry.get("yahoo_ticker") or entry.get("ticker")}
+    identity_fields = (
+        "company_id", "issuer_id", "lse_tidm", "isin", "market", "exchange", "region", "security_type", "active", "suspended", "delisted",
+        "market_segment", "country_of_incorporation", "world_region", "icb_industry", "icb_super_sector",
+    )
+    enriched: list[dict] = []
+    for company in companies:
+        merged = dict(company)
+        seed = by_ticker.get(str(company.get("ticker") or "").upper())
+        if seed:
+            for field in identity_fields:
+                value = seed.get(field)
+                if value is not None:
+                    merged[field] = value
+            merged["name"] = seed.get("name") or merged.get("name")
+            merged["sector"] = seed.get("sector") or merged.get("sector")
+            merged["industry"] = seed.get("industry") or merged.get("industry")
+        merged["market"] = "LSE"
+        merged["exchange"] = "LSE"
+        merged["region"] = "GB"
+        enriched.append(merged)
+    return enriched
+
+
+def hydrate_companies_from_lse_yahoo(
+    tickers: list[str],
+    warning_sink: Optional[Callable[[str], None]] = None,
+    quote_fetcher: Optional[Callable[[str], dict]] = None,
+    timeseries_fetcher: Optional[Callable[[str], dict]] = None,
+    sleep_seconds: float = 0.3,
+    cache_dir: Optional[Path] = None,
+    failure_sink: Optional[Callable[[dict], None]] = None,
+) -> list[dict]:
+    warning_sink = warning_sink or (lambda message: print(message, file=sys.stderr))
+    if quote_fetcher is None:
+        quote_fetcher = lambda symbol: fetch_yahoo_chart_quote(symbol, cache_dir=cache_dir)
+    if timeseries_fetcher is None:
+        timeseries_fetcher = lambda symbol: fetch_yahoo_timeseries(symbol, cache_dir=cache_dir)
+    companies: list[dict] = []
+    for ticker in tickers:
+        symbol = normalise_lse_yahoo_ticker(ticker)
+        try:
+            quote = quote_fetcher(symbol)
+            quote["exchange"] = "LSE"
+            ts = timeseries_fetcher(symbol)
+            company = build_company_from_yahoo_timeseries(symbol, ts, quote)
+            company["market"] = "LSE"
+            company["exchange"] = "LSE"
+            company["region"] = "GB"
+            company["currency"] = quote.get("currency") or company.get("currency") or "GBp"
+            companies.append(company)
+        except Exception as exc:
+            failure = {
+                "ticker": symbol,
+                "reason": _redact_secrets_in_text(str(exc)),
+                "recoverable": True,
+                "provider": "yahoo-finance",
+                "source_family": "yahoo-finance",
+                "failed_at": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+            }
+            if failure_sink:
+                failure_sink(failure)
+            warning_sink(f"WARNING: failed to hydrate {symbol} LSE data: {exc}")
+        if sleep_seconds and ticker != tickers[-1]:
+            time.sleep(sleep_seconds)
+    return companies
 
 
 def hydrate_companies_from_tse_yahoo(
@@ -4757,7 +4972,7 @@ def _normalise_accounting_ticker(raw_ticker: Any, mode: str) -> str:
     upper = ticker_text.upper()
     if upper.endswith(".AX") or upper.endswith(".AU"):
         return normalise_asx_ticker(ticker_text)
-    if mode == LSE_MODE:
+    if mode in {LSE_MODE, LSE_YAHOO_MODE}:
         return upper
     if mode in {TSE_MODE, TSE_YAHOO_MODE}:
         return normalise_tse_ticker(ticker_text) if not upper.startswith("TSE:") else upper
@@ -5771,6 +5986,10 @@ def parse_args(argv=None):
         help="Reviewed LSE issuer seed JSON. Provider symbols must already be mapped; otherwise rows are accounted as missing_provider_symbol.",
     )
     ap.add_argument(
+        "--lse-provider", choices=["eodhd", "yahoo"], default="eodhd",
+        help="Provider alias to use for LSE seed selection: eodhd (reviewed EODHD mapping) or yahoo ({TIDM}.L from reviewed LSE public instrument mapping).",
+    )
+    ap.add_argument(
         "--tse-universe-seed",
         default=None,
         help="Reviewed TSE/JPX listed-equity seed JSON. Defaults to fail-closed EODHD mode until exchange suffix discovery; use --tse-provider yahoo for bounded .T smoke only.",
@@ -6114,7 +6333,7 @@ def main(argv=None):
             seed["entries"],
             batch_offset=args.batch_offset,
             max_tickers=args.max_tickers,
-            provider="eodhd",
+            provider=args.lse_provider,
             denominator_label=args.denominator_label,
         )
         universe_tickers = list(selected["tickers"])
@@ -6127,23 +6346,37 @@ def main(argv=None):
         for missing in selected.get("missing_provider_symbols") or []:
             hydration_failures.append({
                 "ticker": missing.get("company_id"),
-                "reason": "missing_provider_symbol: LSE issuer seed has no reviewed TIDM/ISIN/provider alias",
+                "reason": "missing_provider_symbol: LSE issuer seed has no reviewed public TIDM/ISIN/provider alias",
                 "recoverable": True,
-                "provider": "eodhd",
-                "source_family": "eodhd",
+                "provider": args.lse_provider,
+                "source_family": args.lse_provider,
                 "failed_at": _now_iso(),
             })
         print(f"Selected {len(universe_tickers)} LSE mapped provider tickers from {selected['attempted_seed_count']} seed rows; missing_provider_symbol={selected['missing_provider_symbol_count']}.", file=sys.stderr)
-        eodhd = EodhdAdapter()
         cache_dir = Path(args.cache_dir) if args.cache_dir else None
-        companies = _fetch_us_eodhd_companies(
-            universe_tickers,
-            eodhd,
-            cache_dir=cache_dir,
-            sleep_seconds=args.sleep_seconds,
-            failure_sink=hydration_failures.append,
-        )
-        mode = LSE_MODE
+        if args.lse_provider == "yahoo":
+            warnings: list[str] = []
+            companies = hydrate_companies_from_lse_yahoo(
+                universe_tickers,
+                warning_sink=warnings.append,
+                sleep_seconds=args.sleep_seconds,
+                cache_dir=cache_dir,
+                failure_sink=hydration_failures.append,
+            )
+            companies = apply_lse_seed_identity(companies, selected["entries"])
+            for w in warnings:
+                print(w, file=sys.stderr)
+            mode = LSE_YAHOO_MODE
+        else:
+            eodhd = EodhdAdapter()
+            companies = _fetch_us_eodhd_companies(
+                universe_tickers,
+                eodhd,
+                cache_dir=cache_dir,
+                sleep_seconds=args.sleep_seconds,
+                failure_sink=hydration_failures.append,
+            )
+            mode = LSE_MODE
     elif args.tse_universe_seed:
         seed_path = Path(args.tse_universe_seed)
         watchlist_path_str = str(seed_path)
@@ -6278,7 +6511,7 @@ def main(argv=None):
     if args.file_first_run_json:
         payload = build_file_first_run_payload(
             ranked,
-            source="yahoo-finance" if mode in {"asx-yahoo-timeseries", TSE_YAHOO_MODE} else ("eodhd" if mode in {US_EODHD_MODE, NASDAQ_MODE, NYSE_MODE, LSE_MODE, TSE_MODE} else mode),
+            source="yahoo-finance" if mode in {"asx-yahoo-timeseries", TSE_YAHOO_MODE, LSE_YAHOO_MODE} else ("eodhd" if mode in {US_EODHD_MODE, NASDAQ_MODE, NYSE_MODE, LSE_MODE, TSE_MODE} else mode),
             mode=mode,
             universe=universe_tickers,
             universe_source=universe_source,

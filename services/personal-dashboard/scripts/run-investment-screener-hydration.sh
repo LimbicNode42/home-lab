@@ -63,6 +63,14 @@ fi
 if [[ -n "$DENOMINATOR_LABEL" ]]; then
   SCREENER_ARGS+=( --denominator-label "$DENOMINATOR_LABEL" )
 fi
+case "${MARKET}:${SOURCE}" in
+  LSE:yahoo-finance)
+    SCREENER_ARGS+=( --lse-provider yahoo )
+    ;;
+  TSE:yahoo-finance)
+    SCREENER_ARGS+=( --tse-provider yahoo )
+    ;;
+esac
 
 python3 "$APP_DIR/investment-screener/screener.py" "${SCREENER_ARGS[@]}"
 
