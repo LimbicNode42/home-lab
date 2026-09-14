@@ -201,36 +201,77 @@ function renderConfig(config) {
 }
 
 
+function metaMcpBadgeClass(status) {
+  if (status === 'up') return 'up';
+  if (status === 'down') return 'down';
+  if (status === 'degraded') return 'degraded';
+  return 'neutral';
+}
+
+function formatMetaMcpFreshness(registry = {}) {
+  const freshness = registry.freshness || {};
+  const parts = [];
+  if (registry.generatedAt) parts.push(`snapshot: ${registry.generatedAt}`);
+  if (registry.checkedAt) parts.push(`checked: ${registry.checkedAt}`);
+  if (typeof freshness.ageSeconds === 'number') {
+    const ageMinutes = Math.round(freshness.ageSeconds / 60);
+    parts.push(`age: ${ageMinutes}m`);
+  }
+  if (freshness.stale) parts.push('stale');
+  return parts.join(' · ') || 'No publisher freshness data yet.';
+}
+
 function renderMetaMcpOverview(metaMcp, statusPayload = null) {
   if (!metamcpOverview) return;
   metamcpOverview.replaceChildren();
-  if (!metaMcp?.enabled) {
+  const live = statusPayload?.registry ? statusPayload : null;
+  const base = metaMcp || statusPayload || {};
+  if (!base?.enabled && !live) {
     metamcpOverview.append(el('p', { className: 'muted', text: 'MetaMCP overview is not configured on this dashboard.' }));
     return;
   }
 
-  const services = Array.isArray(metaMcp.services) ? metaMcp.services : [];
-  const domains = Array.isArray(metaMcp.tools?.domains) ? metaMcp.tools.domains : [];
-  const liveGateway = Array.isArray(statusPayload?.checks)
-    ? statusPayload.checks.find((check) => check.id === 'metamcp-gateway')
-    : null;
-  const gatewayStatus = liveGateway?.status || 'unknown';
-  const gatewayStatusDetail = liveGateway
-    ? `${liveGateway.httpStatus ?? liveGateway.error ?? 'no response'} · ${liveGateway.latencyMs}ms`
+  const registry = live?.registry || {};
+  const counts = registry.counts || {};
+  const services = Array.isArray(registry.servers) && registry.servers.length > 0
+    ? registry.servers.map((server) => ({
+      id: server.name,
+      label: server.namespace ? `${server.namespace}/${server.name}` : server.name,
+      state: server.errorStatus || 'unknown',
+      detail: [server.transport ? `Transport ${server.transport}` : null, server.namespace ? `Namespace ${server.namespace}` : null].filter(Boolean).join(' · ') || 'Published by live MetaMCP registry snapshot.'
+    }))
+    : (Array.isArray(base.services) ? base.services : []);
+  const namespaces = Array.isArray(registry.namespaces) ? registry.namespaces : [];
+  const domains = Array.isArray(base.tools?.domains) ? base.tools.domains : [];
+  const gateway = live?.gateway || (Array.isArray(statusPayload?.checks) ? statusPayload.checks.find((check) => check.id === 'metamcp-gateway') : null);
+  const gatewayStatus = gateway?.status || 'unknown';
+  const gatewayStatusDetail = gateway
+    ? `${gateway.httpStatus ?? gateway.error ?? 'no response'}${typeof gateway.latencyMs === 'number' ? ` · ${gateway.latencyMs}ms` : ''}${gateway.checkedAt ? ` · checked ${gateway.checkedAt}` : ''}`
     : 'Waiting for live status probe.';
+  const productStatus = live?.status || (gatewayStatus === 'up' ? 'degraded' : gatewayStatus);
+  const registrySummary = registry.counts
+    ? `${counts.servers ?? 0} servers · ${counts.namespaces ?? 0} namespaces${counts.unhealthyServers ? ` · ${counts.unhealthyServers} unhealthy` : ''}`
+    : `${base.tools?.total ?? 0} last-known tools`;
   const serviceCards = services.length > 0
-    ? services.map((service) => el('article', { className: 'status-card metamcp-service-card' }, [
-      el('div', { className: 'status-title', text: service.label || service.id || 'MetaMCP service' }),
-      el('span', { className: `badge ${String(service.state || '').includes('healthy') ? 'up' : 'neutral'}`, text: service.state || 'unknown' }),
-      el('p', { className: 'muted', text: service.detail || 'No status detail available.' })
-    ]))
+    ? services.map((service) => {
+      const stateText = service.state || 'unknown';
+      const badge = ['ok', 'healthy', 'up', 'running', 'live_probe_configured'].includes(String(stateText).toLowerCase()) || String(stateText).includes('healthy') ? 'up' : 'neutral';
+      return el('article', { className: 'status-card metamcp-service-card' }, [
+        el('div', { className: 'status-title', text: service.label || service.id || 'MetaMCP service' }),
+        el('span', { className: `badge ${badge}`, text: stateText }),
+        el('p', { className: 'muted', text: service.detail || 'No status detail available.' })
+      ]);
+    })
     : [el('p', { className: 'muted', text: 'No MetaMCP service status has been published yet.' })];
 
-  const domainList = domains.length > 0
+  const namespaceList = namespaces.length > 0
+    ? el('ul', { className: 'metamcp-domain-list' }, namespaces.map((namespace) => el('li', { text: namespace.name })))
+    : null;
+  const domainList = namespaceList || (domains.length > 0
     ? el('ul', { className: 'metamcp-domain-list' }, domains.map((domain) => el('li', { text: `${domain.label || domain.id}: ${domain.count} tools` })))
-    : el('p', { className: 'muted', text: 'No MetaMCP tool discovery data has been published yet.' });
+    : el('p', { className: 'muted', text: 'No MetaMCP namespace/tool discovery data has been published yet.' }));
 
-  const access = metaMcp.access || {};
+  const access = live?.access || base.access || {};
   const accessChildren = [
     el('h3', { text: 'Aggregator UI access' }),
     el('p', { className: 'muted', text: access.note || 'Use a reviewed access path before opening the MetaMCP UI.' })
@@ -250,19 +291,34 @@ function renderMetaMcpOverview(metaMcp, statusPayload = null) {
 
   metamcpOverview.append(el('div', { className: 'metamcp-grid' }, [
     el('article', { className: 'metamcp-summary-card' }, [
-      el('h3', { text: metaMcp.title || 'MetaMCP aggregator' }),
-      el('p', { className: 'muted', text: `Version ${metaMcp.version || 'unknown'} · ${metaMcp.tools?.total ?? 0} last-known tools` }),
+      el('h3', { text: live?.title || base.title || 'MetaMCP aggregator' }),
+      el('p', { className: 'muted', text: `Version ${live?.version || base.version || 'unknown'} · ${registrySummary}` }),
       el('div', { className: 'metamcp-live-status' }, [
-        el('span', { className: `badge ${gatewayStatus}`, text: `Live gateway: ${gatewayStatus}` }),
+        el('span', { className: `badge ${metaMcpBadgeClass(productStatus)}`, text: `Current state: ${productStatus}` }),
+        el('span', { className: `badge ${metaMcpBadgeClass(gatewayStatus)}`, text: `Live gateway: ${gatewayStatus}` }),
         el('span', { className: 'muted', text: gatewayStatusDetail })
       ]),
+      el('p', { className: registry.freshness?.stale ? 'error' : 'muted', text: formatMetaMcpFreshness(registry) }),
+      live?.message ? el('p', { className: productStatus === 'up' ? 'muted' : 'error', text: live.message }) : null,
       domainList
-    ]),
+    ].filter(Boolean)),
     el('article', { className: 'metamcp-access-card' }, accessChildren)
   ]));
   metamcpOverview.append(el('div', { className: 'status-grid metamcp-services' }, serviceCards));
 }
 
+async function refreshMetaMcpStatus() {
+  try {
+    const payload = await getJson('/api/metamcp/status');
+    renderMetaMcpOverview(dashboardConfig?.metaMcp, payload);
+  } catch (error) {
+    renderMetaMcpOverview(dashboardConfig?.metaMcp, {
+      status: 'unknown',
+      registry: null,
+      message: `MetaMCP live status unavailable: ${error.message}`
+    });
+  }
+}
 
 
 function unifiedInboxBadgeClass(state) {
@@ -553,11 +609,19 @@ function renderStatus(payload) {
 
   for (const check of payload.checks) {
     const badge = el('span', { className: `badge ${check.status}`, text: check.status });
+    const probeParts = [check.httpStatus ?? check.error ?? 'no response', `${check.latencyMs}ms`];
+    if (check.checkedAt) probeParts.push(`checked ${new Date(check.checkedAt).toLocaleString()}`);
     const body = [
       el('div', { className: 'status-title', text: check.label }),
       badge,
-      el('p', { className: 'muted', text: `${check.httpStatus ?? check.error ?? 'no response'} · ${check.latencyMs}ms` })
+      el('p', { className: 'muted', text: probeParts.join(' · ') })
     ];
+    if (check.detail) {
+      body.push(el('p', { className: 'muted', text: check.detail }));
+    }
+    if (check.unresolvedFollowUp) {
+      body.push(el('p', { className: 'warning', text: `Unresolved: ${check.unresolvedFollowUp}` }));
+    }
     if (check.displayUrl) {
       body.push(el('a', { href: check.displayUrl, text: 'Open', rel: 'noreferrer noopener' }));
     }
@@ -596,6 +660,7 @@ async function loadOverviewData() {
     dashboardConfig = config;
     renderConfig(config);
     renderMetaMcpOverview(config.metaMcp);
+    await refreshMetaMcpStatus();
     unifiedInboxConfig = config.unifiedInbox || null;
     renderUnifiedInboxOverview(null);
     await refreshUnifiedInboxStatus();
@@ -607,6 +672,7 @@ async function loadOverviewData() {
     renderMobileWorkflowOverview(null);
   }
   await refreshStatus();
+  await refreshMetaMcpStatus();
 }
 
 async function loadTabData(tabId) {

@@ -460,6 +460,19 @@ function validateStatusChecks(statusChecks) {
     });
 
     const result = { id, label, targetUrl, acceptableStatuses: normalizedStatuses };
+    if (check.statusWhenUp !== undefined) {
+      const statusWhenUp = validateStateValue(check.statusWhenUp, `statusChecks[${index}].statusWhenUp`);
+      if (!['up', 'degraded', 'unknown'].includes(statusWhenUp)) {
+        throw new Error(`Invalid statusWhenUp for ${label}: must be up, degraded, or unknown`);
+      }
+      result.statusWhenUp = statusWhenUp;
+    }
+    if (check.statusDetail !== undefined) {
+      result.statusDetail = requireText(check.statusDetail, `statusChecks[${index}].statusDetail`);
+    }
+    if (check.unresolvedFollowUp !== undefined) {
+      result.unresolvedFollowUp = requireText(check.unresolvedFollowUp, `statusChecks[${index}].unresolvedFollowUp`);
+    }
     if (check.timeoutMs !== undefined) {
       const timeoutMs = Number(check.timeoutMs);
       if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 10_000) {
@@ -515,7 +528,10 @@ export function toPublicConfig(config) {
     statusChecks: config.statusChecks.map((check) => ({
       id: check.id,
       label: check.label,
-      ...(check.displayUrl ? { displayUrl: check.displayUrl } : {})
+      ...(check.displayUrl ? { displayUrl: check.displayUrl } : {}),
+      ...(check.statusWhenUp ? { statusWhenUp: check.statusWhenUp } : {}),
+      ...(check.statusDetail ? { statusDetail: check.statusDetail } : {}),
+      ...(check.unresolvedFollowUp ? { unresolvedFollowUp: check.unresolvedFollowUp } : {})
     })),
     ...(config.unifiedInbox ? { unifiedInbox: {
       enabled: config.unifiedInbox.enabled,

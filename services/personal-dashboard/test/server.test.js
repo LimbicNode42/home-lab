@@ -164,6 +164,48 @@ test('GET /api/status probes configured targets and hides target URLs', async ()
 });
 
 
+
+
+test('GET /api/status reports unresolved remediations as degraded instead of done', async () => {
+  const probe = await listen((_request, response) => {
+    response.writeHead(200).end();
+  });
+  const configPath = await writeConfig({
+    title: 'Home Dashboard',
+    sections: [],
+    statusChecks: [{
+      id: 'vaultwarden',
+      label: 'Vaultwarden',
+      targetUrl: `${probe.baseUrl}/alive`,
+      displayUrl: 'https://vault.example.test',
+      statusWhenUp: 'degraded',
+      statusDetail: 'Live probe passes, but storage remediation remains outstanding.',
+      unresolvedFollowUp: 'Move shared Postgres off unstable network storage; completed cards are not health.'
+    }]
+  });
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, statusCacheTtlMs: 1000 });
+  const server = await listen(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/status`);
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+
+    assert.equal(response.status, 200);
+    assert.equal(body.checks[0].id, 'vaultwarden');
+    assert.equal(body.checks[0].status, 'degraded');
+    assert.equal(body.checks[0].httpStatus, 200);
+    assert.equal(body.checks[0].detail, 'Live probe passes, but storage remediation remains outstanding.');
+    assert.match(body.checks[0].unresolvedFollowUp, /completed cards are not health/i);
+    assert.ok(body.checks[0].checkedAt);
+    assert.equal(serialized.includes('done'), false);
+    assert.equal(serialized.includes(probe.baseUrl), false);
+  } finally {
+    await server.close();
+    await probe.close();
+  }
+});
+
 test('GET /api/status treats configured acceptable status codes as up for authenticated gateways', async () => {
   const probe = await listen((_request, response) => {
     response.writeHead(401).end();

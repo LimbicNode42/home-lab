@@ -87,6 +87,9 @@ h2, h3 { margin-top: 0; }
 .badge { display: inline-block; border-radius: 999px; padding: 0.3rem 0.65rem; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; }
 .badge.up { color: #0e2f1a; background: #8ee6a7; }
 .badge.down { color: #3a1010; background: #ffb4ab; }
+.badge.degraded { color: #3b2600; background: #facc6b; }
+.badge.unknown { color: #1f2937; background: #cbd5e1; }
+.warning { color: #facc6b; }
 .link-list { display: flex; flex-direction: column; gap: 0.7rem; }
 .link-list a {
   display: block;

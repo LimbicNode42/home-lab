@@ -1,4 +1,17 @@
 const DEFAULT_TIMEOUT_MS = 2500;
+const CHECK_RESULT_STATUSES = new Set(['up', 'down', 'degraded', 'unknown']);
+
+function safeStatus(value, fallback = 'unknown') {
+  return CHECK_RESULT_STATUSES.has(value) ? value : fallback;
+}
+
+function publicCheckMetadata(check) {
+  const metadata = {};
+  if (check.displayUrl) metadata.displayUrl = check.displayUrl;
+  if (check.statusDetail) metadata.detail = check.statusDetail;
+  if (check.unresolvedFollowUp) metadata.unresolvedFollowUp = check.unresolvedFollowUp;
+  return metadata;
+}
 
 export class StatusService {
   constructor({ checks = [], ttlMs = 30_000, timeoutMs = DEFAULT_TIMEOUT_MS, fetchImpl = globalThis.fetch } = {}) {
@@ -15,16 +28,18 @@ export class StatusService {
       return this.cache.payload;
     }
 
-    const checks = await Promise.all(this.checks.map((check) => this.probe(check)));
+    const checkedAt = new Date(now).toISOString();
+    const checks = await Promise.all(this.checks.map((check) => this.probe(check, checkedAt)));
     const payload = {
-      generatedAt: new Date(now).toISOString(),
+      generatedAt: checkedAt,
+      freshness: { checkedAt, cacheTtlMs: this.ttlMs, cacheState: 'fresh' },
       checks
     };
     this.cache = { createdAt: now, payload };
     return payload;
   }
 
-  async probe(check) {
+  async probe(check, checkedAt = new Date().toISOString()) {
     const started = Date.now();
     const controller = new AbortController();
     const timeoutMs = Number.isFinite(Number(check.timeoutMs)) ? Number(check.timeoutMs) : this.timeoutMs;
@@ -37,13 +52,17 @@ export class StatusService {
         redirect: 'manual',
         signal: controller.signal
       });
+      const probeUp = response.ok || acceptableStatuses.has(response.status);
+      const status = probeUp ? safeStatus(check.statusWhenUp, 'up') : 'down';
       return {
         id: check.id,
         label: check.label,
-        status: response.ok || acceptableStatuses.has(response.status) ? 'up' : 'down',
+        status,
         httpStatus: response.status,
         latencyMs: Date.now() - started,
-        ...(check.displayUrl ? { displayUrl: check.displayUrl } : {})
+        checkedAt,
+        freshness: { checkedAt, cacheTtlMs: this.ttlMs },
+        ...publicCheckMetadata(check)
       };
     } catch (error) {
       return {
@@ -52,7 +71,9 @@ export class StatusService {
         status: 'down',
         error: error.name === 'AbortError' ? 'timeout' : 'request_failed',
         latencyMs: Date.now() - started,
-        ...(check.displayUrl ? { displayUrl: check.displayUrl } : {})
+        checkedAt,
+        freshness: { checkedAt, cacheTtlMs: this.ttlMs },
+        ...publicCheckMetadata(check)
       };
     } finally {
       clearTimeout(timeout);
