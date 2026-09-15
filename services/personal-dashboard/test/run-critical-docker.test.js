@@ -234,7 +234,7 @@ test('Postgres Compose owns the stable internal DB network and postgres alias', 
   assert.match(compose, /container_name:\s*postgres/, 'Postgres container name remains postgres');
   assert.match(compose, /networks:[\s\S]*?critical-internal:[\s\S]*?aliases:[\s\S]*?- postgres/, 'Postgres service must attach with postgres alias');
   assert.match(compose, /critical-internal:[\s\S]*?name:\s*critical-internal[\s\S]*?internal:\s*true/, 'Postgres Compose must create the internal critical-internal network');
-  assert.match(compose, /\/mnt\/nas\/services\/postgres:\/bitnami\/postgresql/, 'Postgres data mount must remain preserved');
+  assert.match(compose, /\/srv\/postgres:\/bitnami\/postgresql/, 'Postgres data mount must remain on the current host-local live path');
 });
 
 test('sync-runtime-snapshots.sh copies expected source files into host-local cache layout', async () => {

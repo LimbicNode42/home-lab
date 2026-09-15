@@ -41,9 +41,7 @@
       "label": "Vaultwarden",
       "targetUrl": "http://192.168.0.50:8084/alive",
       "displayUrl": "https://vault.wheeler-network.com",
-      "statusWhenUp": "degraded",
-      "statusDetail": "Live Vaultwarden probe is separate from completed Kanban recovery cards. Treat a passing probe as degraded until the recurring shared Postgres storage stale-handle issue is remediated.",
-      "unresolvedFollowUp": "Move shared Postgres off NAS-backed NFS or otherwise fix the recurring stale file-handle root cause while preserving existing Vaultwarden data and credentials."
+      "statusDetail": "Live Vaultwarden /alive probe is passing; shared Postgres is currently mounted from critical local storage (/srv/postgres), avoiding the prior NAS/NFS stale file-handle failure mode."
     },
     {
       "id": "hermes-kanban",

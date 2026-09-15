@@ -1,0 +1,24 @@
+{
+  "captured_at": "2026-09-15T08:56:28Z",
+  "host": "critical",
+  "host_ip": "192.168.0.50",
+  "service": "vaultwarden",
+  "root_cause": "Home Dashboard still forced Vaultwarden statusWhenUp=degraded after the shared Postgres stale NFS file-handle issue had been mitigated by moving Postgres active storage to /srv/postgres on critical.",
+  "prior_failure_evidence": [
+    "Vaultwarden logs on 2026-09-14: Postgres FATAL could not open global/pg_filenode.map: Stale file handle"
+  ],
+  "current_evidence": {
+    "vaultwarden_container": "running, Docker health healthy, /alive HTTP 200",
+    "postgres_container": "running, pg_isready accepting connections",
+    "postgres_active_mount": "/srv/postgres -> /bitnami/postgresql",
+    "nas_mount": "/mnt/nas currently reachable but no longer active Postgres data bind",
+    "public_url": "https://vault.wheeler-network.com/api/config HTTP 200",
+    "traefik_host_header": "http://127.0.0.1/api/config with Host vault.wheeler-network.com HTTP 200",
+    "dashboard_before_change": "/api/status reported vaultwarden degraded because config statusWhenUp=degraded despite HTTP 200"
+  },
+  "changes_planned": [
+    "Update dashboard Vaultwarden status check to default up when /alive probe passes",
+    "Update Postgres desired-state docs/compose to use /srv/postgres host-local active mount"
+  ],
+  "safety": "No credential rotation, master password reset, data deletion, or DB migration performed by this task."
+}
