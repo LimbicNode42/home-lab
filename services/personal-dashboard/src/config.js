@@ -45,8 +45,8 @@ const DEFAULT_CONFIG = {
       acceptableStatuses: [200],
       timeoutMs: 1500,
       statusWhenUp: 'degraded',
-      statusDetail: 'Jellyfin is reachable, but in-app subtitle downloads need valid OpenSubtitles provider credentials before the workflow is usable.',
-      unresolvedFollowUp: 'Update the Jellyfin Open Subtitles plugin credentials, then verify subtitle search/download inside Jellyfin.'
+      statusDetail: 'Jellyfin is reachable, but in-app subtitle downloads are blocked: the stored OpenSubtitles.com username/password are rejected as invalid (HTTP 401), and the account is currently soft-locked by rate limiting.',
+      unresolvedFollowUp: 'Reconcile the OpenSubtitles.com account credentials in Vaultwarden item OPENSUBS_CREDENTIALS (confirm it is an opensubtitles.com account, not .org, and the password is current), then clear the CredentialsInvalid flag and verify search/download inside Jellyfin.'
     }
   ],
   unifiedInbox: {

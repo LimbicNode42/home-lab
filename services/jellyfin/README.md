@@ -104,8 +104,15 @@ Read-only findings:
 - Movies and Shows library options both have `SaveSubtitlesWithMedia=true`, `SkipSubtitlesIfEmbeddedSubtitlesPresent=false`, and `SkipSubtitlesIfAudioTrackMatches=false`.
 - Container media binds `/mnt/pve/NAS/media/movies:/movies` and `/mnt/pve/NAS/media/tv:/tv` are read-write, so Jellyfin can save downloaded subtitle sidecars next to media once provider authentication works.
 
-Current blocker:
-- In-Jellyfin subtitle download cannot be honestly verified until the Open Subtitles provider credentials are fixed or replaced with a valid provider account/API credential. Do not print or commit the credential values.
+Current blocker (root cause confirmed):
+- The stored username/password are rejected by OpenSubtitles.com as invalid. Direct API login with the plugin's public consumer key returned HTTP 401 `"Error, invalid username/password"`.
+- This is NOT an API-key problem: the plugin hardcodes a shared consumer key and supplies it on every request (no user-editable API-key field since v20 / PR #132). A missing/invalid key would instead yield HTTP 403 `"You cannot consume this service"`.
+- The account is currently soft-locked by rate limiting (OpenSubtitles rejects the password for ~24 h after repeated failed attempts). Ben should reconcile the account at https://opensubtitles.com, confirm it is a `.com` account (not `.org` — the plugin uses the `.com` API), and update Vaultwarden item `OPENSUBS_CREDENTIALS` (username/password) if needed.
+
+Evidence:
+- Vaultwarden `OPENSUBS_CREDENTIALS` has username (12 chars) and password (11 chars); SHA-256 prefixes match the values already stored in the plugin config xml (`d7a7e5bd` / `18fe20ab`), so Jellyfin is using exactly the same credentials as Vaultwarden.
+- `POST api.opensubtitles.com/api/v1/login` with `Api-Key` + `Content-Type` + a real UA returned 401 invalid username/password (rate-limited: `failed:10 remaining:0`).
+- Plugin v24.0.0.0 hardcodes a shared public consumer key in its source (`OpenSubtitlesPlugin.ApiKey`, sent as an `Api-Key` header on every request) — not a user secret and not something to store in Vaultwarden.
 
 User workflow after credentials are corrected:
 1. Open Jellyfin.
