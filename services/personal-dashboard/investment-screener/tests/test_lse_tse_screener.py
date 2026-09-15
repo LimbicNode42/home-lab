@@ -285,6 +285,24 @@ class LseProviderMappingTests(unittest.TestCase):
         self.assertEqual(selected["missing_provider_symbol_count"], 1)
         self.assertEqual(selected["provider_symbol_convention"], "Yahoo Finance LSE symbols use {LSE TIDM}.L from London Stock Exchange public instrument API")
 
+    def test_lse_bounded_yahoo_selection_skips_leading_unmapped_rows_without_zero_coverage(self):
+        entries = [
+            {"company_id": "lse:unmapped", "issuer_id": "lse:unmapped", "name": "Unmapped", "name_match_key": "unmapped", "active": True, "universe_rank": 1, "mapping_status": "unmapped"},
+            {"company_id": "lse:ambiguous", "issuer_id": "lse:ambiguous", "name": "Ambiguous", "name_match_key": "ambiguous", "active": True, "universe_rank": 2, "yahoo_ticker": "AMB.L", "mapping_status": "mapping_ambiguous"},
+            {"company_id": "lse:hsbc", "issuer_id": "lse:hsbc", "name": "HSBC", "name_match_key": "hsbc", "active": True, "universe_rank": 3, "yahoo_ticker": "HSBA.L", "mapping_status": "mapped"},
+            {"company_id": "lse:bp", "issuer_id": "lse:bp", "name": "BP", "name_match_key": "bp", "active": True, "universe_rank": 4, "yahoo_ticker": "BP.L", "mapping_status": "mapped"},
+        ]
+
+        selected = scr.select_lse_universe_batch(entries, max_tickers=2, provider="yahoo")
+
+        self.assertEqual(selected["tickers"], ["HSBA.L", "BP.L"])
+        self.assertEqual([entry["company_id"] for entry in selected["entries"]], ["lse:hsbc", "lse:bp"])
+        self.assertEqual(selected["full_count"], 4)
+        self.assertEqual(selected["mapped_count"], 2)
+        self.assertEqual(selected["missing_provider_symbol_count"], 2)
+        self.assertEqual(selected["denominator_status"], "mapped_subset_provider_symbol_review_required")
+        self.assertFalse(selected["complete_security_type_filtered_listing"])
+
     def test_lse_selection_denominator_status_reflects_partial_vs_complete_mapping(self):
         # Partial mapping (one mapped, one unmapped) must be reported as a mapped
         # subset, never silently relabelled as a complete listing.

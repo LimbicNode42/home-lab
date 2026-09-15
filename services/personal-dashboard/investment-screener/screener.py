@@ -1716,10 +1716,6 @@ def select_lse_universe_batch(
         raise ValueError("batch_offset must be non-negative")
     if max_tickers is not None and max_tickers < 1:
         raise ValueError("max_tickers must be at least 1")
-    active = sorted([entry for entry in entries if entry.get("active")], key=lambda e: (int(e.get("universe_rank") or 999999), str(e.get("name_match_key") or e.get("company_id"))))
-    full_count = len(active)
-    end = full_count if max_tickers is None else min(full_count, batch_offset + max_tickers)
-    selected_entries = active[batch_offset:end]
     def lse_reviewed_provider_symbol(entry: dict) -> Optional[str]:
         # Once a mapping stage has run, only rows explicitly marked mapped may
         # drive provider calls. This prevents ambiguous/unreviewed aliases from
@@ -1728,7 +1724,13 @@ def select_lse_universe_batch(
             return None
         return _select_provider_symbol(entry, provider)
 
-    tickers = [symbol for symbol in (lse_reviewed_provider_symbol(entry) for entry in selected_entries) if symbol]
+    active = sorted([entry for entry in entries if entry.get("active")], key=lambda e: (int(e.get("universe_rank") or 999999), str(e.get("name_match_key") or e.get("company_id"))))
+    full_count = len(active)
+    hydratable = [entry for entry in active if lse_reviewed_provider_symbol(entry)]
+    hydratable_count = len(hydratable)
+    end = hydratable_count if max_tickers is None else min(hydratable_count, batch_offset + max_tickers)
+    selected_entries = hydratable[batch_offset:end]
+    tickers = [str(lse_reviewed_provider_symbol(entry)) for entry in selected_entries]
     missing = [
         {
             "company_id": entry.get("company_id"),
@@ -1737,7 +1739,7 @@ def select_lse_universe_batch(
             "reason": entry.get("mapping_status") if entry.get("mapping_status") not in (None, "mapped") else "missing_provider_symbol",
             "provider": provider,
         }
-        for entry in selected_entries
+        for entry in active
         if not lse_reviewed_provider_symbol(entry)
     ]
     mapped_count = sum(1 for entry in active if entry.get("mapping_status") == "mapped" and _select_provider_symbol(entry, provider))
