@@ -102,18 +102,18 @@ const DEFAULT_CONFIG = {
       { id: 'dart', label: 'Dart SDK', state: 'last_known_present', detail: 'Dart 3.13.2 was verified with the Flutter toolchain.' },
       { id: 'android-sdk', label: 'Android SDK', state: 'last_known_present', detail: 'Android SDK command-line tools were verified for headless builds.' },
       { id: 'jdk', label: 'JDK', state: 'last_known_present', detail: 'JDK 21 was verified for Android builds.' },
-      { id: 'avd-flutter-headless', label: 'AVD flutter_headless', state: 'last_known_present', detail: 'Headless Android virtual device exists; dashboard status is read-only and will not boot it.' }
+      { id: 'redroid-spike', label: 'Redroid Android surface (spike)', state: 'running', detail: 'Selected non-AVD Android container on tori; ADB stays loopback-only and dashboard viewer/control is not linked until a durable gated service exists.' }
     ],
     runtime: {
-      state: 'not_running',
-      adbDeviceId: null,
-      detail: 'No adb device was attached during the last live workflow check.'
+      state: 'running',
+      adbDeviceId: '127.0.0.1:5556',
+      detail: 'Redroid container redroid-spike is the selected non-AVD Android surface; durable browser viewer/control is pending.'
     },
     lastSuccessfulCycleAt: null,
     viewer: {
-      mode: 'review_required',
-      label: 'Emulator viewer requires review',
-      instruction: 'Use the proven headless cycle on tori for now. Interactive noVNC/web controls must be placed behind dashboard authentication before linking.',
+      mode: 'viewer_not_ready',
+      label: 'Redroid mobile viewer not ready',
+      instruction: 'Redroid is booted as the selected non-AVD Android surface, but no durable authenticated browser viewer/control service has been deployed yet. The dashboard deliberately does not link to stale AVD noVNC.',
       href: null
     }
   }
@@ -364,10 +364,10 @@ function validateMobileWorkflow(mobileWorkflow) {
 
   const viewer = mobileWorkflow.viewer ?? {};
   const mode = requireText(viewer.mode ?? 'review_required', 'mobileWorkflow.viewer.mode');
-  if (!['review_required', 'read_only_screenshot', 'ssh_tunnel', 'authenticated_novnc', 'authenticated_interactive'].includes(mode)) {
-    throw new Error('Invalid dashboard config: mobileWorkflow.viewer.mode must be review_required, read_only_screenshot, ssh_tunnel, authenticated_novnc, or authenticated_interactive');
+  if (!['review_required', 'viewer_not_ready', 'read_only_screenshot', 'ssh_tunnel', 'authenticated_novnc', 'authenticated_interactive'].includes(mode)) {
+    throw new Error('Invalid dashboard config: mobileWorkflow.viewer.mode must be review_required, viewer_not_ready, read_only_screenshot, ssh_tunnel, authenticated_novnc, or authenticated_interactive');
   }
-  const label = requireText(viewer.label ?? 'Emulator viewer requires review', 'mobileWorkflow.viewer.label');
+  const label = requireText(viewer.label ?? 'Android surface viewer requires review', 'mobileWorkflow.viewer.label');
   const instruction = requireText(viewer.instruction ?? 'A viewer must be reviewed and authenticated before dashboard linking.', 'mobileWorkflow.viewer.instruction');
   const href = requireOptionalText(viewer.href, 'mobileWorkflow.viewer.href');
   if (href) {
@@ -376,6 +376,9 @@ function validateMobileWorkflow(mobileWorkflow) {
         throw new Error('Invalid mobile workflow viewer: authenticated interactive/noVNC links must use the dashboard /mobile-viewer/ proxy');
       }
     } else {
+      if (mode === 'viewer_not_ready' || mode === 'review_required') {
+        throw new Error('Invalid mobile workflow viewer: unavailable viewer states must not include a link');
+      }
       if (!isHttpUrl(href)) {
         throw new Error('Invalid dashboard config: mobileWorkflow.viewer.href must be an http(s) URL');
       }

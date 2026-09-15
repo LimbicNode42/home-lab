@@ -178,18 +178,18 @@
         "detail": "JDK 21 was verified for Android builds."
       },
       {
-        "id": "avd-agent-feedback",
-        "label": "AVD agent_feedback (live)",
+        "id": "redroid-spike",
+        "label": "Redroid Android surface (spike)",
         "state": "running",
-        "detail": "Persistent headless Android 16 (API 36) AVD on tori; boots via android-emulator.service with -no-snapshot-load. KVM-accelerated, 2 vCPU / 1536 MB RAM."
+        "detail": "Selected non-AVD Android container on tori. Runtime state is published from adb against loopback-only 127.0.0.1:5556; no raw ADB or control credential is exposed to the browser."
       }
     ],
     "runtime": {
       "state": "running",
-      "adbDeviceId": "emulator-5554",
-      "detail": "Emulator is live on tori; authenticated read-only noVNC is proxied through the Home Dashboard."
+      "adbDeviceId": "127.0.0.1:5556",
+      "detail": "Redroid container redroid-spike is the selected non-AVD mobile surface. ADB is bound to loopback on tori; durable browser viewer/control is not deployed yet."
     },
-    "lastSuccessfulCycleAt": "2026-09-05T03:00:00.000Z",
+    "lastSuccessfulCycleAt": null,
     "deviceMatrix": {
       "enabled": true,
       "defaultProfile": "tall",
@@ -229,10 +229,10 @@
       ]
     },
     "viewer": {
-      "mode": "authenticated_interactive",
-      "label": "Android emulator viewer (authenticated interactive)",
-      "instruction": "Open through the authenticated Home Dashboard. Tap, keyboard, swipe, rotate, back/home, screenshot, and stream refresh are available only after dashboard auth; backend VNC/ADB material stays server-side.",
-      "href": "/mobile-viewer/"
+      "mode": "viewer_not_ready",
+      "label": "Redroid mobile viewer not ready",
+      "instruction": "Redroid is booted as the selected non-AVD Android surface, but no durable authenticated browser viewer/control service has been deployed yet. The dashboard deliberately does not link to the stale AVD noVNC surface.",
+      "href": null
     }
   },
   "unifiedInbox": {

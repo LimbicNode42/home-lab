@@ -435,7 +435,7 @@ function refreshMobileScreenshot(img) {
 
 function buildMobileControlPanel() {
   const message = el('p', { className: 'muted mobile-control-message', text: 'Authenticated controls send bounded ADB input through the dashboard server; ADB is not exposed to the browser or LAN.' });
-  const screenshot = el('img', { className: 'mobile-screenshot', alt: 'Latest Android emulator screenshot' });
+  const screenshot = el('img', { className: 'mobile-screenshot', alt: 'Latest Android surface screenshot' });
   const setMessage = (text, isError = false) => {
     message.textContent = text;
     message.className = isError ? 'error mobile-control-message' : 'muted mobile-control-message';
@@ -453,8 +453,8 @@ function buildMobileControlPanel() {
 
   const tapX = el('input', { type: 'number', value: '540', min: '0', max: '5000', inputMode: 'numeric', 'aria-label': 'Tap X coordinate' });
   const tapY = el('input', { type: 'number', value: '960', min: '0', max: '5000', inputMode: 'numeric', 'aria-label': 'Tap Y coordinate' });
-  const typeInput = el('input', { type: 'text', maxLength: '160', placeholder: 'Text to type', 'aria-label': 'Text to type into emulator' });
-  const rotateSelect = el('select', { 'aria-label': 'Rotate emulator' }, [
+  const typeInput = el('input', { type: 'text', maxLength: '160', placeholder: 'Text to type', 'aria-label': 'Text to type into Android surface' });
+  const rotateSelect = el('select', { 'aria-label': 'Rotate Android surface' }, [
     el('option', { value: 'portrait', text: 'Portrait' }),
     el('option', { value: 'landscape', text: 'Landscape' }),
     el('option', { value: 'reverse-portrait', text: 'Reverse portrait' }),
@@ -464,7 +464,7 @@ function buildMobileControlPanel() {
   refreshMobileScreenshot(screenshot);
 
   return el('div', { className: 'mobile-control-panel' }, [
-    el('h4', { text: 'Authenticated emulator controls' }),
+    el('h4', { text: 'Authenticated Android surface controls' }),
     message,
     el('div', { className: 'mobile-control-row' }, [
       tapX,
@@ -521,6 +521,9 @@ function renderMobileWorkflowOverview(status, config = mobileWorkflowConfig) {
     `Status cache: ${payload.cacheStatus || 'static config'}`
   ];
   if (payload.generatedAt) runtimeLines.push(`Cache generated: ${payload.generatedAt}`);
+  if (payload.freshness?.generatedAgeSeconds !== null && payload.freshness?.generatedAgeSeconds !== undefined) {
+    runtimeLines.push(`Cache age: ${payload.freshness.generatedAgeSeconds}s (${payload.freshness.stale ? 'stale' : 'fresh'})`);
+  }
 
   const matrix = payload.matrix || null;
   const deviceMatrix = payload.deviceMatrix || null;
@@ -554,23 +557,23 @@ function renderMobileWorkflowOverview(status, config = mobileWorkflowConfig) {
 
   const viewer = payload.viewer || {};
   const viewerChildren = [
-    el('h3', { text: viewer.label || 'Emulator viewer' }),
-    el('p', { className: 'muted', text: viewer.instruction || 'No reviewed emulator viewing surface is configured yet.' })
+    el('h3', { text: viewer.label || 'Android surface viewer' }),
+    el('p', { className: 'muted', text: viewer.instruction || 'No reviewed Android surface viewing surface is configured yet.' })
   ];
   if (viewer.href) {
-    viewerChildren.push(el('a', { href: viewer.href, text: viewer.mode === 'authenticated_interactive' ? 'Open interactive emulator viewer' : 'Open reviewed emulator viewer', rel: 'noreferrer noopener' }));
+    viewerChildren.push(el('a', { href: viewer.href, text: viewer.mode === 'authenticated_interactive' ? 'Open interactive Android surface viewer' : 'Open reviewed Android surface viewer', rel: 'noreferrer noopener' }));
     if (viewer.mode === 'authenticated_interactive') {
       viewerChildren.push(buildMobileControlPanel());
     }
   } else {
-    viewerChildren.push(el('p', { className: 'error', text: 'No safe direct emulator viewer link is configured yet.' }));
+    viewerChildren.push(el('p', { className: 'error', text: 'No safe Android surface viewer link is configured yet.' }));
   }
 
   mobileWorkflowOverview.append(el('div', { className: 'mobile-workflow-grid' }, [
     el('article', { className: 'mobile-runtime-card' }, [
       el('h3', { text: payload.title || 'Flutter mobile workflow' }),
       el('span', { className: `badge ${mobileWorkflowBadgeClass(runtime.state)}`, text: runtime.state || 'unknown' }),
-      el('p', { className: 'muted', text: runtime.detail || 'No emulator runtime detail has been published.' }),
+      el('p', { className: 'muted', text: runtime.detail || 'No Android surface runtime detail has been published.' }),
       el('ul', { className: 'mobile-runtime-list' }, runtimeLines.map((line) => el('li', { text: line })))
     ]),
     el('article', { className: 'mobile-viewer-card' }, viewerChildren)

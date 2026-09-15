@@ -350,7 +350,7 @@ async function handleMobileControl(request, response, { mobileControlRunner, mob
     const statusCode = err.statusCode && err.statusCode >= 400 && err.statusCode < 500 ? err.statusCode : 502;
     return json(response, statusCode, {
       error: err.code || 'mobile_control_failed',
-      message: statusCode === 502 ? 'Mobile emulator control command failed' : err.message
+      message: statusCode === 502 ? 'Mobile Android surface control command failed' : err.message
     });
   }
 }
@@ -366,7 +366,7 @@ async function handleMobileScreenshot(response, { mobileScreenshotRunner, mobile
     response.end(png);
   } catch (err) {
     console.error('mobile screenshot proxy failed', { name: err?.name, code: err?.code, statusCode: err?.statusCode });
-    return json(response, 502, { error: 'mobile_screenshot_failed', message: 'Mobile emulator screenshot capture failed' });
+    return json(response, 502, { error: 'mobile_screenshot_failed', message: 'Mobile Android surface screenshot capture failed' });
   }
 }
 
@@ -3122,6 +3122,7 @@ async function readUnifiedInboxStatus({ config, statusUrl, fetchImpl = globalThi
 
 const MOBILE_RUNTIME_STATES = new Set(['not_running', 'booting', 'running', 'unknown']);
 const MOBILE_CACHE_STATUSES = new Set(['fresh', 'not_configured', 'missing', 'malformed', 'read_error']);
+const MOBILE_STATUS_STALE_AFTER_MS = 15 * 60 * 1000;
 
 function sanitizeMobileText(value, fallback = null) {
   if (typeof value !== 'string') return fallback;
@@ -3144,7 +3145,7 @@ function sanitizeMobileRuntime(rawRuntime = {}, fallbackRuntime = {}) {
     state,
     adbDeviceId,
     bootCompleted: rawRuntime.bootCompleted === true,
-    detail: sanitizeMobileText(rawRuntime.detail, fallbackRuntime.detail ?? 'No emulator runtime detail has been published.')
+    detail: sanitizeMobileText(rawRuntime.detail, fallbackRuntime.detail ?? 'No Android surface runtime detail has been published.')
   };
 }
 
@@ -3339,6 +3340,14 @@ function mobileWorkflowPayload({ config, statusFilePayload = null, cacheStatus, 
   const runtime = sanitizeMobileRuntime(statusFilePayload?.runtime, config.runtime ?? {});
   const matrix = sanitizeMobileMatrix(statusFilePayload?.matrix);
   const generatedAt = sanitizeIsoTimestamp(statusFilePayload?.generatedAt) ?? (fileMtimeMs ? new Date(fileMtimeMs).toISOString() : null);
+  const generatedTime = generatedAt ? Date.parse(generatedAt) : NaN;
+  const generatedAgeSeconds = Number.isNaN(generatedTime) ? null : Math.max(0, Math.round((Date.now() - generatedTime) / 1000));
+  const freshness = {
+    generatedAt,
+    generatedAgeSeconds,
+    stale: generatedAgeSeconds === null ? cacheStatus === 'fresh' : generatedAgeSeconds * 1000 > MOBILE_STATUS_STALE_AFTER_MS,
+    staleAfterSeconds: Math.round(MOBILE_STATUS_STALE_AFTER_MS / 1000)
+  };
   return {
     enabled: true,
     title: config.title,
@@ -3348,8 +3357,9 @@ function mobileWorkflowPayload({ config, statusFilePayload = null, cacheStatus, 
     matrix,
     deviceMatrix: config.deviceMatrix,
     lastSuccessfulCycleAt: sanitizeIsoTimestamp(statusFilePayload?.lastSuccessfulCycleAt) ?? config.lastSuccessfulCycleAt ?? null,
-    viewer: config.viewer,
+    viewer: { ...config.viewer, status: config.viewer?.mode ?? 'review_required', interactiveAvailable: Boolean(config.viewer?.href && config.viewer?.mode === 'authenticated_interactive') },
     generatedAt,
+    freshness,
     cacheStatus: MOBILE_CACHE_STATUSES.has(cacheStatus) ? cacheStatus : 'read_error',
     message: sanitizeMobileText(message, null)
   };
@@ -3437,14 +3447,14 @@ export async function createApp(options = {}) {
   const metaMcpStatusStaleAfterMs = Number(options.metaMcpStatusStaleAfterMs ?? process.env.METAMCP_STATUS_STALE_AFTER_MS ?? 15 * 60 * 1000);
   const mobileViewerUpstreamUrl = Object.prototype.hasOwnProperty.call(options, 'mobileViewerUpstreamUrl')
     ? options.mobileViewerUpstreamUrl
-    : (process.env.MOBILE_VIEWER_UPSTREAM_URL ?? 'http://192.168.0.20:6080');
+    : (process.env.MOBILE_VIEWER_UPSTREAM_URL || null);
   const mobileViewerToken = Object.prototype.hasOwnProperty.call(options, 'mobileViewerToken')
     ? options.mobileViewerToken
     : (process.env.MOBILE_VIEWER_NOVNC_TOKEN ?? readOptionalSecretFile(process.env.MOBILE_VIEWER_NOVNC_TOKEN_FILE ?? '/run/secrets/mobile-viewer-novnc-token'));
   const mobileControlConfig = {
-    upstreamUrl: options.mobileControlUpstreamUrl ?? process.env.MOBILE_CONTROL_UPSTREAM_URL ?? 'http://192.168.0.20:6081',
+    upstreamUrl: options.mobileControlUpstreamUrl ?? (process.env.MOBILE_CONTROL_UPSTREAM_URL || null),
     token: options.mobileControlToken ?? process.env.MOBILE_CONTROL_TOKEN ?? mobileViewerToken,
-    deviceId: options.mobileControlDeviceId ?? process.env.MOBILE_CONTROL_DEVICE_ID ?? config.mobileWorkflow?.runtime?.adbDeviceId ?? 'emulator-5554',
+    deviceId: options.mobileControlDeviceId ?? process.env.MOBILE_CONTROL_DEVICE_ID ?? config.mobileWorkflow?.runtime?.adbDeviceId ?? null,
     timeoutMs: Number(options.mobileControlTimeoutMs ?? process.env.MOBILE_CONTROL_TIMEOUT_MS ?? 20000)
   };
   const mobileControlRunner = Object.prototype.hasOwnProperty.call(options, 'mobileControlRunner') ? options.mobileControlRunner : null;

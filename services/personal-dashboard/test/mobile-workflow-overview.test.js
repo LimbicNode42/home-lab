@@ -36,14 +36,14 @@ const mobileWorkflowConfig = {
     components: [
       { id: 'flutter', label: 'Flutter SDK', state: 'last_known_present', detail: 'Flutter 3.47.2 was verified on tori.' },
       { id: 'android-sdk', label: 'Android SDK', state: 'last_known_present', detail: 'Android SDK is available for headless builds.' },
-      { id: 'avd-flutter-headless', label: 'AVD flutter_headless', state: 'last_known_present', detail: 'The AVD exists and is not started by the dashboard.' }
+      { id: 'redroid-spike', label: 'Redroid Android surface (spike)', state: 'running', detail: 'Selected non-AVD Android container on tori; viewer is not linked until a durable gated service exists.' }
     ],
-    runtime: { state: 'not_running', adbDeviceId: null, detail: 'No adb device attached during the last check.' },
+    runtime: { state: 'running', adbDeviceId: '127.0.0.1:5556', detail: 'Redroid container redroid-spike is the selected non-AVD Android surface.' },
     lastSuccessfulCycleAt: null,
     viewer: {
-      mode: 'review_required',
-      label: 'Emulator viewer requires review',
-      instruction: 'Use the proven headless cycle on tori until a read-only authenticated viewer is approved.',
+      mode: 'viewer_not_ready',
+      label: 'Redroid mobile viewer not ready',
+      instruction: 'Redroid is booted, but no durable authenticated browser viewer/control service has been deployed yet.',
       href: null
     }
   }
@@ -54,9 +54,9 @@ test('normalizes Flutter mobile workflow metadata for public display', () => {
 
   assert.equal(publicConfig.mobileWorkflow.enabled, true);
   assert.equal(publicConfig.mobileWorkflow.host, 'tori');
-  assert.deepEqual(publicConfig.mobileWorkflow.components.map((component) => component.id), ['flutter', 'android-sdk', 'avd-flutter-headless']);
-  assert.equal(publicConfig.mobileWorkflow.runtime.state, 'not_running');
-  assert.equal(publicConfig.mobileWorkflow.viewer.mode, 'review_required');
+  assert.deepEqual(publicConfig.mobileWorkflow.components.map((component) => component.id), ['flutter', 'android-sdk', 'redroid-spike']);
+  assert.equal(publicConfig.mobileWorkflow.runtime.state, 'running');
+  assert.equal(publicConfig.mobileWorkflow.viewer.mode, 'viewer_not_ready');
   const serialized = JSON.stringify(publicConfig);
   assert.equal(serialized.includes('/root/'), false);
   assert.equal(serialized.includes('/mnt/nas'), false);
@@ -149,9 +149,9 @@ test('GET /api/mobile-workflow/status falls back safely when no cache file is co
 
     assert.equal(response.status, 200);
     assert.equal(body.cacheStatus, 'not_configured');
-    assert.equal(body.runtime.state, 'not_running');
-    assert.equal(body.runtime.adbDeviceId, null);
-    assert.equal(body.components.some((component) => component.id === 'avd-flutter-headless'), true);
+    assert.equal(body.runtime.state, 'running');
+    assert.equal(body.runtime.adbDeviceId, '127.0.0.1:5556');
+    assert.equal(body.components.some((component) => component.id === 'redroid-spike'), true);
   } finally {
     await server.close();
   }
@@ -178,6 +178,8 @@ test('GET /api/mobile-workflow/status returns sanitized cached runtime state', a
     assert.equal(body.cacheStatus, 'fresh');
     assert.equal(body.runtime.state, 'running');
     assert.equal(body.runtime.adbDeviceId, 'emulator-5554');
+    assert.equal(body.freshness.stale, true);
+    assert.equal(typeof body.freshness.generatedAgeSeconds, 'number');
     assert.equal(body.runtime.bootCompleted, true);
     assert.equal(body.lastSuccessfulCycleAt, '2026-09-01T03:00:00.000Z');
     assert.equal(serialized.includes(statusFile), false);
@@ -202,7 +204,7 @@ test('GET /api/mobile-workflow/status reports malformed cache without leaking ra
 
     assert.equal(response.status, 502);
     assert.equal(body.cacheStatus, 'malformed');
-    assert.equal(body.runtime.state, 'not_running');
+    assert.equal(body.runtime.state, 'running');
     assert.equal(serialized.includes('SyntaxError'), false);
     assert.equal(serialized.includes(statusFile), false);
   } finally {
@@ -359,8 +361,9 @@ test('app.js renders mobile runtime, adb device, last successful cycle, and view
   assert.match(appSource, /function renderMobileWorkflowOverview\(status/);
   assert.match(appSource, /Runtime:/);
   assert.match(appSource, /ADB device:/);
+  assert.match(appSource, /Cache age:/);
   assert.match(appSource, /Last successful headless cycle:/);
-  assert.match(appSource, /Open reviewed emulator viewer/);
+  assert.match(appSource, /Open reviewed Android surface viewer/);
   assert.match(appSource, /\/api\/mobile-workflow\/status/);
 });
 

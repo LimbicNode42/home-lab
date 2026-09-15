@@ -1,3 +1,17 @@
+# Android mobile surface — Redroid replacement note
+
+Status: SUPERSEDED FOR DASHBOARD SURFACE. The selected non-AVD path is now the Redroid container `redroid-spike` on `tori` (192.168.0.20), with ADB bound only to `127.0.0.1:5556` and persistent data under `/var/lib/redroid-spike/data`. The Home Dashboard must show this as an Android/Redroid mobile surface and must not link users into the stale AVD noVNC theatre. Until a durable authenticated Redroid browser viewer/control service is promoted, the safe dashboard viewer state is `viewer_not_ready`.
+
+This document below remains as the historical AVD rollback/runbook only. Do not stop or delete the AVD stack without explicit approval; it is rollback/current-baseline machinery, not the preferred user-facing target.
+
+## Redroid dashboard handoff
+
+- Dashboard status publisher default device: `127.0.0.1:5556` on `tori`.
+- Raw ADB boundary: loopback-only on `tori`; no browser/public config receives ADB, noVNC, VNC, or control tokens.
+- Dashboard viewer mode: `viewer_not_ready` until a durable gated Redroid control/view service exists.
+- Deployment approval gate: adding a persistent Redroid viewer/control listener, changing proxy/firewall/DNS, restarting the dashboard/proxy, or replacing the spike container with a managed service still needs explicit approval.
+- Rollback for the spike surface: `docker rm -f redroid-spike`; optionally remove `/var/lib/redroid-spike` only with explicit data cleanup approval; unload `binder_linux` only if unused. Existing AVD units stay untouched unless separately approved.
+
 # Android Emulator (agent_feedback) — Runbook
 
 Status: LIVE. This is the persistent, network-accessible Android surface Ben uses to

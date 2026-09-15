@@ -215,8 +215,9 @@ test('docker-compose.yml mounts host-local runtime cache for read-only artifacts
   assert.match(compose, /source: \${WRITING_POSTS_HOST_DIR:-\/var\/lib\/personal-dashboard\/writing}[\s\S]*?target: \/app\/writing/, 'Compose must mount a host-local writable writing store directory');
   assert.doesNotMatch(compose, /target:\s*\/app\/writing[\s\S]{0,80}read_only:\s*true/, 'Compose writing store must be writable');
 
-  assert.equal(compose.includes('MOBILE_VIEWER_UPSTREAM_URL: ${MOBILE_VIEWER_UPSTREAM_URL:-http://192.168.0.20:6080}'), true, 'Compose must point the dashboard proxy at the reviewed noVNC upstream by env var');
+  assert.equal(compose.includes('MOBILE_VIEWER_UPSTREAM_URL: ${MOBILE_VIEWER_UPSTREAM_URL:-}'), true, 'Compose must not default the dashboard proxy to a stale AVD noVNC upstream');
   assert.match(compose, /MOBILE_VIEWER_NOVNC_TOKEN_FILE:\s*\/run\/secrets\/mobile-viewer-novnc-token/, 'Compose must pass only the server-side noVNC token file path');
+  assert.equal(compose.includes('MOBILE_CONTROL_DEVICE_ID: ${MOBILE_CONTROL_DEVICE_ID:-127.0.0.1:5556}'), true, 'Compose must default control device id to the selected Redroid loopback ADB endpoint');
   assert.match(compose, /source: \$\{MOBILE_VIEWER_NOVNC_TOKEN_FILE_HOST:-\/var\/lib\/personal-dashboard\/secrets\/mobile-viewer-novnc-token\}[\s\S]*?target: \/run\/secrets\/mobile-viewer-novnc-token[\s\S]*?read_only: true/, 'Compose must mount the noVNC token read-only from host-local secret storage');
 
   assert.match(compose, /PERSONAL_DASHBOARD_DATABASE_URL:\s*\$\{PERSONAL_DASHBOARD_DATABASE_URL:-\}/, 'Compose must pass the Postgres database URL from the rendered environment');

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Publish sanitized persistent Android emulator + device-matrix status for the Home Dashboard.
+# Publish sanitized Android surface + device-matrix status for the Home Dashboard.
 #
-# Reads the persistent agent_feedback emulator over adb and (if present) the matrix
+# Reads the selected Android surface over adb and (if present) the matrix
 # active-profile file written by services/android-emulator/scripts/emulator-matrix.sh,
 # then writes a single sanitized status.json and copies it to the dashboard's NAS and
 # runtime-cache locations. No secrets or raw paths leave this host.
 set -euo pipefail
 
 ADB=${ADB:-/opt/android-sdk/platform-tools/adb}
-DEVICE=${MOBILE_WORKFLOW_ADB_DEVICE:-emulator-5554}
+DEVICE=${MOBILE_WORKFLOW_ADB_DEVICE:-127.0.0.1:5556}
 LOCAL_OUT=${LOCAL_OUT:-/opt/android-emulator/run/status.json}
 MATRIX_ACTIVE=${MATRIX_ACTIVE:-/opt/android-emulator/run/matrix-active.json}
 DEV_LOOP=${DEV_LOOP:-/opt/android-emulator/run/dev-loop.json}
@@ -21,7 +21,7 @@ mkdir -p "$(dirname "$LOCAL_OUT")"
 state="not_running"
 adb_device_id=""
 boot_completed="false"
-detail="No adb device is attached for the persistent emulator."
+detail="No adb device is attached for the selected Android surface."
 
 if [ -x "$ADB" ]; then
   if "$ADB" -s "$DEVICE" get-state 2>/dev/null | grep -qx 'device'; then
@@ -31,9 +31,9 @@ if [ -x "$ADB" ]; then
     if [ "$boot" = "1" ]; then
       state="running"
       boot_completed="true"
-      detail="Persistent Android emulator is attached over adb and reports boot completed."
+      detail="Selected Android surface is attached over adb and reports boot completed."
     else
-      detail="Persistent Android emulator is attached over adb but has not reported boot completed yet."
+      detail="Selected Android surface is attached over adb but has not reported boot completed yet."
     fi
   fi
 else
@@ -84,7 +84,7 @@ payload = {
     },
     "matrix": matrix,
     "devLoop": dev_loop,
-    "lastSuccessfulCycleAt": "2026-09-05T03:00:00Z",
+    "lastSuccessfulCycleAt": None,
 }
 with open(out, "w", encoding="utf-8") as fh:
     json.dump(payload, fh, sort_keys=True)
