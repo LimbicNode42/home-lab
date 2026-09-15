@@ -43,7 +43,10 @@ const DEFAULT_CONFIG = {
       targetUrl: 'http://192.168.0.8:8096/health',
       displayUrl: 'http://192.168.0.8:8096',
       acceptableStatuses: [200],
-      timeoutMs: 1500
+      timeoutMs: 1500,
+      statusWhenUp: 'degraded',
+      statusDetail: 'Jellyfin is reachable, but in-app subtitle downloads need valid OpenSubtitles provider credentials before the workflow is usable.',
+      unresolvedFollowUp: 'Update the Jellyfin Open Subtitles plugin credentials, then verify subtitle search/download inside Jellyfin.'
     }
   ],
   unifiedInbox: {

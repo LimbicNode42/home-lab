@@ -6,6 +6,7 @@ Source evidence:
 - archive `jellyfin.sh` plus `/mnt/nas/services/jellyfin` metadata
 - Sanitized discovery artifact: `inventory/discovery/emperor-remaining-services-discovery-2026-05-23.json`
 - 2026-05-25 read-only/live troubleshooting: `docker inspect jellyfin` on `jester` showed image `lscr.io/linuxserver/jellyfin:latest`, published `8096/tcp`, config bind `/opt/jellyfin-config:/config`, and media binds `/mnt/pve/NAS/media/movies:/movies`, `/mnt/pve/NAS/media/tv:/tv`.
+- 2026-09-15 subtitle workflow discovery: active Jellyfin is still host Docker on `jester` (`192.168.0.8:8096`), running Jellyfin `10.11.8` with container image id `sha256:fcab6147f506cca38abea708a68a8b7eb35ac049f75fa05719cc675284e76aa8`. The Open Subtitles plugin is installed, Movies/Shows have `SaveSubtitlesWithMedia=true`, media binds are read-write, but the plugin config reports `CredentialsInvalid=true`.
 
 Safety notes:
 - Candidate compose only; not applied by Hermes.
@@ -89,6 +90,32 @@ Verification:
 
 Operational note:
 - OpenClaw/Homer artifacts were disabled, not deleted. Do not re-enable them unless their checks are updated to the Hermes-owned desired state and Ben explicitly wants OpenClaw back in the loop.
+
+### 2026-09-15 in-Jellyfin subtitle search/download readiness
+
+Goal:
+- Ben wants users to search for and download subtitles from inside Jellyfin, not only through Bazarr automation.
+
+Read-only findings:
+- Active Jellyfin is the host Docker container on `jester` (`192.168.0.8`), published at `http://192.168.0.8:8096`.
+- `/System/Info/Public` reports Jellyfin `10.11.8`, server `jester`, id `d85ae9f6b5d34e779ed6f4f7cb1991ad`.
+- The `Open Subtitles` plugin is installed under `/opt/jellyfin-config/data/plugins/Open Subtitles/`.
+- The plugin configuration exists at `/opt/jellyfin-config/data/plugins/configurations/Jellyfin.Plugin.OpenSubtitles.xml`; username and password fields are populated, but `CredentialsInvalid=true`.
+- Movies and Shows library options both have `SaveSubtitlesWithMedia=true`, `SkipSubtitlesIfEmbeddedSubtitlesPresent=false`, and `SkipSubtitlesIfAudioTrackMatches=false`.
+- Container media binds `/mnt/pve/NAS/media/movies:/movies` and `/mnt/pve/NAS/media/tv:/tv` are read-write, so Jellyfin can save downloaded subtitle sidecars next to media once provider authentication works.
+
+Current blocker:
+- In-Jellyfin subtitle download cannot be honestly verified until the Open Subtitles provider credentials are fixed or replaced with a valid provider account/API credential. Do not print or commit the credential values.
+
+User workflow after credentials are corrected:
+1. Open Jellyfin.
+2. Open a movie or episode.
+3. Use the subtitle/search/download action from the media item playback/details UI.
+4. Select an OpenSubtitles result and download it.
+5. Verify the item shows the new external subtitle track and, if saved beside media, the sidecar file appears under the matching `/movies` or `/tv` path.
+
+Operational follow-up:
+- The Home Dashboard should show Jellyfin as reachable but subtitle workflow degraded while `CredentialsInvalid=true`; clear the degraded/follow-up status only after a Jellyfin-side search/download has been verified.
 
 ### 2026-05-27 bounded stale-handle watchdog workaround
 
