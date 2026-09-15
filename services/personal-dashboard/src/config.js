@@ -116,6 +116,28 @@ const DEFAULT_CONFIG = {
       instruction: 'Use the proven headless cycle on tori for now. Interactive noVNC/web controls must be placed behind dashboard authentication before linking.',
       href: null
     }
+  },
+  mediaSubtitleCapability: {
+    enabled: true,
+    title: 'Media subtitles',
+    status: 'blocked',
+    freshnessLabel: 'Audit verified 2026-09-15',
+    summary: 'Jellyfin is reachable and the Open Subtitles plugin is installed, but in-Jellyfin subtitle search/download is blocked until the OpenSubtitles.com account login is reconciled and a Jellyfin-side download is verified.',
+    provider: {
+      label: 'Jellyfin Open Subtitles plugin',
+      state: 'credentials_invalid',
+      detail: 'Plugin version 24.0.0.0 is installed; the stored OpenSubtitles.com login currently returns HTTP 401 and has been soft-locked by provider rate limiting.'
+    },
+    automation: {
+      label: 'Bazarr automation',
+      state: 'healthy_separate_workflow',
+      detail: 'Bazarr remains useful for scheduled English subtitle automation through Sonarr/Radarr, but it is not the Jellyfin in-app search/download path.'
+    },
+    nextAction: 'Log into opensubtitles.com with the account referenced by Vaultwarden item OPENSUBS_CREDENTIALS, confirm or reset the login, update Jellyfin if changed, wait out any soft-lock, then verify search/download from a movie or episode in Jellyfin.',
+    links: [
+      { label: 'Open Jellyfin subtitle workflow', href: 'http://192.168.0.8:8096' },
+      { label: 'Open Bazarr automation', href: 'http://192.168.0.8:6767' }
+    ]
   }
 };
 
@@ -403,6 +425,57 @@ function validateMobileWorkflow(mobileWorkflow) {
   return normalized;
 }
 
+
+function validateMediaSubtitleCapability(mediaSubtitleCapability) {
+  if (mediaSubtitleCapability === undefined || mediaSubtitleCapability === null) return null;
+  if (typeof mediaSubtitleCapability !== 'object' || Array.isArray(mediaSubtitleCapability)) {
+    throw new Error('Invalid dashboard config: mediaSubtitleCapability must be an object');
+  }
+
+  const enabled = mediaSubtitleCapability.enabled !== false;
+  const title = requireText(mediaSubtitleCapability.title ?? 'Media subtitles', 'mediaSubtitleCapability.title');
+  const status = validateStateValue(mediaSubtitleCapability.status ?? 'unknown', 'mediaSubtitleCapability.status');
+  if (!['available', 'blocked', 'degraded', 'unknown'].includes(status)) {
+    throw new Error('Invalid dashboard config: mediaSubtitleCapability.status must be available, blocked, degraded, or unknown');
+  }
+  const freshnessLabel = requireOptionalText(mediaSubtitleCapability.freshnessLabel, 'mediaSubtitleCapability.freshnessLabel');
+  const summary = requireText(mediaSubtitleCapability.summary, 'mediaSubtitleCapability.summary');
+
+  const normalizeCapabilityComponent = (component, field) => {
+    if (typeof component !== 'object' || component === null || Array.isArray(component)) {
+      throw new Error(`Invalid dashboard config: ${field} must be an object`);
+    }
+    return {
+      label: requireText(component.label, `${field}.label`),
+      state: validateStateValue(component.state ?? 'unknown', `${field}.state`),
+      detail: requireText(component.detail, `${field}.detail`)
+    };
+  };
+
+  const provider = normalizeCapabilityComponent(mediaSubtitleCapability.provider ?? {}, 'mediaSubtitleCapability.provider');
+  const automation = normalizeCapabilityComponent(mediaSubtitleCapability.automation ?? {}, 'mediaSubtitleCapability.automation');
+  const nextAction = requireText(mediaSubtitleCapability.nextAction, 'mediaSubtitleCapability.nextAction');
+  const rawLinks = mediaSubtitleCapability.links ?? [];
+  if (!Array.isArray(rawLinks)) {
+    throw new Error('Invalid dashboard config: mediaSubtitleCapability.links must be an array');
+  }
+  const links = rawLinks.map((link, index) => {
+    const label = requireText(link?.label, `mediaSubtitleCapability.links[${index}].label`);
+    const href = requireText(link?.href, `mediaSubtitleCapability.links[${index}].href`);
+    if (!isHttpUrl(href)) {
+      throw new Error(`Invalid dashboard config: mediaSubtitleCapability.links[${index}].href must be an http(s) URL`);
+    }
+    if (/[?&](?:token|api[_-]?key|key|authorization)=/i.test(href)) {
+      throw new Error('Invalid media subtitle capability: links must not embed credentials');
+    }
+    return { label, href };
+  });
+
+  const normalized = { enabled, title, status, freshnessLabel, summary, provider, automation, nextAction, links };
+  assertNoUnsafeOperatorInternals(JSON.stringify(normalized), 'mediaSubtitleCapability');
+  return normalized;
+}
+
 function validateDeviceMatrix(deviceMatrix) {
   if (deviceMatrix === undefined || deviceMatrix === null) return null;
   if (typeof deviceMatrix !== 'object' || Array.isArray(deviceMatrix)) {
@@ -502,7 +575,8 @@ export function normalizeConfig(rawConfig = DEFAULT_CONFIG) {
     statusChecks: validateStatusChecks(rawConfig.statusChecks ?? []),
     unifiedInbox: validateUnifiedInbox(rawConfig.unifiedInbox),
     metaMcp: validateMetaMcp(rawConfig.metaMcp),
-    mobileWorkflow: validateMobileWorkflow(rawConfig.mobileWorkflow)
+    mobileWorkflow: validateMobileWorkflow(rawConfig.mobileWorkflow),
+    mediaSubtitleCapability: validateMediaSubtitleCapability(rawConfig.mediaSubtitleCapability)
   };
 }
 
@@ -544,6 +618,7 @@ export function toPublicConfig(config) {
       expectedConnectors: config.unifiedInbox.expectedConnectors
     } } : {}),
     ...(config.metaMcp ? { metaMcp: config.metaMcp } : {}),
-    ...(config.mobileWorkflow ? { mobileWorkflow: config.mobileWorkflow } : {})
+    ...(config.mobileWorkflow ? { mobileWorkflow: config.mobileWorkflow } : {}),
+    ...(config.mediaSubtitleCapability ? { mediaSubtitleCapability: config.mediaSubtitleCapability } : {})
   };
 }

@@ -9,6 +9,7 @@ const sections = document.querySelector('#sections');
 const statusList = document.querySelector('#status-list');
 const metamcpOverview = document.querySelector('#metamcp-overview');
 const mobileWorkflowOverview = document.querySelector('#mobile-workflow-overview');
+const mediaSubtitlesOverview = document.querySelector('#media-subtitles-overview');
 const unifiedInboxOverview = document.querySelector('#unified-inbox-overview');
 const refreshUnifiedInboxButton = document.querySelector('#refresh-unified-inbox');
 const refreshMobileWorkflowButton = document.querySelector('#refresh-mobile-workflow');
@@ -93,6 +94,7 @@ let currentGoalId = null;
 let dashboardBootComplete = false;
 let mobileWorkflowConfig = null;
 let unifiedInboxConfig = null;
+let mediaSubtitleCapabilityConfig = null;
 const FEATURED_DOC_IDS = ['home-lab-service-catalog'];
 
 function el(tag, attrs = {}, children = []) {
@@ -600,6 +602,48 @@ async function refreshMobileWorkflowStatus() {
   }
 }
 
+
+function subtitleCapabilityBadgeClass(status) {
+  if (status === 'available') return 'up';
+  if (status === 'blocked' || status === 'degraded') return 'degraded';
+  return 'neutral';
+}
+
+function renderMediaSubtitleCapability(capability) {
+  if (!mediaSubtitlesOverview) return;
+  mediaSubtitlesOverview.replaceChildren();
+  if (!capability || capability.enabled === false) {
+    mediaSubtitlesOverview.append(el('p', { className: 'muted', text: 'Media subtitle capability status is not configured for this dashboard.' }));
+    return;
+  }
+
+  const header = el('div', { className: 'capability-header' }, [
+    el('span', { className: `badge ${subtitleCapabilityBadgeClass(capability.status)}`, text: capability.status || 'unknown' }),
+    capability.freshnessLabel ? el('span', { className: 'muted', text: capability.freshnessLabel }) : null
+  ].filter(Boolean));
+
+  const cards = [capability.provider, capability.automation].filter(Boolean).map((component) => el('article', { className: 'status-card' }, [
+    el('div', { className: 'status-title', text: component.label }),
+    el('span', { className: `badge ${subtitleCapabilityBadgeClass(component.state)}`, text: component.state }),
+    el('p', { className: 'muted', text: component.detail })
+  ]));
+
+  const children = [
+    header,
+    el('p', { className: 'muted', text: capability.summary }),
+    el('div', { className: 'status-grid media-subtitle-components' }, cards),
+    el('p', { className: 'warning', text: `Next action: ${capability.nextAction}` })
+  ];
+
+  if (Array.isArray(capability.links) && capability.links.length > 0) {
+    children.push(el('div', { className: 'link-list media-subtitle-links' }, capability.links.map((link) => (
+      el('a', { href: link.href, text: link.label, rel: 'noreferrer noopener' })
+    ))));
+  }
+
+  mediaSubtitlesOverview.replaceChildren(...children);
+}
+
 function renderStatus(payload) {
   statusList.replaceChildren();
   if (payload.checks.length === 0) {
@@ -666,10 +710,13 @@ async function loadOverviewData() {
     await refreshUnifiedInboxStatus();
     mobileWorkflowConfig = config.mobileWorkflow || null;
     await refreshMobileWorkflowStatus();
+    mediaSubtitleCapabilityConfig = config.mediaSubtitleCapability || null;
+    renderMediaSubtitleCapability(mediaSubtitleCapabilityConfig);
   } catch (error) {
     sections.replaceChildren(el('p', { className: 'error', text: `Config unavailable: ${error.message}` }));
     renderMetaMcpOverview(null);
     renderMobileWorkflowOverview(null);
+    renderMediaSubtitleCapability(null);
   }
   await refreshStatus();
   await refreshMetaMcpStatus();
