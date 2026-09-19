@@ -1,0 +1,64 @@
+# Mem0 self-hosted memory service — tori (192.168.0.20)
+# Local primary storage under /opt/mem0/data (bind-mounted, easy to back up).
+# Localhost-only port bindings; auth enabled (JWT + per-user API keys).
+# Secrets live in Vaultwarden item `mem0/server` (folder Homelab); rendered
+# into /opt/mem0/.env (root-only, mode 0600) — never committed.
+name: mem0
+
+services:
+  mem0:
+    build:
+      context: /opt/mem0-src/server
+      dockerfile: /opt/mem0/Dockerfile
+    image: mem0-api-server:local
+    restart: unless-stopped
+    # Same AppArmor workaround as postgres: uvicorn's asyncio event loop uses
+    # socketpair(), which the Proxmox host's default AppArmor profile blocks.
+    security_opt:
+      - apparmor=unconfined
+    ports:
+      - "127.0.0.1:8888:8000"
+    env_file:
+      - /opt/mem0/.env
+    volumes:
+      - /opt/mem0/data/history:/app/history
+    networks:
+      - mem0_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/auth/setup-status', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    shm_size: "128mb"
+    # Proxmox host's default AppArmor profile blocks AF_UNIX socket creation,
+    # which breaks postgres' /var/run/postgresql socket. Match the existing
+    # metamcp-pg container (apparmor=unconfined) to allow it.
+    security_opt:
+      - apparmor=unconfined
+    networks:
+      - mem0_network
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in /opt/mem0/.env}
+      - POSTGRES_DB=${POSTGRES_DB:-postgres}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -q -d postgres -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - /opt/mem0/data/postgres:/var/lib/postgresql/data
+      - /opt/mem0-src/server/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+    # No host port published — postgres is only reachable on the internal network.
+
+networks:
+  mem0_network:
+    driver: bridge
