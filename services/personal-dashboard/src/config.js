@@ -121,12 +121,12 @@ const DEFAULT_CONFIG = {
     enabled: true,
     title: 'Media subtitles',
     status: 'blocked',
-    freshnessLabel: 'Audit verified 2026-09-15',
-    summary: 'Jellyfin is reachable and the Open Subtitles plugin is installed, but in-Jellyfin subtitle search/download is blocked until the OpenSubtitles.com account login is reconciled and a Jellyfin-side download is verified.',
+    freshnessLabel: 'Jellyfin-side verified 2026-09-19',
+    summary: 'Jellyfin-native Open Subtitles search works (16 results for "Pain & Gain"), but in-Jellyfin download is blocked until the OpenSubtitles.com account login is reconciled and a Jellyfin-side download succeeds.',
     provider: {
       label: 'Jellyfin Open Subtitles plugin',
       state: 'credentials_invalid',
-      detail: 'Plugin version 24.0.0.0 is installed; the stored OpenSubtitles.com login currently returns HTTP 401 and has been soft-locked by provider rate limiting.'
+      detail: 'Plugin version 24.0.0.0 is installed; search returns results, but the stored OpenSubtitles.com login is rejected (HTTP 401 / AuthenticationException) and the account has been soft-locked by provider rate limiting.'
     },
     automation: {
       label: 'Bazarr automation',

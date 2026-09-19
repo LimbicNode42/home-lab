@@ -8,7 +8,7 @@ const baseCapability = {
   enabled: true,
   title: 'Media subtitles',
   status: 'blocked',
-  freshnessLabel: 'Audit verified 2026-09-15',
+  freshnessLabel: 'Jellyfin-side verified 2026-09-19',
   summary: 'Jellyfin is reachable and the Open Subtitles plugin is installed, but search/download is blocked until the OpenSubtitles.com account login is reconciled.',
   provider: {
     label: 'Jellyfin Open Subtitles plugin',
@@ -38,7 +38,7 @@ test('normalizes public media subtitle capability without secret-bearing fields'
 
   assert.equal(publicConfig.mediaSubtitleCapability.status, 'blocked');
   assert.equal(publicConfig.mediaSubtitleCapability.provider.state, 'credentials_invalid');
-  assert.match(publicConfig.mediaSubtitleCapability.freshnessLabel, /2026-09-15/);
+  assert.match(publicConfig.mediaSubtitleCapability.freshnessLabel, /2026-09-19/);
   assert.equal(publicConfig.mediaSubtitleCapability.links[0].href, 'http://192.168.0.8:8096');
   assert.doesNotMatch(serialized, /token|api[_-]?key|authorization|\/root\/|\/mnt\/nas/i);
 });
