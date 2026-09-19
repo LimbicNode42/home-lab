@@ -10,8 +10,8 @@ Host: `jester` (192.168.0.8), host Docker container `jellyfin`.
 Jellyfin version: 10.11.8. Public port: 8096.
 
 Source tasks (point-in-time self-reports): audit `t_2f3ce20c` / `t_052ca1b5`,
-implementation `t_80176d97` / `t_c10673b9`, review `t_025902ee`, verification
-`t_421289e8`.
+implementation `t_80176d97` / `t_c10673b9`, dashboard `t_6a4b4b24`, review
+`t_025902ee`, verification `t_e48f28ac`.
 
 ## 1. Provider / plugin configured
 
@@ -73,22 +73,44 @@ implementation `t_80176d97` / `t_c10673b9`, review `t_025902ee`, verification
 
 ## 6. Verification results
 
+Latest Jellyfin-side verification (`t_e48f28ac`, 2026-09-19) used Jellyfin user
+`ben` against movie `Pain & Gain` and did not use Bazarr as acceptance evidence.
+
 - Jellyfin service: running, HTTP 200 on `/System/Info/Public`, server id
   `d85ae9f6b5d34e779ed6f4f7cb1991ad`.
 - Open Subtitles plugin config: `CredentialsInvalid=true` with unchanged
   credential fingerprints (username len 12 / sha256 prefix `d7a7e5bd`; password
   len 11 / sha256 prefix `18fe20ab`) — identical to Vaultwarden
   `OPENSUBS_CREDENTIALS`.
-- Live login re-test of the exact plugin flow returned HTTP 401
-  `"Error, invalid username/password ... this password was already tried in the
-  past 24 hours"` — i.e. the stored credentials are genuinely invalid at the
-  provider and the account is inside the ~24h soft-lock window.
-- No provider quota/search call was spent in the final verification run (the
-  invalid login was already proven; repeating it is quota-burning).
-- Verdict: `blocked_by_human_provider_credential`. This is a real account
-  condition, not a config/compatibility gap.
+- Search path works: `GET /Items/312b6d0fc5ff5cfe8827672a55901c82/RemoteSearch/Subtitles/eng`
+  returned HTTP 200 and 16 Open Subtitles results for `Pain & Gain`; the first
+  result was an English SRT hash match.
+- Download path is still blocked: `POST /Items/312b6d0fc5ff5cfe8827672a55901c82/RemoteSearch/Subtitles/<subtitleId>`
+  returned HTTP 204 to the client, but Jellyfin logged
+  `System.Security.Authentication.AuthenticationException: Unable to login`.
+- Post-download checks found no new/recent subtitle sidecar on disk and Jellyfin
+  item metadata still reported zero external subtitle streams for the tested item.
+- Verdict: `blocked_by_opensubtitles_account_authentication`. In-app search is
+  available; in-app download is blocked by the OpenSubtitles.com account/login
+  condition, not by Bazarr, media path permissions, or a missing Jellyfin plugin.
 
-## 7. Rollback notes
+## 7. Dashboard status
+
+The Home Dashboard media subtitle capability panel (from `t_6a4b4b24`) is the
+operator-facing status surface for this workflow. Read it as follows:
+
+- `degraded` / blocked Jellyfin in-app subtitle status means Jellyfin itself is
+  reachable but Open Subtitles download is not currently usable.
+- The panel should show Open Subtitles as the Jellyfin provider, include audit
+  freshness, and identify the next action as reconciling `OPENSUBS_CREDENTIALS`
+  / clearing `CredentialsInvalid`.
+- Bazarr should appear as healthy automation/backfill if it is still running; it
+  does not prove that the Jellyfin in-app manual path works.
+- Treat service reachability alone (`Jellyfin up`) as insufficient. The acceptance
+  signal is a successful Jellyfin-side subtitle search plus download that creates
+  a visible external subtitle track/sidecar.
+
+## 8. Rollback notes
 
 - No live mutation was performed across audit/implementation/review/verification:
   no Jellyfin restart, no config edit, no credential write, no media write/delete,
@@ -97,7 +119,7 @@ implementation `t_80176d97` / `t_c10673b9`, review `t_025902ee`, verification
   `/opt/jellyfin-config/data/plugins/configurations/Jellyfin.Plugin.OpenSubtitles.xml`
   (mode 0600) and restart only the `jellyfin` container if the plugin requires it.
 
-## 8. Remaining Ben action items (blocked on human)
+## 9. Remaining Ben action items (blocked on human)
 
 1. Log in at https://opensubtitles.com with the account in Vaultwarden
    `OPENSUBS_CREDENTIALS` (username "LimbicNode42").
@@ -110,15 +132,22 @@ implementation `t_80176d97` / `t_c10673b9`, review `t_025902ee`, verification
 6. In Jellyfin Admin Dashboard -> Plugins -> Open Subtitles, re-enter/save the
    reconciled username/password and run "Validate login" until
    `CredentialsInvalid` clears.
-7. Unblock the workflow; the downstream verification task will then run a real
-   Jellyfin-side subtitle search/download test using user `ben` against a Movies
-   or Shows item.
+7. Re-run Jellyfin-side verification: search should still return results, download
+   should complete without the `Unable to login` log error, and Jellyfin should
+   show the downloaded external subtitle track.
 
-## User workflow (after credentials are corrected)
+## 10. Ben user workflow
 
-1. Open Jellyfin.
-2. Open a movie or episode.
-3. Use the subtitle search/download action from the item's playback/details UI.
-4. Select an OpenSubtitles result and download it.
-5. Verify the item shows the new external subtitle track and, if saved beside
-   media, the sidecar file appears under the matching `/movies` or `/tv` path.
+Until the credential blocker is resolved, Ben can search but should expect download
+to fail. After credentials are corrected:
+
+1. Open Jellyfin as user `ben`.
+2. Open a movie or episode details page, or start playback and open subtitle
+   options.
+3. Use the subtitle search/download action. In Jellyfin API terms, this is the
+   `RemoteSearch/Subtitles/<language>` path using the Open Subtitles provider.
+4. Pick an Open Subtitles result, preferably a hash match / correct release, and
+   download it.
+5. Confirm Jellyfin shows the new external subtitle track. If `SaveSubtitlesWithMedia`
+   remains enabled, the subtitle should also exist as a sidecar file under the
+   matching `/movies` or `/tv` path.
