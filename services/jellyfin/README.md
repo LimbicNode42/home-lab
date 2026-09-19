@@ -110,7 +110,7 @@ Current blocker (root cause confirmed):
 - The account is currently soft-locked by rate limiting (OpenSubtitles rejects the password for ~24 h after repeated failed attempts). Ben should reconcile the account at https://opensubtitles.com, confirm it is a `.com` account (not `.org` — the plugin uses the `.com` API), and update Vaultwarden item `OPENSUBS_CREDENTIALS` (username/password) if needed.
 
 Evidence:
-- Vaultwarden `OPENSUBS_CREDENTIALS` has username (12 chars) and password (11 chars); SHA-256 prefixes match the values already stored in the plugin config xml (`d7a7e5bd` / `18fe20ab`), so Jellyfin is using exactly the same credentials as Vaultwarden.
+- Redacted local verification confirmed that Vaultwarden item `OPENSUBS_CREDENTIALS` has populated username/password fields matching the values already stored in the plugin config xml, so Jellyfin is using the same credential reference without Git storing account values or credential fingerprints.
 - `POST api.opensubtitles.com/api/v1/login` with `Api-Key` + `Content-Type` + a real UA returned 401 invalid username/password (rate-limited: `failed:10 remaining:0`).
 - Plugin v24.0.0.0 hardcodes a shared public consumer key in its source (`OpenSubtitlesPlugin.ApiKey`, sent as an `Api-Key` header on every request) — not a user secret and not something to store in Vaultwarden.
 

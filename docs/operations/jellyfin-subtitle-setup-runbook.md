@@ -37,10 +37,9 @@ implementation `t_80176d97` / `t_c10673b9`, dashboard `t_6a4b4b24`, review
   `/opt/jellyfin-config/data/plugins/configurations/Jellyfin.Plugin.OpenSubtitles.xml`
   (mode `0600`, owner/root only). This is standard Jellyfin plugin behavior.
 - A separate Vaultwarden item `OPENSUBS_API_KEY` exists but is a consumer/API
-  key (username "Jellyfin", 32-char password field), NOT account credentials.
-  The Jellyfin plugin cannot consume it (no field; it hardcodes its own consumer
-  key). It is not the fix for the in-app path; it may be usable by Bazarr or a
-  custom integration only.
+  key reference, NOT account credentials. The Jellyfin plugin cannot consume it
+  (no field; it hardcodes its own consumer key). It is not the fix for the
+  in-app path; it may be usable by Bazarr or a custom integration only.
 
 ## 3. Users who can manually search/download
 
@@ -78,10 +77,10 @@ Latest Jellyfin-side verification (`t_e48f28ac`, 2026-09-19) used Jellyfin user
 
 - Jellyfin service: running, HTTP 200 on `/System/Info/Public`, server id
   `d85ae9f6b5d34e779ed6f4f7cb1991ad`.
-- Open Subtitles plugin config: `CredentialsInvalid=true` with unchanged
-  credential fingerprints (username len 12 / sha256 prefix `d7a7e5bd`; password
-  len 11 / sha256 prefix `18fe20ab`) — identical to Vaultwarden
-  `OPENSUBS_CREDENTIALS`.
+- Open Subtitles plugin config: `CredentialsInvalid=true`. Redacted local
+  verification confirmed that the Jellyfin plugin credential fields were
+  populated from Vaultwarden item `OPENSUBS_CREDENTIALS`; Git stores only the
+  folder/item/field reference, not account values or credential fingerprints.
 - Search path works: `GET /Items/312b6d0fc5ff5cfe8827672a55901c82/RemoteSearch/Subtitles/eng`
   returned HTTP 200 and 16 Open Subtitles results for `Pain & Gain`; the first
   result was an English SRT hash match.
@@ -121,14 +120,16 @@ operator-facing status surface for this workflow. Read it as follows:
 
 ## 9. Remaining Ben action items (blocked on human)
 
-1. Log in at https://opensubtitles.com with the account in Vaultwarden
-   `OPENSUBS_CREDENTIALS` (username "LimbicNode42").
+1. Log in at https://opensubtitles.com with the account referenced by
+   Vaultwarden folder `homelab`, item `OPENSUBS_CREDENTIALS`, field `username`,
+   using the corresponding `password` field from that same item.
 2. Confirm it is an OpenSubtitles `.com` account, not legacy `.org`.
 3. If login fails, use "forgot password" to reset it and complete any
    email/captcha/account validation.
 4. Wait out the ~24h soft-lock if the provider still reports the password was
    "already tried in the past 24 hours".
-5. Update Vaultwarden `OPENSUBS_CREDENTIALS` if the password changed.
+5. Update Vaultwarden item `OPENSUBS_CREDENTIALS` if the username or password
+   changed.
 6. In Jellyfin Admin Dashboard -> Plugins -> Open Subtitles, re-enter/save the
    reconciled username/password and run "Validate login" until
    `CredentialsInvalid` clears.
