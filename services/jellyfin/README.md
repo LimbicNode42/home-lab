@@ -7,6 +7,7 @@ Source evidence:
 - Sanitized discovery artifact: `inventory/discovery/emperor-remaining-services-discovery-2026-05-23.json`
 - 2026-05-25 read-only/live troubleshooting: `docker inspect jellyfin` on `jester` showed image `lscr.io/linuxserver/jellyfin:latest`, published `8096/tcp`, config bind `/opt/jellyfin-config:/config`, and media binds `/mnt/pve/NAS/media/movies:/movies`, `/mnt/pve/NAS/media/tv:/tv`.
 - 2026-09-15 subtitle workflow discovery: active Jellyfin is still host Docker on `jester` (`192.168.0.8:8096`), running Jellyfin `10.11.8` with container image id `sha256:fcab6147f506cca38abea708a68a8b7eb35ac049f75fa05719cc675284e76aa8`. The Open Subtitles plugin is installed, Movies/Shows have `SaveSubtitlesWithMedia=true`, media binds are read-write, but the plugin config reports `CredentialsInvalid=true`.
+- 2026-09-19 Jellyfin-side subtitle verification: Open Subtitles search from Jellyfin returned 16 results for `Pain & Gain`, but download remained blocked by OpenSubtitles.com account authentication (`AuthenticationException: Unable to login`). Dashboard status intentionally remains blocked until credentials are reconciled and a Jellyfin-side download creates a subtitle track/sidecar. See `docs/operations/jellyfin-subtitle-setup-runbook.md`.
 
 Safety notes:
 - Candidate compose only; not applied by Hermes.

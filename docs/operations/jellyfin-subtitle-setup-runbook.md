@@ -10,8 +10,9 @@ Host: `jester` (192.168.0.8), host Docker container `jellyfin`.
 Jellyfin version: 10.11.8. Public port: 8096.
 
 Source tasks (point-in-time self-reports): audit `t_2f3ce20c` / `t_052ca1b5`,
-implementation `t_80176d97` / `t_c10673b9`, dashboard `t_6a4b4b24`, review
-`t_025902ee`, verification `t_e48f28ac`.
+implementation `t_80176d97` / `t_c10673b9`, dashboard `t_6a4b4b24` /
+`t_79d696e7`, review `t_025902ee`, verification `t_e48f28ac`, docs
+`t_140ff084` / `t_e8ab3939`.
 
 ## 1. Provider / plugin configured
 
@@ -93,23 +94,73 @@ Latest Jellyfin-side verification (`t_e48f28ac`, 2026-09-19) used Jellyfin user
   available; in-app download is blocked by the OpenSubtitles.com account/login
   condition, not by Bazarr, media path permissions, or a missing Jellyfin plugin.
 
-## 7. Dashboard status
+## 7. Dashboard status, links, and freshness
 
-The Home Dashboard media subtitle capability panel (from `t_6a4b4b24`) is the
-operator-facing status surface for this workflow. Read it as follows:
+The Home Dashboard media subtitle capability panel (latest update `t_79d696e7`,
+2026-09-19) is the operator-facing status surface for this workflow. Read it as
+follows:
 
-- `degraded` / blocked Jellyfin in-app subtitle status means Jellyfin itself is
-  reachable but Open Subtitles download is not currently usable.
-- The panel should show Open Subtitles as the Jellyfin provider, include audit
-  freshness, and identify the next action as reconciling `OPENSUBS_CREDENTIALS`
-  / clearing `CredentialsInvalid`.
-- Bazarr should appear as healthy automation/backfill if it is still running; it
-  does not prove that the Jellyfin in-app manual path works.
+- The panel status is `blocked`. This is intentional: Jellyfin itself is reachable
+  and in-app Open Subtitles search works, but in-app download is not currently
+  usable while OpenSubtitles.com account authentication fails.
+- The freshness label `Jellyfin-side verified 2026-09-19` means the displayed
+  state is based on a Jellyfin-native API search/download attempt, not on Bazarr
+  health alone. It should be updated after the next successful Jellyfin-side
+  download verification.
+- The provider card should show `Jellyfin Open Subtitles plugin` with state
+  `credentials_invalid`. That points at the OpenSubtitles.com account login, not
+  at a missing user API-key field.
+- The automation card should show Bazarr as `healthy_separate_workflow`. Bazarr
+  remains useful, but it does not prove that Jellyfin's manual in-app workflow is
+  working.
+- Dashboard links are convenience links only: `Open Jellyfin subtitle workflow`
+  opens `http://192.168.0.8:8096`, and `Open Bazarr automation` opens
+  `http://192.168.0.8:6767`. They do not embed credentials, tokens, or API keys.
 - Treat service reachability alone (`Jellyfin up`) as insufficient. The acceptance
   signal is a successful Jellyfin-side subtitle search plus download that creates
   a visible external subtitle track/sidecar.
 
-## 8. Rollback notes
+## 8. Troubleshooting
+
+### Provider/account failures
+
+- If search returns results but download silently appears to succeed, inspect
+  Jellyfin logs for Open Subtitles login/authentication errors. The 2026-09-19
+  verification returned HTTP 204 to the client while Jellyfin logged
+  `AuthenticationException: Unable to login`, and no sidecar/metadata track was
+  created.
+- Confirm the account at https://opensubtitles.com. The plugin uses the `.com`
+  API, not legacy `.org` credentials.
+- Do not try to fix Jellyfin by adding an `OPENSUBS_API_KEY` value to the plugin.
+  Plugin v24 has username/password fields only and hardcodes its own shared
+  consumer key.
+- If repeated bad logins caused provider rate limiting or soft-locking, stop
+  automated retries, wait out the provider window, reconcile Vaultwarden item
+  `OPENSUBS_CREDENTIALS`, then save/validate the credentials in Jellyfin.
+
+### Jellyfin/user permissions
+
+- Test as Jellyfin user `ben` unless a later run documents another approved user.
+  The observed user has the required preference/subtitle selection permissions.
+- If another user cannot search/download, compare that user's subtitle and media
+  permissions with `ben`; do not assume a provider outage before checking user
+  policy.
+
+### Media path writeability
+
+- A successful download should create an external subtitle track and, with the
+  current library settings, a sidecar file under the matching `/movies` or `/tv`
+  path.
+- If provider auth is valid but no sidecar appears, verify container write access
+  from inside the `jellyfin` container to `/movies` and `/tv`, then compare host
+  NAS path health with container bind-mount health. After NAS outages, Jellyfin
+  can hold stale NFS bind handles even when the host path is healthy.
+- Do not delete media, recreate Jellyfin volumes, or migrate users as a first
+  response. If stale bind handles are confirmed, restart only the affected
+  `jellyfin` container after explicit approval and verify HTTP readiness plus
+  sidecar/metadata behavior.
+
+## 9. Rollback notes
 
 - No live mutation was performed across audit/implementation/review/verification:
   no Jellyfin restart, no config edit, no credential write, no media write/delete,
@@ -118,7 +169,7 @@ operator-facing status surface for this workflow. Read it as follows:
   `/opt/jellyfin-config/data/plugins/configurations/Jellyfin.Plugin.OpenSubtitles.xml`
   (mode 0600) and restart only the `jellyfin` container if the plugin requires it.
 
-## 9. Remaining Ben action items (blocked on human)
+## 10. Remaining Ben action items (blocked on human)
 
 1. Log in at https://opensubtitles.com with the account referenced by
    Vaultwarden folder `homelab`, item `OPENSUBS_CREDENTIALS`, field `username`,
@@ -137,12 +188,13 @@ operator-facing status surface for this workflow. Read it as follows:
    should complete without the `Unable to login` log error, and Jellyfin should
    show the downloaded external subtitle track.
 
-## 10. Ben user workflow
+## 11. Ben user workflow
 
 Until the credential blocker is resolved, Ben can search but should expect download
 to fail. After credentials are corrected:
 
-1. Open Jellyfin as user `ben`.
+1. Open Jellyfin as user `ben` (`http://192.168.0.8:8096` from the LAN, or the
+   normal Jellyfin hostname if Ben is using the reverse-proxy route).
 2. Open a movie or episode details page, or start playback and open subtitle
    options.
 3. Use the subtitle search/download action. In Jellyfin API terms, this is the
@@ -152,3 +204,6 @@ to fail. After credentials are corrected:
 5. Confirm Jellyfin shows the new external subtitle track. If `SaveSubtitlesWithMedia`
    remains enabled, the subtitle should also exist as a sidecar file under the
    matching `/movies` or `/tv` path.
+6. If download fails after the account is fixed, check the dashboard freshness
+   label before trusting its status; stale dashboard text means the workflow needs
+   a fresh Jellyfin-side verification run.
