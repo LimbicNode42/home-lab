@@ -7,6 +7,13 @@
         { "label": "Vaultwarden", "href": "https://vault.wheeler-network.com" },
         { "label": "Traefik", "href": "https://traefik.wheeler-network.com" }
       ]
+    },
+    {
+      "title": "Operational runbooks",
+      "links": [
+        { "label": "Mem0 service runbook", "href": "/api/docs/mem0-service-runbook" },
+        { "label": "Mem0 Hermes rollout / rollback", "href": "/api/docs/mem0-hermes-rollout" }
+      ]
     }
   ],
   "statusChecks": [
@@ -15,6 +22,19 @@
       "label": "Vaultwarden",
       "targetUrl": "http://192.168.0.50:8084/alive",
       "displayUrl": "https://vault.wheeler-network.com"
+    },
+    {
+      "id": "mem0-api",
+      "label": "Mem0 API (local-only)",
+      "targetUrl": "http://127.0.0.1:8888/openapi.json"
+    },
+    {
+      "id": "mem0-backup",
+      "label": "Mem0 backup freshness",
+      "type": "backupFreshness",
+      "backupDir": "/mnt/pve/NAS/backups/mem0",
+      "manifestFile": "MANIFEST.txt",
+      "maxAgeHours": 36
     }
   ]
 }

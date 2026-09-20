@@ -24,6 +24,12 @@ function isHttpUrl(value) {
   }
 }
 
+function isSafeLinkUrl(value) {
+  if (typeof value !== 'string') return false;
+  if (value.startsWith('/') && !value.startsWith('//') && !value.includes('\0')) return true;
+  return isHttpUrl(value);
+}
+
 function requireText(value, field) {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new Error(`Invalid dashboard config: ${field} is required`);
@@ -45,8 +51,8 @@ function validateSections(sections) {
     const links = section.links.map((link, linkIndex) => {
       const label = requireText(link?.label, `sections[${sectionIndex}].links[${linkIndex}].label`);
       const href = requireText(link?.href, `sections[${sectionIndex}].links[${linkIndex}].href`);
-      if (!isHttpUrl(href)) {
-        throw new Error(`Invalid link href for ${label}: only http(s) URLs are allowed`);
+      if (!isSafeLinkUrl(href)) {
+        throw new Error(`Invalid link href for ${label}: only http(s) or same-origin URLs are allowed`);
       }
       return { label, href };
     });
@@ -66,12 +72,36 @@ function validateStatusChecks(statusChecks) {
       throw new Error(`Invalid dashboard config: statusChecks[${index}].id must be DNS-label-like`);
     }
     const label = requireText(check?.label, `statusChecks[${index}].label`);
-    const targetUrl = requireText(check?.targetUrl, `statusChecks[${index}].targetUrl`);
-    if (!isHttpUrl(targetUrl)) {
-      throw new Error(`Invalid status targetUrl for ${label}: only http(s) URLs are allowed`);
+    const type = check?.type === undefined ? 'http' : requireText(check.type, `statusChecks[${index}].type`);
+
+    const result = { id, label };
+    if (type === 'http') {
+      const targetUrl = requireText(check?.targetUrl, `statusChecks[${index}].targetUrl`);
+      if (!isHttpUrl(targetUrl)) {
+        throw new Error(`Invalid status targetUrl for ${label}: only http(s) URLs are allowed`);
+      }
+      result.targetUrl = targetUrl;
+    } else if (type === 'backupFreshness') {
+      const backupDir = requireText(check?.backupDir, `statusChecks[${index}].backupDir`);
+      if (!backupDir.startsWith('/')) {
+        throw new Error(`Invalid backupDir for ${label}: absolute paths are required`);
+      }
+      result.type = type;
+      result.backupDir = backupDir;
+      if (check.manifestFile !== undefined) {
+        result.manifestFile = requireText(check.manifestFile, `statusChecks[${index}].manifestFile`);
+      }
+      if (check.maxAgeHours !== undefined) {
+        const maxAgeHours = Number(check.maxAgeHours);
+        if (!Number.isFinite(maxAgeHours) || maxAgeHours <= 0 || maxAgeHours > 24 * 30) {
+          throw new Error(`Invalid maxAgeHours for ${label}: expected a positive number up to 720`);
+        }
+        result.maxAgeHours = maxAgeHours;
+      }
+    } else {
+      throw new Error(`Invalid dashboard config: unsupported statusChecks[${index}].type`);
     }
 
-    const result = { id, label, targetUrl };
     if (check.displayUrl !== undefined) {
       const displayUrl = requireText(check.displayUrl, `statusChecks[${index}].displayUrl`);
       if (!isHttpUrl(displayUrl)) {

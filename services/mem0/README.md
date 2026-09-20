@@ -16,6 +16,8 @@ Status: **live** — deployed 2026-09-19, running healthy on tori.
 
 - API: `http://127.0.0.1:8888` (localhost-only, no WAN/LAN exposure)
 - OpenAPI docs: `http://127.0.0.1:8888/docs`
+- OpenAPI schema / dashboard liveness probe: `http://127.0.0.1:8888/openapi.json`
+- Health endpoint reality: `/health` is not implemented and returns `404`; use `/openapi.json` for HTTP liveness until a real health route exists.
 - Postgres: internal Docker network only (no host port published)
 
 ## Data paths (local primary storage)
@@ -80,11 +82,30 @@ Folder: `Homelab`, item `mem0/server`. Fields:
 ## Backup
 
 - Script: `scripts/services/mem0-backup.sh` (application-consistent `pg_dumpall` + history SQLite).
-- Schedule: systemd timer `mem0-backup.timer`, daily 03:30, persistent.
+- Schedule: systemd timer `mem0-backup.timer`, daily 03:30 AEST, persistent.
+- Timer state verified 2026-09-20: enabled and active/waiting. Last observed run completed successfully at 2026-09-20 03:30:53 AEST with exit status 0.
 - Target: `/mnt/pve/NAS/backups/mem0/<timestamp>/`.
+- Latest observed completed manifest: `/mnt/pve/NAS/backups/mem0/20260919T173001Z/MANIFEST.txt`.
+- Freshness SLO for dashboard status: newest completed `MANIFEST.txt` under the backup target should be no older than 36 hours.
 - Retention: 14 days (configurable via `RETENTION_DAYS`).
 - Restore: `scripts/services/mem0-restore-test.sh` (non-destructive, throwaway container).
 
+Operator checks:
+
+```bash
+systemctl status mem0-backup.timer --no-pager
+systemctl show mem0-backup.timer -p UnitFileState -p ActiveState -p SubState -p LastTriggerUSec -p NextElapseUSecRealtime --no-pager
+journalctl -u mem0-backup.service -n 40 --no-pager
+```
+
+## Operational visibility
+
+The personal dashboard config includes:
+
+- `Mem0 API (local-only)`: server-side HTTP probe of `http://127.0.0.1:8888/openapi.json`. The UI shows a safe local-only label rather than a browser link.
+- `Mem0 backup freshness`: server-side newest-manifest freshness check under the NAS backup target, with only age/timestamp/status returned to the browser.
+- Knowledge → Documentation links to this runbook and `../../docs/memory/mem0-hermes-integration.md` for rollout/rollback state.
+
 ## Hermes integration
 
-See `../../docs/memory/mem0-hermes-integration.md` for how default and worker profiles point at this instance, required env vars, rollout order, and rollback.
+See `../../docs/memory/mem0-hermes-integration.md` for the final active default/worker profile state, required env vars, smoke-test procedure, and exact rollback commands.

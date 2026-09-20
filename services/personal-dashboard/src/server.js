@@ -100,7 +100,9 @@ const DEFAULT_DOCS_MANIFEST = [
   { id: 'investment-screener-historical-pipeline', title: 'ASX Screener Historical Pipeline Architecture', category: 'Investment Screener', path: 'services/personal-dashboard/docs/products/investment-screener/historical-pipeline-architecture.md' },
   { id: 'investment-screener-operations-limitations', title: 'Investment Screener Operations and Limitations', category: 'Investment Screener', path: 'services/personal-dashboard/docs/products/investment-screener/operations-limitations.md' },
   { id: 'service-catalog', title: 'Service Catalog', category: 'Operations', path: 'docs/service-catalog.md' },
-  { id: 'backup-coverage', title: 'Backup Coverage Matrix', category: 'Operations', path: 'docs/backup-coverage-matrix.md' }
+  { id: 'backup-coverage', title: 'Backup Coverage Matrix', category: 'Operations', path: 'docs/backup-coverage-matrix.md' },
+  { id: 'mem0-service-runbook', title: 'Mem0 Service Runbook', category: 'Operations', path: 'services/mem0/README.md' },
+  { id: 'mem0-hermes-rollout', title: 'Mem0 Hermes Rollout State and Rollback', category: 'Operations', path: 'docs/memory/mem0-hermes-integration.md' }
 ];
 const DEFAULT_EPIC_DOCS_INDEX = resolve(__dirname, '..', 'docs', 'epics', 'index.json');
 const DOC_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;

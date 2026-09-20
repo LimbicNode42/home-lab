@@ -1,4 +1,18 @@
+import { readdir, stat } from 'node:fs/promises';
+import { join } from 'node:path';
+
 const DEFAULT_TIMEOUT_MS = 2500;
+const DEFAULT_BACKUP_MANIFEST = 'MANIFEST.txt';
+
+function hoursBetween(now, then) {
+  return Math.round(((now - then) / 3_600_000) * 10) / 10;
+}
+
+function formatAgeHours(ageHours) {
+  if (!Number.isFinite(ageHours)) return 'unknown age';
+  if (ageHours < 1) return `${Math.round(ageHours * 60)} minutes ago`;
+  return `${ageHours} hours ago`;
+}
 
 export class StatusService {
   constructor({ checks = [], ttlMs = 30_000, timeoutMs = DEFAULT_TIMEOUT_MS, fetchImpl = globalThis.fetch } = {}) {
@@ -25,6 +39,71 @@ export class StatusService {
   }
 
   async probe(check) {
+    if (check.type === 'backupFreshness') {
+      return this.probeBackupFreshness(check);
+    }
+    return this.probeHttp(check);
+  }
+
+  async probeBackupFreshness(check) {
+    const started = Date.now();
+    const manifestName = check.manifestFile ?? DEFAULT_BACKUP_MANIFEST;
+    try {
+      const entries = await readdir(check.backupDir, { withFileTypes: true });
+      let newest = null;
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        try {
+          const info = await stat(join(check.backupDir, entry.name, manifestName));
+          if (!info.isFile()) continue;
+          if (!newest || info.mtimeMs > newest.mtimeMs) {
+            newest = { name: entry.name, mtimeMs: info.mtimeMs, mtime: info.mtime };
+          }
+        } catch {
+          // Ignore incomplete backup directories; a manifest marks a finished run.
+        }
+      }
+
+      if (!newest) {
+        return {
+          id: check.id,
+          label: check.label,
+          status: 'down',
+          error: 'backup_not_found',
+          message: 'No completed backup manifest found',
+          latencyMs: Date.now() - started,
+          ...(check.displayUrl ? { displayUrl: check.displayUrl } : {})
+        };
+      }
+
+      const ageHours = hoursBetween(Date.now(), newest.mtimeMs);
+      const maxAgeHours = Number(check.maxAgeHours ?? 36);
+      const fresh = Number.isFinite(ageHours) && ageHours <= maxAgeHours;
+      return {
+        id: check.id,
+        label: check.label,
+        status: fresh ? 'up' : 'down',
+        latencyMs: Date.now() - started,
+        updatedAt: newest.mtime.toISOString(),
+        ageHours,
+        message: `latest backup manifest ${formatAgeHours(ageHours)}`,
+        ...(fresh ? {} : { error: 'backup_stale' }),
+        ...(check.displayUrl ? { displayUrl: check.displayUrl } : {})
+      };
+    } catch {
+      return {
+        id: check.id,
+        label: check.label,
+        status: 'down',
+        error: 'backup_unavailable',
+        message: 'Backup directory is unavailable',
+        latencyMs: Date.now() - started,
+        ...(check.displayUrl ? { displayUrl: check.displayUrl } : {})
+      };
+    }
+  }
+
+  async probeHttp(check) {
     const started = Date.now();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);

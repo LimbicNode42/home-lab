@@ -167,10 +167,15 @@ function renderStatus(payload) {
 
   for (const check of payload.checks) {
     const badge = el('span', { className: `badge ${check.status}`, text: check.status });
+    const detailParts = [
+      check.message ?? check.httpStatus ?? check.error ?? 'no response',
+      check.updatedAt ? `updated ${formatDateTime(check.updatedAt)}` : null,
+      `${check.latencyMs}ms`
+    ].filter(Boolean);
     const body = [
       el('div', { className: 'status-title', text: check.label }),
       badge,
-      el('p', { className: 'muted', text: `${check.httpStatus ?? check.error ?? 'no response'} · ${check.latencyMs}ms` })
+      el('p', { className: 'muted', text: detailParts.join(' · ') })
     ];
     if (check.displayUrl) {
       body.push(el('a', { href: check.displayUrl, text: 'Open', rel: 'noreferrer noopener' }));

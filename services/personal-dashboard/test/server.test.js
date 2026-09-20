@@ -1751,3 +1751,44 @@ writeFileSync(${JSON.stringify(argsPath)}, JSON.stringify(process.argv.slice(2))
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+
+test('GET /api/status reports backup freshness without exposing filesystem paths', async () => {
+  const backupRoot = await mkdtemp(join(tmpdir(), 'mem0-backup-status-'));
+  const backupDir = join(backupRoot, '20260919T173001Z');
+  await mkdir(backupDir, { recursive: true });
+  await writeFile(join(backupDir, 'MANIFEST.txt'), 'fixture manifest', 'utf8');
+  const configPath = await writeConfig({
+    title: 'Home Dashboard',
+    sections: [],
+    statusChecks: [
+      {
+        id: 'mem0-backup',
+        label: 'Mem0 backup freshness',
+        type: 'backupFreshness',
+        backupDir: backupRoot,
+        manifestFile: 'MANIFEST.txt',
+        maxAgeHours: 36
+      }
+    ]
+  });
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, statusCacheTtlMs: 1000 });
+  const server = await listen(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/status`);
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+
+    assert.equal(response.status, 200);
+    assert.equal(body.checks[0].id, 'mem0-backup');
+    assert.equal(body.checks[0].status, 'up');
+    assert.ok(body.checks[0].message.includes('latest backup manifest'));
+    assert.ok(body.checks[0].updatedAt);
+    assert.equal(serialized.includes(backupRoot), false);
+    assert.equal(serialized.includes('20260919T173001Z'), false);
+  } finally {
+    await server.close();
+    await rm(backupRoot, { recursive: true, force: true });
+  }
+});

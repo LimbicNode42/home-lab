@@ -63,3 +63,41 @@ test('toPublicConfig never exposes server-side probe target URLs', async () => {
   ]);
   assert.equal(JSON.stringify(publicConfig).includes('vaultwarden.internal'), false);
 });
+
+
+test('loadConfig accepts same-origin dashboard doc links', async () => {
+  const path = await writeConfig({
+    title: 'Home Dashboard',
+    sections: [{ title: 'Runbooks', links: [{ label: 'Mem0 Runbook', href: '/api/docs/mem0-service-runbook' }] }],
+    statusChecks: []
+  });
+
+  const config = await loadConfig({ configPath: path });
+
+  assert.equal(config.sections[0].links[0].href, '/api/docs/mem0-service-runbook');
+});
+
+test('toPublicConfig never exposes backup freshness filesystem paths', async () => {
+  const path = await writeConfig({
+    title: 'Home Dashboard',
+    sections: [],
+    statusChecks: [
+      {
+        id: 'mem0-backup',
+        label: 'Mem0 backup freshness',
+        type: 'backupFreshness',
+        backupDir: '/mnt/pve/NAS/backups/mem0',
+        manifestFile: 'MANIFEST.txt',
+        maxAgeHours: 36
+      }
+    ]
+  });
+
+  const config = await loadConfig({ configPath: path });
+  const publicConfig = toPublicConfig(config);
+
+  assert.deepEqual(publicConfig.statusChecks, [
+    { id: 'mem0-backup', label: 'Mem0 backup freshness' }
+  ]);
+  assert.equal(JSON.stringify(publicConfig).includes('/mnt/pve/NAS'), false);
+});
