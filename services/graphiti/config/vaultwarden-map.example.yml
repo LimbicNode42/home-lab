@@ -1,0 +1,33 @@
+# Non-secret render map. Values live in Ben's personal Vaultwarden vault.
+vaultwarden:
+  server: http://192.168.0.50:8084
+  folder: homelab
+
+items:
+  graphiti/openrouter:
+    fields:
+      api_key: OPENROUTER_API_KEY
+      base_url: OPENROUTER_BASE_URL
+      completion_model: GRAPHITI_COMPLETION_MODEL
+      rerank_model: GRAPHITI_RERANK_MODEL
+      embedding_model: GRAPHITI_EMBEDDING_MODEL
+      embedding_dim: GRAPHITI_EMBEDDING_DIM
+  graphiti/neo4j:
+    fields:
+      username: NEO4J_USER
+      password: NEO4J_PASSWORD
+      uri: NEO4J_URI
+      browser_url: NEO4J_BROWSER_URL
+  graphiti/service-auth:
+    status: reserved-for-later-read-only-wrapper
+    fields:
+      api_token: GRAPHITI_READONLY_WRAPPER_TOKEN
+
+rendering_rules:
+  destination: /opt/graphiti/.env
+  mode: "0600"
+  owner: root
+  never_commit:
+    - OPENROUTER_API_KEY
+    - NEO4J_PASSWORD
+    - GRAPHITI_READONLY_WRAPPER_TOKEN
