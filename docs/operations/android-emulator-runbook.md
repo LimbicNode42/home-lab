@@ -32,6 +32,10 @@ already builds the Flutter app on, uses the same SDK, and persists userdata acro
 restarts with no Proxmox guest to babysit. If Ben later wants multi-tenant or
 isolated Android surfaces, redroid is the documented fall-forward.
 
+BlueStacks was rejected for this case: it is a Windows/Mac consumer app player
+(gamer-oriented, no clean Linux/server/on-prem hosting story), so the self-hosted
+AVD path above is the chosen shape.
+
 ## Connect procedure
 
 1. Preferred: open the Home Dashboard Overview tile and use `/mobile-viewer/`.
@@ -73,7 +77,7 @@ adb is ever required, it must be token/auth-gated and LAN-only.
 
 ## Start / stop / restart
 
-All four components are systemd services on `tori`, enabled at boot:
+The primary stack is systemd-managed on `tori`, enabled at boot:
 
 | Unit | Role |
 |---|---|
@@ -81,13 +85,16 @@ All four components are systemd services on `tori`, enabled at boot:
 | `android-emulator.service` | The emulator process (agent_feedback AVD) |
 | `android-vnc.service` | x11vnc on `127.0.0.1:5900` (localhost only) |
 | `android-novnc.service` | websockify noVNC on `0.0.0.0:6080`, token-gated |
+| `android-control.service` | Token-gated bounded controls plus `/session` lease API |
+| `android-dashboard-status.timer` | Publishes sanitized runtime/session status to the Home Dashboard |
 
-```
-sudo systemctl status android-emulator android-xvfb android-vnc android-novnc
+```bash
+sudo systemctl status android-emulator android-xvfb android-vnc android-novnc android-control android-dashboard-status.timer
 
 sudo systemctl stop android-novnc    # brings web ingress down
-sudo systemctl stop android-vnc android-emulator android-xvfb   # full stop, reverse order
-sudo systemctl start android-xvfb android-emulator android-vnc android-novnc
+sudo systemctl stop android-control android-vnc android-emulator android-xvfb   # full stop, reverse order
+sudo systemctl start android-xvfb android-emulator android-vnc android-novnc android-control
+sudo systemctl start android-dashboard-status.timer
 ```
 
 `android-emulator.service` runs with `-no-snapshot-load`, so every start reflects
@@ -95,6 +102,48 @@ the last clean shutdown's persisted userdata (AVD is stored under
 `/root/.android/avd/agent_feedback.avd/`). Graceful shutdown (`adb -s emulator-5554
 emu kill` or `systemctl stop`) persists state; a hard node reboot re-launches
 cleanly via the enabled units.
+
+
+## Session / lease coordination
+
+The shared `agent_feedback` AVD is now coordinated by a small lease file so Ben and
+agents do not drive the same mutable Android session at the same time.
+
+- Lease file on `tori`: `/opt/android-emulator/run/session-lock.json`
+- CLI helper: `/opt/android-emulator/scripts/mobile-session.py`
+- Control API: `GET /session`, `POST /session/acquire`, `POST /session/release`
+- Mutating `POST /control` requires a session owner. If no active lease exists, the
+  control bridge creates/renews a short lease for that owner; if another active
+  owner holds the lease, it returns `409 session_conflict` and does not send ADB input.
+- `GET /screenshot` stays read-only and available to authenticated callers.
+- The Home Dashboard mobile-workflow status includes the sanitized lease owner,
+  purpose, expiry, status-cache timestamp, runtime boot state, and device matrix state.
+
+Common lease commands on `tori`:
+
+```bash
+cd /opt/android-emulator
+
+# Inspect current lease without touching the emulator.
+./scripts/mobile-session.py status
+
+# Agent/operator claims the shared AVD before mutating it.
+./scripts/mobile-session.py acquire   --owner "agent:${HERMES_KANBAN_TASK:-manual}"   --purpose "interactive verification"   --ttl 1800
+
+# Run a command while holding the lease; the helper releases it on exit.
+./scripts/mobile-session.py run   --owner "agent:${HERMES_KANBAN_TASK:-manual}"   --purpose "bounded adb workflow"   --ttl 1800   -- adb -s emulator-5554 shell input keyevent KEYCODE_HOME
+
+# Release your own lease when done.
+./scripts/mobile-session.py release --owner "agent:${HERMES_KANBAN_TASK:-manual}"
+
+# Ben/admin can take over a stale or agent-held lease deliberately.
+./scripts/mobile-session.py acquire --owner ben --purpose "manual dashboard review" --override
+```
+
+Dashboard controls use the owner `ben-dashboard` and a short TTL. Agents should use
+an `agent:<task-id>` owner and should release in a `trap`/`finally` cleanup. If an
+agent needs unsupervised mutation without blocking Ben, use a per-agent Redroid
+profile instead of the shared AVD.
 
 ## Persistence / reboot survival
 
@@ -104,6 +153,87 @@ cleanly via the enabled units.
 - Logs: `/opt/android-emulator/logs/`.
 - All four units are `enabled` (WantedBy=multi-user.target), verified
   `systemctl is-enabled` = enabled on 2026-09-05.
+
+## Upgrade
+
+The emulator toolchain lives under `/opt/android-sdk` on `tori`; the AVD runs
+Android 16 (API 36) from system image `system-images;android-36;google_apis;x86_64`.
+Upgrades are manual and not yet automated. Stop the stack first, then bump the
+component you need:
+
+```bash
+# On tori, as root. Stop the stack before touching the SDK/AVD.
+sudo systemctl stop android-novnc android-vnc android-emulator android-xvfb
+
+# 1) SDK / emulator toolchain (sdkmanager is under /opt/android-sdk/cmdline-tools/latest/bin)
+/opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --update
+/opt/android-sdk/cmdline-tools/latest/bin/sdkmanager "emulator" "platform-tools"
+
+# 2) New system image (only if bumping the Android release / API level)
+/opt/android-sdk/cmdline-tools/latest/bin/sdkmanager "system-images;android-<API>;google_apis;x86_64"
+# then create a new AVD against it (avdmanager) and point android-emulator.service at it
+
+# 3) Installed app (com.limbicnode.unified_inbox_mobile)
+adb -s emulator-5554 install -r /path/to/unified_inbox_mobile.apk
+
+sudo systemctl start android-xvfb android-emulator android-vnc android-novnc
+```
+
+Notes:
+
+- Bumping the system image / API level is a new-AVD operation, not an in-place
+  upgrade: create the AVD with `avdmanager`, then update `AVD_NAME` in
+  `services/android-emulator/scripts/start-emulator.sh` and the `-avd` argument in
+  `services/android-emulator/systemd/android-emulator.service`. The existing
+  `agent_feedback` userdata does not carry across an API-level change.
+- The app is a Flutter build; rebuild the APK from the unified-inbox mobile source
+  and `adb install -r` over the existing package to preserve app data.
+- After any upgrade, re-run the post-deploy verification checklist below.
+
+## Backup / restore
+
+**Current state: there is no scheduled backup of the AVD userdata.** The AVD lives
+at `/root/.android/avd/agent_feedback.avd/` on `tori` (~2.7 GiB) and survives
+reboots, but it is not copied to the NAS. A recurring NAS backup still requires
+Ben's explicit approval (it is on the approval list from the research card) — do
+not schedule one without it.
+
+Manual backup (graceful stop, then copy the AVD dir to the NAS). `tori` mounts the
+NAS export at `/mnt/pve/NAS` (not `/mnt/nas`):
+
+```bash
+# On tori, as root.
+# 1) Graceful stop so userdata is flushed to a clean state.
+adb -s emulator-5554 emu kill          # or: sudo systemctl stop android-emulator
+sudo systemctl stop android-novnc android-vnc android-xvfb
+
+# 2) Snapshot the AVD dir to the NAS (tar preserves sparse/permissions).
+mkdir -p /mnt/pve/NAS/backups/android-emulator
+tar -czf "/mnt/pve/NAS/backups/android-emulator/agent_feedback-$(date +%Y%m%d-%H%M%S).tar.gz" \
+  -C /root/.android/avd agent_feedback.avd
+
+# 3) Bring the stack back up.
+sudo systemctl start android-xvfb android-emulator android-vnc android-novnc
+```
+
+Restore (reverse the copy, then start):
+
+```bash
+# On tori, as root. Stop the stack first (see above).
+sudo systemctl stop android-novnc android-vnc android-emulator android-xvfb
+tar -xzf /mnt/pve/NAS/backups/android-emulator/agent_feedback-<timestamp>.tar.gz \
+  -C /root/.android/avd
+sudo systemctl start android-xvfb android-emulator android-vnc android-novnc
+```
+
+Notes:
+
+- The AVD dir is the only durable state worth backing up; scripts, systemd units,
+  and `matrix.json` are already in Git under `services/android-emulator/`.
+- Do not run the emulator with live userdata on the NAS/NFS mount — keep active
+  state on `tori` local block storage and back it up to the NAS, not the reverse.
+- A NAS->NAS backup of this path is not a concern here (the AVD is host-local on
+  `tori`), but a scheduled job must still be approved before it is created.
 
 ## Post-deploy verification checklist
 
@@ -172,6 +302,42 @@ and surfaced in the Home Dashboard mobile-workflow status (`matrix` +
 - `large` / `tablet`: AVDs created and config-validated, but **not boot-verified**
   — deferred due the 4 vCPU / ~7.7 GiB single-emulator capacity wall. They boot
   one-at-a-time via the same manager script when capacity allows.
+
+
+## Per-agent Redroid fallback
+
+Use Redroid when an agent needs isolated persistent Android state and should not
+hold the shared `agent_feedback` lease. ADB remains loopback-only and each profile
+gets its own `/data` bind mount.
+
+```bash
+# On tori, as root. Pick a unique profile + unused 56xx loopback ADB port.
+PROFILE="agent-${HERMES_KANBAN_TASK:-manual}"
+PORT=5566
+DATA="/opt/android-redroid/profiles/$PROFILE/data"
+mkdir -p "$DATA"
+
+docker run -d --name "redroid-$PROFILE" --privileged --security-opt label=disable   --restart unless-stopped   -v "$DATA:/data"   -p "127.0.0.1:$PORT:5555"   redroid/redroid:14.0.0-latest   androidboot.redroid_width=720 androidboot.redroid_height=1280 androidboot.redroid_dpi=320
+
+/opt/android-sdk/platform-tools/adb connect "127.0.0.1:$PORT"
+/opt/android-sdk/platform-tools/adb -s "127.0.0.1:$PORT" shell getprop sys.boot_completed
+```
+
+Stop without deleting state:
+
+```bash
+docker stop "redroid-$PROFILE"
+```
+
+Remove the container but keep Android data:
+
+```bash
+docker rm -f "redroid-$PROFILE"
+# State remains in /opt/android-redroid/profiles/$PROFILE/data
+```
+
+Destroying `/opt/android-redroid/profiles/$PROFILE/data` deletes that profile's
+Android state and requires explicit approval.
 
 ## Open items / follow-ups
 

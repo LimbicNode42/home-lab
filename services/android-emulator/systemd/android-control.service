@@ -14,13 +14,15 @@ Environment=ANDROID_DEVICE_ID=emulator-5554
 Environment=ANDROID_CONTROL_TIMEOUT=20
 Environment=ANDROID_SCREENSHOT_ATTEMPTS=3
 Environment=ANDROID_SCREENSHOT_BACKOFF=0.75
+Environment=ANDROID_SESSION_LOCK_FILE=/opt/android-emulator/run/session-lock.json
+Environment=ANDROID_SESSION_DEFAULT_TTL_SECONDS=900
 ExecStart=/usr/bin/python3 /opt/android-emulator/scripts/control-server.py
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=/root/.android /tmp /opt/android-emulator/logs
+ReadWritePaths=/root/.android /tmp /opt/android-emulator/logs /opt/android-emulator/run
 
 [Install]
 WantedBy=multi-user.target

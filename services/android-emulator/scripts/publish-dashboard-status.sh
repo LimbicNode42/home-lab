@@ -12,6 +12,7 @@ DEVICE=${MOBILE_WORKFLOW_ADB_DEVICE:-emulator-5554}
 LOCAL_OUT=${LOCAL_OUT:-/opt/android-emulator/run/status.json}
 MATRIX_ACTIVE=${MATRIX_ACTIVE:-/opt/android-emulator/run/matrix-active.json}
 DEV_LOOP=${DEV_LOOP:-/opt/android-emulator/run/dev-loop.json}
+SESSION_LOCK=${SESSION_LOCK:-/opt/android-emulator/run/session-lock.json}
 REMOTE=${REMOTE:-root@192.168.0.50:/mnt/nas/services/personal-dashboard/mobile-workflow/status.json}
 REMOTE_RUNTIME=${REMOTE_RUNTIME:-root@192.168.0.50:/var/lib/personal-dashboard/runtime-cache/mobile-workflow/status.json}
 TMP="${LOCAL_OUT}.tmp.$$"
@@ -41,10 +42,10 @@ else
   detail="adb binary is unavailable on the dashboard status publisher host."
 fi
 
-python3 - "$TMP" "$state" "$adb_device_id" "$boot_completed" "$detail" "$MATRIX_ACTIVE" "$DEV_LOOP" <<'PY'
+python3 - "$TMP" "$state" "$adb_device_id" "$boot_completed" "$detail" "$MATRIX_ACTIVE" "$DEV_LOOP" "$SESSION_LOCK" <<'PY'
 import json, sys, os
 from datetime import datetime, timezone
-out, state, device, boot, detail, matrix_active, dev_loop_file = sys.argv[1:]
+out, state, device, boot, detail, matrix_active, dev_loop_file, session_lock = sys.argv[1:]
 matrix = None
 if os.path.exists(matrix_active):
     try:
@@ -74,6 +75,26 @@ if os.path.exists(dev_loop_file):
         }
     except (ValueError, OSError):
         dev_loop = None
+session = {"active": False, "device": device or None}
+if os.path.exists(session_lock):
+    try:
+        with open(session_lock, encoding="utf-8") as fh:
+            raw = json.load(fh)
+        expires = raw.get("expiresAt")
+        expires_dt = datetime.fromisoformat(expires.replace("Z", "+00:00")) if isinstance(expires, str) else None
+        active = bool(raw.get("owner")) and expires_dt is not None and expires_dt > datetime.now(timezone.utc)
+        session = {
+            "active": active,
+            "expired": bool(raw.get("owner")) and not active,
+            "owner": raw.get("owner"),
+            "purpose": raw.get("purpose"),
+            "device": raw.get("device") or device or None,
+            "createdAt": raw.get("createdAt"),
+            "updatedAt": raw.get("updatedAt"),
+            "expiresAt": raw.get("expiresAt"),
+        }
+    except (ValueError, OSError):
+        session = {"active": False, "device": device or None, "error": "unreadable_lock"}
 payload = {
     "generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
     "runtime": {
@@ -84,6 +105,7 @@ payload = {
     },
     "matrix": matrix,
     "devLoop": dev_loop,
+    "session": session,
     "lastSuccessfulCycleAt": "2026-09-05T03:00:00Z",
 }
 with open(out, "w", encoding="utf-8") as fh:

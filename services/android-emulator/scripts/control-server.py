@@ -12,6 +12,7 @@ import re
 import subprocess
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -25,12 +26,139 @@ SCREENSHOT_ATTEMPTS = int(os.environ.get("ANDROID_SCREENSHOT_ATTEMPTS", "3"))
 SCREENSHOT_BACKOFF = float(os.environ.get("ANDROID_SCREENSHOT_BACKOFF", "0.75"))
 TEXT_RE = re.compile(r"^[A-Za-z0-9 .,@:_+\-/]+$")
 SCREENSHOT_LOCK = threading.Lock()
+SESSION_LOCK_FILE = Path(os.environ.get("ANDROID_SESSION_LOCK_FILE", "/opt/android-emulator/run/session-lock.json"))
+SESSION_DEFAULT_TTL_SECONDS = int(os.environ.get("ANDROID_SESSION_DEFAULT_TTL_SECONDS", "900"))
+SESSION_MAX_TTL_SECONDS = int(os.environ.get("ANDROID_SESSION_MAX_TTL_SECONDS", "7200"))
+OWNER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@-]{1,79}$")
+PURPOSE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .,@:_+\-/]{0,159}$")
 ROTATIONS = {
     "portrait": "0",
     "landscape": "1",
     "reverse-portrait": "2",
     "reverse-landscape": "3",
 }
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def iso(dt: datetime) -> str:
+    return dt.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def parse_iso(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def clean_owner(value: object) -> str:
+    owner = str(value or "").strip()
+    if not OWNER_RE.fullmatch(owner):
+        raise ValueError("session owner must match [A-Za-z0-9][A-Za-z0-9._:@-]{1,79}")
+    return owner
+
+
+def clean_purpose(value: object, fallback: str = "mobile emulator session") -> str:
+    purpose = str(value or fallback).strip()[:160]
+    if not PURPOSE_RE.fullmatch(purpose):
+        raise ValueError("session purpose contains unsupported characters")
+    return purpose
+
+
+def clean_ttl(value: object) -> int:
+    try:
+        ttl = int(value) if value is not None else SESSION_DEFAULT_TTL_SECONDS
+    except (TypeError, ValueError):
+        raise ValueError("ttlSeconds must be an integer")
+    if ttl < 60 or ttl > SESSION_MAX_TTL_SECONDS:
+        raise ValueError(f"ttlSeconds must be between 60 and {SESSION_MAX_TTL_SECONDS}")
+    return ttl
+
+
+def session_state() -> dict[str, object]:
+    now = utc_now()
+    try:
+        raw = json.loads(SESSION_LOCK_FILE.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {"active": False, "device": DEVICE, "lockFile": str(SESSION_LOCK_FILE), "checkedAt": iso(now)}
+    except (OSError, ValueError):
+        return {"active": False, "device": DEVICE, "lockFile": str(SESSION_LOCK_FILE), "checkedAt": iso(now), "error": "unreadable_lock"}
+    expires = parse_iso(raw.get("expiresAt"))
+    active = bool(raw.get("owner")) and expires is not None and expires > now
+    state = {
+        "active": active,
+        "owner": raw.get("owner") if isinstance(raw.get("owner"), str) else None,
+        "purpose": raw.get("purpose") if isinstance(raw.get("purpose"), str) else None,
+        "device": raw.get("device") or DEVICE,
+        "createdAt": raw.get("createdAt"),
+        "updatedAt": raw.get("updatedAt"),
+        "expiresAt": raw.get("expiresAt"),
+        "checkedAt": iso(now),
+    }
+    if not active and raw.get("owner"):
+        state["expired"] = True
+    return state
+
+
+def write_session(owner: str, purpose: str, ttl_seconds: int, existing: dict[str, object] | None = None) -> dict[str, object]:
+    now = utc_now()
+    SESSION_LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "owner": owner,
+        "purpose": purpose,
+        "device": DEVICE,
+        "createdAt": existing.get("createdAt") if existing and existing.get("owner") == owner and existing.get("createdAt") else iso(now),
+        "updatedAt": iso(now),
+        "expiresAt": iso(now + timedelta(seconds=ttl_seconds)),
+        "ttlSeconds": ttl_seconds,
+    }
+    tmp = SESSION_LOCK_FILE.with_suffix(f".tmp.{os.getpid()}")
+    tmp.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(tmp, SESSION_LOCK_FILE)
+    return session_state()
+
+
+class SessionConflict(RuntimeError):
+    pass
+
+
+def acquire_session(payload: dict, *, auto: bool = False) -> dict[str, object]:
+    owner = clean_owner(payload.get("owner") or payload.get("sessionOwner"))
+    purpose = clean_purpose(payload.get("purpose"), "dashboard mobile control" if auto else "mobile emulator session")
+    ttl = clean_ttl(payload.get("ttlSeconds"))
+    override = bool(payload.get("override"))
+    current = session_state()
+    if current.get("active") and current.get("owner") != owner and not override:
+        raise SessionConflict(f"emulator is leased by {current.get('owner')} until {current.get('expiresAt')}")
+    return write_session(owner, purpose, ttl, current)
+
+
+def release_session(payload: dict) -> dict[str, object]:
+    owner = clean_owner(payload.get("owner") or payload.get("sessionOwner"))
+    force = bool(payload.get("force"))
+    current = session_state()
+    if current.get("active") and current.get("owner") != owner and not force:
+        raise SessionConflict(f"emulator is leased by {current.get('owner')} until {current.get('expiresAt')}")
+    try:
+        SESSION_LOCK_FILE.unlink()
+    except FileNotFoundError:
+        pass
+    return session_state()
+
+
+def ensure_control_session(payload: dict) -> dict[str, object]:
+    owner = clean_owner(payload.get("sessionOwner") or payload.get("owner"))
+    current = session_state()
+    if current.get("active") and current.get("owner") != owner:
+        raise SessionConflict(f"emulator is leased by {current.get('owner')} until {current.get('expiresAt')}")
+    if not current.get("active") or current.get("owner") == owner:
+        return acquire_session({"owner": owner, "purpose": payload.get("purpose", "dashboard mobile control"), "ttlSeconds": payload.get("ttlSeconds", SESSION_DEFAULT_TTL_SECONDS)}, auto=True)
+    return current
 
 
 def read_token() -> str:
@@ -175,6 +303,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self.authorized():
             return self.send_json(401, {"error": "unauthorized"})
+        if self.path == "/session":
+            return self.send_json(200, {"session": session_state(), "health": device_health()})
         if self.path != "/screenshot":
             return self.send_json(404, {"error": "not_found"})
         try:
@@ -195,8 +325,6 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self.authorized():
             return self.send_json(401, {"error": "unauthorized"})
-        if self.path != "/control":
-            return self.send_json(404, {"error": "not_found"})
         try:
             length = int(self.headers.get("content-length", "0"))
             if length < 1 or length > 2048:
@@ -204,7 +332,18 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
             if not isinstance(payload, dict):
                 raise ValueError("request body must be a JSON object")
-            self.send_json(200, handle_control(payload))
+            if self.path == "/session/acquire":
+                return self.send_json(200, {"session": acquire_session(payload)})
+            if self.path == "/session/release":
+                return self.send_json(200, {"session": release_session(payload)})
+            if self.path != "/control":
+                return self.send_json(404, {"error": "not_found"})
+            session = ensure_control_session(payload)
+            result = handle_control(payload)
+            result["session"] = session
+            self.send_json(200, result)
+        except SessionConflict as exc:
+            self.send_json(409, {"error": "session_conflict", "message": str(exc), "session": session_state()})
         except ValueError as exc:
             self.send_json(400, {"error": "invalid_control_payload", "message": str(exc)})
         except Exception as exc:

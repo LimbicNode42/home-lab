@@ -164,6 +164,7 @@ test('GET /api/mobile-workflow/status returns sanitized cached runtime state', a
   await writeFile(statusFile, JSON.stringify({
     generatedAt: '2026-09-01T06:30:00.000Z',
     runtime: { state: 'running', adbDeviceId: 'emulator-5554', bootCompleted: true, detail: 'adb reports device and sys.boot_completed=1' },
+    session: { active: true, owner: 'agent:t_fd9355fa', purpose: 'run smoke test', device: 'emulator-5554', createdAt: '2026-09-01T06:25:00.000Z', updatedAt: '2026-09-01T06:30:00.000Z', expiresAt: '2026-09-01T07:00:00.000Z' },
     lastSuccessfulCycleAt: '2026-09-01T03:00:00.000Z'
   }), 'utf8');
   const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, mobileWorkflowStatusFile: statusFile });
@@ -180,6 +181,9 @@ test('GET /api/mobile-workflow/status returns sanitized cached runtime state', a
     assert.equal(body.runtime.adbDeviceId, 'emulator-5554');
     assert.equal(body.runtime.bootCompleted, true);
     assert.equal(body.lastSuccessfulCycleAt, '2026-09-01T03:00:00.000Z');
+    assert.equal(body.session.active, true);
+    assert.equal(body.session.owner, 'agent:t_fd9355fa');
+    assert.equal(body.session.expiresAt, '2026-09-01T07:00:00.000Z');
     assert.equal(serialized.includes(statusFile), false);
     assert.equal(serialized.includes('/tmp/'), false);
   } finally {
@@ -359,6 +363,7 @@ test('app.js renders mobile runtime, adb device, last successful cycle, and view
   assert.match(appSource, /function renderMobileWorkflowOverview\(status/);
   assert.match(appSource, /Runtime:/);
   assert.match(appSource, /ADB device:/);
+  assert.match(appSource, /Session lease:/);
   assert.match(appSource, /Last successful headless cycle:/);
   assert.match(appSource, /Open reviewed emulator viewer/);
   assert.match(appSource, /\/api\/mobile-workflow\/status/);
@@ -425,6 +430,7 @@ test('POST /api/mobile-workflow/control sends bounded adb tap/type/rotate comman
     assert.equal(tap.status, 200);
     assert.equal(type.status, 200);
     assert.equal(rotate.status, 200);
+    assert.equal(commands[0].action, 'tap');
     assert.deepEqual(commands[0].args, ['shell', 'input', 'tap', '12', '34']);
     assert.deepEqual(commands[1].args, ['shell', 'input', 'text', 'hello%sworld']);
     assert.match(commands[2].shellCommand, /user_rotation 1/);

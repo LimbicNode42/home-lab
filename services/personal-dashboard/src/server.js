@@ -3309,6 +3309,27 @@ async function readMetaMcpStatus({ config, statusFile, statusService, staleAfter
   }
 }
 
+function sanitizeMobileSession(rawSession) {
+  if (!rawSession || typeof rawSession !== 'object' || Array.isArray(rawSession)) {
+    return { active: false, owner: null, purpose: null, device: null, createdAt: null, updatedAt: null, expiresAt: null, expired: false };
+  }
+  const owner = sanitizeMobileText(rawSession.owner, null);
+  const safeOwner = owner && /^[A-Za-z0-9][A-Za-z0-9._:@-]{1,79}$/.test(owner) ? owner : null;
+  const device = sanitizeMobileText(rawSession.device, null);
+  const safeDevice = device && (/^emulator-[0-9]{4,5}$/.test(device) || /^[A-Za-z0-9._:-]{3,64}$/.test(device)) ? device : null;
+  return {
+    active: rawSession.active === true,
+    expired: rawSession.expired === true,
+    owner: safeOwner,
+    purpose: sanitizeMobileText(rawSession.purpose, null),
+    device: safeDevice,
+    createdAt: sanitizeIsoTimestamp(rawSession.createdAt),
+    updatedAt: sanitizeIsoTimestamp(rawSession.updatedAt),
+    expiresAt: sanitizeIsoTimestamp(rawSession.expiresAt),
+    error: sanitizeMobileText(rawSession.error, null)
+  };
+}
+
 function sanitizeMobileMatrix(rawMatrix) {
   if (!rawMatrix || typeof rawMatrix !== 'object' || Array.isArray(rawMatrix)) return null;
   const activeProfileId = sanitizeMobileText(rawMatrix.activeProfileId, null);
@@ -3338,6 +3359,7 @@ function mobileWorkflowPayload({ config, statusFilePayload = null, cacheStatus, 
 
   const runtime = sanitizeMobileRuntime(statusFilePayload?.runtime, config.runtime ?? {});
   const matrix = sanitizeMobileMatrix(statusFilePayload?.matrix);
+  const session = sanitizeMobileSession(statusFilePayload?.session);
   const generatedAt = sanitizeIsoTimestamp(statusFilePayload?.generatedAt) ?? (fileMtimeMs ? new Date(fileMtimeMs).toISOString() : null);
   return {
     enabled: true,
@@ -3346,6 +3368,7 @@ function mobileWorkflowPayload({ config, statusFilePayload = null, cacheStatus, 
     components: config.components,
     runtime,
     matrix,
+    session,
     deviceMatrix: config.deviceMatrix,
     lastSuccessfulCycleAt: sanitizeIsoTimestamp(statusFilePayload?.lastSuccessfulCycleAt) ?? config.lastSuccessfulCycleAt ?? null,
     viewer: config.viewer,

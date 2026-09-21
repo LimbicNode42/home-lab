@@ -426,7 +426,7 @@ function mobileWorkflowBadgeClass(state) {
 
 
 async function sendMobileControl(action, payload = {}) {
-  return postJson('/api/mobile-workflow/control', { action, ...payload });
+  return postJson('/api/mobile-workflow/control', { action, sessionOwner: 'ben-dashboard', purpose: 'dashboard mobile control', ttlSeconds: 900, ...payload });
 }
 
 function refreshMobileScreenshot(img) {
@@ -512,14 +512,18 @@ function renderMobileWorkflowOverview(status, config = mobileWorkflowConfig) {
     ]))
     : [el('p', { className: 'muted', text: 'No mobile toolchain component status has been published yet.' })];
 
+  const session = payload.session || {};
+  const sessionState = session.active ? `leased by ${session.owner || 'unknown'} until ${session.expiresAt || 'unknown'}` : (session.expired ? `expired lease from ${session.owner || 'unknown'}` : 'available');
   const runtimeLines = [
     `Host: ${payload.host || 'unknown'}`,
     `Runtime: ${runtime.state || 'unknown'}`,
     `ADB device: ${runtime.adbDeviceId || 'none attached'}`,
     `Boot completed: ${runtime.bootCompleted ? 'yes' : 'no'}`,
+    `Session lease: ${sessionState}`,
+    session.purpose ? `Lease purpose: ${session.purpose}` : null,
     `Last successful headless cycle: ${payload.lastSuccessfulCycleAt || 'not published yet'}`,
     `Status cache: ${payload.cacheStatus || 'static config'}`
-  ];
+  ].filter(Boolean);
   if (payload.generatedAt) runtimeLines.push(`Cache generated: ${payload.generatedAt}`);
 
   const matrix = payload.matrix || null;
