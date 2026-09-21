@@ -429,12 +429,16 @@ async function sendMobileControl(action, payload = {}) {
   return postJson('/api/mobile-workflow/control', { action, sessionOwner: 'ben-dashboard', purpose: 'dashboard mobile control', ttlSeconds: 900, ...payload });
 }
 
+async function setMobileDashboardSession(action, payload = {}) {
+  return postJson('/api/mobile-workflow/session', { action, ttlSeconds: 900, ...payload });
+}
+
 function refreshMobileScreenshot(img) {
   img.src = `/api/mobile-workflow/screenshot?t=${Date.now()}`;
 }
 
-function buildMobileControlPanel() {
-  const message = el('p', { className: 'muted mobile-control-message', text: 'Authenticated controls send bounded ADB input through the dashboard server; ADB is not exposed to the browser or LAN.' });
+function buildMobileControlPanel(hasDashboardLease = false) {
+  const message = el('p', { className: 'muted mobile-control-message', text: 'Opening the interactive viewer or using controls reserves the shared emulator as ben-dashboard; close the viewer tab or wait for the TTL to release it. ADB is not exposed to the browser or LAN.' });
   const screenshot = el('img', { className: 'mobile-screenshot', alt: 'Latest Android emulator screenshot' });
   const setMessage = (text, isError = false) => {
     message.textContent = text;
@@ -460,6 +464,7 @@ function buildMobileControlPanel() {
     el('option', { value: 'reverse-portrait', text: 'Reverse portrait' }),
     el('option', { value: 'reverse-landscape', text: 'Reverse landscape' })
   ]);
+  const controlButton = (label, onclick) => el('button', { type: 'button', text: label, disabled: !hasDashboardLease, onclick });
 
   refreshMobileScreenshot(screenshot);
 
@@ -469,21 +474,21 @@ function buildMobileControlPanel() {
     el('div', { className: 'mobile-control-row' }, [
       tapX,
       tapY,
-      el('button', { type: 'button', text: 'Tap', onclick: () => run('tap', { x: Number(tapX.value), y: Number(tapY.value) }) })
+      controlButton('Tap', () => run('tap', { x: Number(tapX.value), y: Number(tapY.value) }))
     ]),
     el('div', { className: 'mobile-control-row' }, [
-      el('button', { type: 'button', text: 'Swipe up', onclick: () => run('swipe', { x1: 540, y1: 1500, x2: 540, y2: 420, durationMs: 450 }) }),
-      el('button', { type: 'button', text: 'Swipe down', onclick: () => run('swipe', { x1: 540, y1: 420, x2: 540, y2: 1500, durationMs: 450 }) }),
-      el('button', { type: 'button', text: 'Back', onclick: () => run('back') }),
-      el('button', { type: 'button', text: 'Home', onclick: () => run('home') })
+      controlButton('Swipe up', () => run('swipe', { x1: 540, y1: 1500, x2: 540, y2: 420, durationMs: 450 })),
+      controlButton('Swipe down', () => run('swipe', { x1: 540, y1: 420, x2: 540, y2: 1500, durationMs: 450 })),
+      controlButton('Back', () => run('back')),
+      controlButton('Home', () => run('home'))
     ]),
     el('div', { className: 'mobile-control-row' }, [
       typeInput,
-      el('button', { type: 'button', text: 'Type', onclick: () => run('type', { text: typeInput.value }) })
+      controlButton('Type', () => run('type', { text: typeInput.value }))
     ]),
     el('div', { className: 'mobile-control-row' }, [
       rotateSelect,
-      el('button', { type: 'button', text: 'Rotate', onclick: () => run('rotate', { rotation: rotateSelect.value }) }),
+      controlButton('Rotate', () => run('rotate', { rotation: rotateSelect.value })),
       el('button', { type: 'button', text: 'Refresh screenshot/stream', onclick: () => {
         refreshMobileScreenshot(screenshot);
         setMessage('Screenshot refreshed. If the noVNC stream looks stale, reload the viewer tab.');
@@ -491,6 +496,56 @@ function buildMobileControlPanel() {
     ]),
     screenshot
   ]);
+}
+
+
+function buildMobileSessionPanel(session, viewer = {}) {
+  const ownsLease = session?.active && session.owner === 'ben-dashboard';
+  const busy = session?.active && session.owner && session.owner !== 'ben-dashboard';
+  const detail = ownsLease
+    ? `Dashboard holds lease until ${session.expiresAt || 'unknown'}. Keep this tab honest: release when done.`
+    : (busy
+      ? `Busy: ${session.owner} holds lease until ${session.expiresAt || 'unknown'}. Take over only if that work is stale or intentionally preempted.`
+      : 'No active dashboard lease. Acquire before opening or driving the interactive noVNC stream.');
+  const message = el('p', { className: busy ? 'error mobile-control-message' : 'muted mobile-control-message', text: detail });
+  const setMessage = (text, isError = false) => {
+    message.textContent = text;
+    message.className = isError ? 'error mobile-control-message' : 'muted mobile-control-message';
+  };
+  const act = async (action, payload = {}) => {
+    try {
+      setMessage(`${action} lease…`);
+      await setMobileDashboardSession(action, payload);
+      await refreshMobileWorkflowStatus();
+    } catch (error) {
+      setMessage(`${action} failed: ${error.message}`, true);
+    }
+  };
+  const children = [
+    el('h4', { text: 'Interactive session lease' }),
+    message,
+    el('div', { className: 'mobile-control-row' }, [
+      el('button', { type: 'button', text: ownsLease ? 'Renew dashboard lease' : 'Acquire dashboard lease', onclick: () => act('acquire') }),
+      el('button', { type: 'button', text: 'Release dashboard lease', disabled: !ownsLease, onclick: () => act('release') }),
+      el('button', { type: 'button', text: 'Take over lease', disabled: !busy, onclick: () => act('acquire', { override: true }) })
+    ])
+  ];
+  if (viewer.href) {
+    children.push(el('button', {
+      type: 'button',
+      text: 'Acquire lease and open viewer',
+      onclick: async () => {
+        try {
+          await setMobileDashboardSession('acquire');
+          window.open(viewer.href, '_blank', 'noopener,noreferrer');
+          await refreshMobileWorkflowStatus();
+        } catch (error) {
+          setMessage(`open viewer failed: ${error.message}`, true);
+        }
+      }
+    }));
+  }
+  return el('div', { className: 'mobile-session-panel' }, children);
 }
 
 function renderMobileWorkflowOverview(status, config = mobileWorkflowConfig) {
@@ -557,14 +612,16 @@ function renderMobileWorkflowOverview(status, config = mobileWorkflowConfig) {
   }
 
   const viewer = payload.viewer || {};
+  const ownsDashboardLease = session.active && session.owner === 'ben-dashboard';
   const viewerChildren = [
     el('h3', { text: viewer.label || 'Emulator viewer' }),
     el('p', { className: 'muted', text: viewer.instruction || 'No reviewed emulator viewing surface is configured yet.' })
   ];
   if (viewer.href) {
-    viewerChildren.push(el('a', { href: viewer.href, text: viewer.mode === 'authenticated_interactive' ? 'Open interactive emulator viewer' : 'Open reviewed emulator viewer', rel: 'noreferrer noopener' }));
+    viewerChildren.push(buildMobileSessionPanel(session, viewer));
+    viewerChildren.push(el('a', { href: viewer.href, text: ownsDashboardLease ? (viewer.mode === 'authenticated_interactive' ? 'Open interactive emulator viewer' : 'Open reviewed emulator viewer') : 'Viewer locked until dashboard lease is acquired', rel: 'noreferrer noopener', onclick: (event) => { if (!ownsDashboardLease) event.preventDefault(); } }));
     if (viewer.mode === 'authenticated_interactive') {
-      viewerChildren.push(buildMobileControlPanel());
+      viewerChildren.push(buildMobileControlPanel(ownsDashboardLease));
     }
   } else {
     viewerChildren.push(el('p', { className: 'error', text: 'No safe direct emulator viewer link is configured yet.' }));

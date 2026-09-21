@@ -140,10 +140,7 @@ cd /opt/android-emulator
 ./scripts/mobile-session.py acquire --owner ben --purpose "manual dashboard review" --override
 ```
 
-Dashboard controls use the owner `ben-dashboard` and a short TTL. Agents should use
-an `agent:<task-id>` owner and should release in a `trap`/`finally` cleanup. If an
-agent needs unsupervised mutation without blocking Ben, use a per-agent Redroid
-profile instead of the shared AVD.
+Dashboard controls and the `/mobile-viewer/` WebSocket use the owner `ben-dashboard` and a short TTL. Opening the interactive noVNC viewer reserves the shared AVD before the browser stream is proxied; if another active owner holds the lease, the dashboard viewer/control request is rejected instead of racing the other session. Agents should use an `agent:<task-id>` owner and should release in a `trap`/`finally` cleanup. If an agent needs unsupervised mutation without blocking Ben, use a per-agent Redroid profile instead of the shared AVD.
 
 ## Persistence / reboot survival
 

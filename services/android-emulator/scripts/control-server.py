@@ -250,33 +250,47 @@ def capture_screenshot() -> tuple[bytes, dict]:
         raise RuntimeError(f"screencap failed after {attempts} attempts") from last_exc
 
 
-def handle_control(payload: dict) -> dict:
+def validate_control_payload(payload: dict) -> dict[str, object]:
+    """Validate a mutating control request before it can acquire a lease."""
     action = str(payload.get("action", "")).strip().lower()
     if action == "tap":
-        adb("shell", "input", "tap", str(bounded_int(payload.get("x"), "x", 0, 5000)), str(bounded_int(payload.get("y"), "y", 0, 5000)))
-    elif action == "swipe":
-        adb(
-            "shell", "input", "swipe",
-            str(bounded_int(payload.get("x1"), "x1", 0, 5000)),
-            str(bounded_int(payload.get("y1"), "y1", 0, 5000)),
-            str(bounded_int(payload.get("x2"), "x2", 0, 5000)),
-            str(bounded_int(payload.get("y2"), "y2", 0, 5000)),
-            str(bounded_int(payload.get("durationMs", 300), "durationMs", 50, 5000)),
-        )
-    elif action == "type":
-        adb("shell", "input", "text", safe_text(payload.get("text")))
-    elif action == "back":
-        adb("shell", "input", "keyevent", "KEYCODE_BACK")
-    elif action == "home":
-        adb("shell", "input", "keyevent", "KEYCODE_HOME")
-    elif action == "rotate":
+        return {
+            "action": action,
+            "args": ["shell", "input", "tap", str(bounded_int(payload.get("x"), "x", 0, 5000)), str(bounded_int(payload.get("y"), "y", 0, 5000))],
+        }
+    if action == "swipe":
+        return {
+            "action": action,
+            "args": [
+                "shell", "input", "swipe",
+                str(bounded_int(payload.get("x1"), "x1", 0, 5000)),
+                str(bounded_int(payload.get("y1"), "y1", 0, 5000)),
+                str(bounded_int(payload.get("x2"), "x2", 0, 5000)),
+                str(bounded_int(payload.get("y2"), "y2", 0, 5000)),
+                str(bounded_int(payload.get("durationMs", 300), "durationMs", 50, 5000)),
+            ],
+        }
+    if action == "type":
+        return {"action": action, "args": ["shell", "input", "text", safe_text(payload.get("text"))]}
+    if action == "back":
+        return {"action": action, "args": ["shell", "input", "keyevent", "KEYCODE_BACK"]}
+    if action == "home":
+        return {"action": action, "args": ["shell", "input", "keyevent", "KEYCODE_HOME"]}
+    if action == "rotate":
         rotation = str(payload.get("rotation", "")).strip().lower()
         if rotation not in ROTATIONS:
             raise ValueError("rotation must be portrait, landscape, reverse-portrait, or reverse-landscape")
+        return {"action": action, "rotation": ROTATIONS[rotation]}
+    raise ValueError("unsupported mobile control action")
+
+
+def handle_control(command: dict[str, object]) -> dict:
+    action = str(command["action"])
+    if action == "rotate":
         adb("shell", "settings", "put", "system", "accelerometer_rotation", "0")
-        adb("shell", "settings", "put", "system", "user_rotation", ROTATIONS[rotation])
+        adb("shell", "settings", "put", "system", "user_rotation", str(command["rotation"]))
     else:
-        raise ValueError("unsupported mobile control action")
+        adb(*command["args"])
     return {"ok": True, "action": action, "deviceId": DEVICE}
 
 
@@ -338,8 +352,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200, {"session": release_session(payload)})
             if self.path != "/control":
                 return self.send_json(404, {"error": "not_found"})
+            command = validate_control_payload(payload)
+            before_session = session_state()
             session = ensure_control_session(payload)
-            result = handle_control(payload)
+            try:
+                result = handle_control(command)
+            except Exception:
+                if not before_session.get("active") and session.get("owner"):
+                    try:
+                        release_session({"owner": session.get("owner"), "force": True})
+                    except Exception as cleanup_exc:
+                        print(f"control_session_cleanup_failed: {type(cleanup_exc).__name__}: {cleanup_exc}", flush=True)
+                raise
             result["session"] = session
             self.send_json(200, result)
         except SessionConflict as exc:

@@ -365,8 +365,12 @@ test('app.js renders mobile runtime, adb device, last successful cycle, and view
   assert.match(appSource, /ADB device:/);
   assert.match(appSource, /Session lease:/);
   assert.match(appSource, /Last successful headless cycle:/);
-  assert.match(appSource, /Open reviewed emulator viewer/);
+  assert.match(appSource, /Open reviewed emulator viewer|Viewer locked until dashboard lease is acquired/);
+  assert.match(appSource, /Acquire dashboard lease/);
+  assert.match(appSource, /ben-dashboard/);
+  assert.match(appSource, /function buildMobileControlPanel\(hasDashboardLease = false\)/);
   assert.match(appSource, /\/api\/mobile-workflow\/status/);
+  assert.match(appSource, /\/api\/mobile-workflow\/session/);
 });
 
 test('styles.css defines mobile workflow overview grid/card styling', () => {
@@ -434,6 +438,75 @@ test('POST /api/mobile-workflow/control sends bounded adb tap/type/rotate comman
     assert.deepEqual(commands[0].args, ['shell', 'input', 'tap', '12', '34']);
     assert.deepEqual(commands[1].args, ['shell', 'input', 'text', 'hello%sworld']);
     assert.match(commands[2].shellCommand, /user_rotation 1/);
+  } finally {
+    await server.close();
+  }
+});
+
+
+test('POST /api/mobile-workflow/session acquires and releases ben-dashboard lease through runner', async () => {
+  const configPath = await writeConfig(mobileWorkflowConfig);
+  const calls = [];
+  let active = false;
+  const app = await createApp({
+    configPath,
+    authMode: 'reverse-proxy',
+    proxyUserHeader: 'x-forwarded-user',
+    mobileWorkflowStatusFile: null,
+    mobileSessionRunner: async ({ action, body }) => {
+      calls.push({ action, body });
+      if (action === 'status') return { session: { active, owner: active ? 'ben-dashboard' : null } };
+      if (action === 'acquire') {
+        active = true;
+        return { session: { active: true, owner: body.owner, purpose: body.purpose, expiresAt: '2026-09-01T07:00:00.000Z' } };
+      }
+      if (action === 'release') {
+        active = false;
+        return { session: { active: false } };
+      }
+      throw new Error('unexpected action');
+    }
+  });
+  const server = await listen(app);
+
+  try {
+    const headers = { 'x-forwarded-user': 'ben', 'content-type': 'application/json' };
+    const acquire = await fetch(`${server.baseUrl}/api/mobile-workflow/session`, { method: 'POST', headers, body: JSON.stringify({ action: 'acquire' }) });
+    const acquired = await acquire.json();
+    const release = await fetch(`${server.baseUrl}/api/mobile-workflow/session`, { method: 'POST', headers, body: JSON.stringify({ action: 'release' }) });
+    const released = await release.json();
+
+    assert.equal(acquire.status, 200);
+    assert.equal(acquired.session.owner, 'ben-dashboard');
+    assert.equal(calls[0].action, 'acquire');
+    assert.equal(calls[0].body.owner, 'ben-dashboard');
+    assert.equal(release.status, 200);
+    assert.equal(released.session.active, false);
+    assert.equal(calls[1].action, 'release');
+  } finally {
+    await server.close();
+  }
+});
+
+test('GET /api/mobile-workflow/session requires dashboard auth', async () => {
+  const configPath = await writeConfig(mobileWorkflowConfig);
+  const app = await createApp({
+    configPath,
+    authMode: 'reverse-proxy',
+    proxyUserHeader: 'x-forwarded-user',
+    mobileWorkflowStatusFile: null,
+    mobileSessionRunner: async () => ({ session: { active: false } })
+  });
+  const server = await listen(app);
+
+  try {
+    const unauthorized = await fetch(`${server.baseUrl}/api/mobile-workflow/session`);
+    const authorized = await fetch(`${server.baseUrl}/api/mobile-workflow/session`, { headers: { 'x-forwarded-user': 'ben' } });
+    const body = await authorized.json();
+
+    assert.equal(unauthorized.status, 401);
+    assert.equal(authorized.status, 200);
+    assert.equal(body.session.active, false);
   } finally {
     await server.close();
   }

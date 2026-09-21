@@ -123,7 +123,57 @@ function proxyMobileViewerHttp(request, response, { authMode, proxyUserHeader, u
   request.pipe(upstreamRequest);
 }
 
-function handleMobileViewerUpgrade(request, socket, head, { authMode, proxyUserHeader, upstreamUrl, token }) {
+
+async function requestMobileSession(pathname, body, { upstreamUrl, token, timeoutMs }) {
+  if (!upstreamUrl || !token) {
+    const error = new Error('Mobile control upstream is not configured');
+    error.statusCode = 503;
+    error.code = 'mobile_control_not_configured';
+    throw error;
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs ?? 5000);
+  try {
+    const response = await fetch(new URL(pathname, upstreamUrl), {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(payload.message || 'Mobile session upstream rejected request');
+      error.statusCode = response.status >= 400 && response.status < 500 ? response.status : 502;
+      error.code = payload.error || 'mobile_session_failed';
+      throw error;
+    }
+    return payload;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function acquireDashboardMobileLease(config) {
+  return requestMobileSession('/session/acquire', {
+    owner: 'ben-dashboard',
+    purpose: 'dashboard interactive noVNC session',
+    ttlSeconds: 900
+  }, config);
+}
+
+async function releaseDashboardMobileLease(config) {
+  try {
+    await requestMobileSession('/session/release', { owner: 'ben-dashboard' }, config);
+  } catch {
+    // Closing the browser stream should never wedge the proxy. The TTL is the backstop.
+  }
+}
+
+async function handleMobileViewerUpgrade(request, socket, head, { authMode, proxyUserHeader, upstreamUrl, token, mobileControlConfig }) {
   if (!isAuthorized(request, { authMode, proxyUserHeader })) {
     socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
     socket.destroy();
@@ -141,6 +191,16 @@ function handleMobileViewerUpgrade(request, socket, head, { authMode, proxyUserH
     socket.destroy();
     return;
   }
+
+  try {
+    await acquireDashboardMobileLease(mobileControlConfig ?? { upstreamUrl, token, timeoutMs: 5000 });
+  } catch (error) {
+    const statusCode = error.statusCode === 409 ? 409 : 503;
+    socket.write(`HTTP/1.1 ${statusCode} Mobile viewer lease unavailable\r\nConnection: close\r\n\r\n`);
+    socket.destroy();
+    return;
+  }
+
 
   const upstream = new URL(`/websockify?token=${encodeURIComponent(token)}`, upstreamUrl);
   const upgradeHeaders = {
@@ -160,6 +220,9 @@ function handleMobileViewerUpgrade(request, socket, head, { authMode, proxyUserH
   });
 
   upstreamRequest.on('upgrade', (upstreamResponse, upstreamSocket, upstreamHead) => {
+    const releaseLease = () => releaseDashboardMobileLease(mobileControlConfig ?? { upstreamUrl, token, timeoutMs: 5000 });
+    socket.once('close', releaseLease);
+    upstreamSocket.once('close', releaseLease);
     socket.write('HTTP/1.1 101 Switching Protocols\r\n');
     for (const [key, value] of Object.entries(upstreamResponse.headers)) {
       if (Array.isArray(value)) {
@@ -175,11 +238,13 @@ function handleMobileViewerUpgrade(request, socket, head, { authMode, proxyUserH
     socket.pipe(upstreamSocket);
   });
   upstreamRequest.on('response', (upstreamResponse) => {
+    releaseDashboardMobileLease(mobileControlConfig ?? { upstreamUrl, token, timeoutMs: 5000 });
     socket.write(`HTTP/1.1 ${upstreamResponse.statusCode ?? 502} Upstream rejected upgrade\r\nConnection: close\r\n\r\n`);
     socket.destroy();
     upstreamResponse.resume();
   });
   upstreamRequest.on('error', () => {
+    releaseDashboardMobileLease(mobileControlConfig ?? { upstreamUrl, token, timeoutMs: 5000 });
     socket.write('HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n');
     socket.destroy();
   });
@@ -187,6 +252,7 @@ function handleMobileViewerUpgrade(request, socket, head, { authMode, proxyUserH
 }
 
 
+const MOBILE_DASHBOARD_SESSION_OWNER = 'ben-dashboard';
 const MOBILE_CONTROL_ACTIONS = new Set(['tap', 'swipe', 'type', 'back', 'home', 'rotate']);
 const MOBILE_ROTATIONS = new Map([
   ['portrait', 0],
@@ -278,6 +344,7 @@ function buildMobileControlCommand(body) {
   };
 }
 
+
 async function runMobileControlRequest(body, { upstreamUrl, token, timeoutMs }) {
   if (!upstreamUrl || !token) {
     const error = new Error('Mobile control upstream is not configured');
@@ -308,6 +375,80 @@ async function runMobileControlRequest(body, { upstreamUrl, token, timeoutMs }) 
     return payload;
   } finally {
     clearTimeout(timer);
+  }
+}
+
+
+async function runMobileSessionRequest(action, body, { upstreamUrl, token, timeoutMs }) {
+  if (!upstreamUrl || !token) {
+    const error = new Error('Mobile control upstream is not configured');
+    error.statusCode = 503;
+    error.code = 'mobile_control_not_configured';
+    throw error;
+  }
+  const endpoint = action === 'status' ? '/session' : `/session/${action}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const requestOptions = {
+      method: action === 'status' ? 'GET' : 'POST',
+      headers: {
+        accept: 'application/json',
+        authorization: `Bearer ${token}`
+      },
+      signal: controller.signal
+    };
+    if (action !== 'status') {
+      requestOptions.headers['content-type'] = 'application/json';
+      requestOptions.body = JSON.stringify(body);
+    }
+    const response = await fetch(new URL(endpoint, upstreamUrl), requestOptions);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(payload.message || 'Mobile session upstream rejected request');
+      error.statusCode = response.status >= 400 && response.status < 500 ? response.status : 502;
+      error.code = payload.error || 'mobile_session_failed';
+      error.session = payload.session;
+      throw error;
+    }
+    return payload;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function currentMobileSession({ mobileSessionRunner, mobileControlConfig }) {
+  const payload = mobileSessionRunner
+    ? await mobileSessionRunner({ action: 'status' })
+    : await runMobileSessionRequest('status', {}, mobileControlConfig);
+  return payload.session ?? payload;
+}
+
+async function handleMobileSession(request, response, { mobileSessionRunner, mobileControlConfig }) {
+  try {
+    const body = request.method === 'GET' ? {} : await readJsonBody(request, 2048);
+    const action = request.method === 'GET'
+      ? 'status'
+      : (body.action === 'release' ? 'release' : 'acquire');
+    const requestBody = action === 'release'
+      ? { owner: MOBILE_DASHBOARD_SESSION_OWNER, force: body.force === true }
+      : {
+          owner: MOBILE_DASHBOARD_SESSION_OWNER,
+          purpose: 'dashboard interactive noVNC review',
+          ttlSeconds: body.ttlSeconds ?? 900,
+          override: body.override === true
+        };
+    const result = mobileSessionRunner
+      ? await mobileSessionRunner({ action, body: requestBody })
+      : await runMobileSessionRequest(action, requestBody, mobileControlConfig);
+    return json(response, 200, { ok: true, session: result.session ?? result });
+  } catch (err) {
+    const statusCode = err.statusCode && err.statusCode >= 400 && err.statusCode < 500 ? err.statusCode : 502;
+    return json(response, statusCode, {
+      error: err.code || 'mobile_session_failed',
+      message: statusCode === 502 ? 'Mobile emulator session request failed' : err.message,
+      ...(err.session ? { session: err.session } : {})
+    });
   }
 }
 
@@ -3471,6 +3612,7 @@ export async function createApp(options = {}) {
     timeoutMs: Number(options.mobileControlTimeoutMs ?? process.env.MOBILE_CONTROL_TIMEOUT_MS ?? 20000)
   };
   const mobileControlRunner = Object.prototype.hasOwnProperty.call(options, 'mobileControlRunner') ? options.mobileControlRunner : null;
+  const mobileSessionRunner = Object.prototype.hasOwnProperty.call(options, 'mobileSessionRunner') ? options.mobileSessionRunner : null;
   const mobileScreenshotRunner = Object.prototype.hasOwnProperty.call(options, 'mobileScreenshotRunner') ? options.mobileScreenshotRunner : null;
   const unifiedInboxStatusUrl = Object.prototype.hasOwnProperty.call(options, 'unifiedInboxStatusUrl')
     ? options.unifiedInboxStatusUrl
@@ -3576,6 +3718,10 @@ export async function createApp(options = {}) {
 
       if (request.method === 'POST' && url.pathname === '/api/mobile-workflow/control') {
         return handleMobileControl(request, response, { mobileControlRunner, mobileControlConfig });
+      }
+
+      if ((request.method === 'GET' || request.method === 'POST') && url.pathname === '/api/mobile-workflow/session') {
+        return handleMobileSession(request, response, { mobileSessionRunner, mobileControlConfig });
       }
 
       if (request.method === 'GET' && url.pathname === '/api/mobile-workflow/screenshot') {
@@ -3909,7 +4055,8 @@ export async function createApp(options = {}) {
     authMode,
     proxyUserHeader,
     upstreamUrl: mobileViewerUpstreamUrl,
-    token: mobileViewerToken
+    token: mobileViewerToken,
+    mobileControlConfig
   });
 
   return dashboardApp;
