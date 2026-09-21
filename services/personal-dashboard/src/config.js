@@ -98,6 +98,38 @@ function validateStatusChecks(statusChecks) {
         }
         result.maxAgeHours = maxAgeHours;
       }
+    } else if (type === 'mem0Health') {
+      const baseUrl = requireText(check?.baseUrl, `statusChecks[${index}].baseUrl`);
+      if (!isHttpUrl(baseUrl)) {
+        throw new Error(`Invalid mem0 baseUrl for ${label}: only http(s) URLs are allowed`);
+      }
+      result.type = type;
+      result.baseUrl = baseUrl;
+      for (const field of ['docsPath', 'openapiPath', 'searchPath', 'apiKeyEnv', 'searchUserId', 'logErrorPattern']) {
+        if (check[field] !== undefined) {
+          result[field] = requireText(check[field], `statusChecks[${index}].${field}`);
+        }
+      }
+      if (result.apiKeyEnv && !/^[A-Z_][A-Z0-9_]*$/.test(result.apiKeyEnv)) {
+        throw new Error(`Invalid apiKeyEnv for ${label}: expected an environment variable name`);
+      }
+      for (const field of ['dockerContainers', 'logContainers']) {
+        if (check[field] !== undefined) {
+          if (!Array.isArray(check[field])) {
+            throw new Error(`Invalid ${field} for ${label}: expected an array`);
+          }
+          result[field] = check[field].map((value, containerIndex) => requireText(value, `statusChecks[${index}].${field}[${containerIndex}]`));
+        }
+      }
+      for (const field of ['logSinceSeconds', 'logTail']) {
+        if (check[field] !== undefined) {
+          const value = Number(check[field]);
+          if (!Number.isFinite(value) || value <= 0 || value > 86_400) {
+            throw new Error(`Invalid ${field} for ${label}: expected a positive number up to 86400`);
+          }
+          result[field] = value;
+        }
+      }
     } else {
       throw new Error(`Invalid dashboard config: unsupported statusChecks[${index}].type`);
     }

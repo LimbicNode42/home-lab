@@ -80,12 +80,29 @@ Config shape:
       "label": "Vaultwarden",
       "targetUrl": "http://192.168.0.50:8084/alive",
       "displayUrl": "https://vault.wheeler-network.com"
+    },
+    {
+      "id": "mem0-health",
+      "label": "Mem0 memory provider",
+      "type": "mem0Health",
+      "baseUrl": "http://127.0.0.1:8888",
+      "apiKeyEnv": "MEM0_API_KEY",
+      "searchUserId": "dashboard-smoke",
+      "dockerContainers": ["mem0-mem0-1", "mem0-postgres-1"],
+      "logContainers": ["mem0-mem0-1"]
     }
   ]
 }
 ```
 
 `targetUrl` is used only server-side and is never returned by `/api/config/public` or `/api/status`. Keep internal topology in config, not in the browser bundle.
+
+`type: "mem0Health"` is a composite status card for the local-only mem0 memory provider. It probes `/docs` and `/openapi.json`, optionally performs an authenticated read-only `/search` smoke check using the API key named by `apiKeyEnv`, optionally inspects Docker container health, and scans recent Docker logs for datastore/Postgres/pgvector error signals. The public status payload reports only coarse states (`up`, `stale`, `down`), timestamps, counts, and sanitized messages; it must not include API keys, raw memory contents, local filesystem paths, or stack traces. If `apiKeyEnv` is set but absent at runtime, the card reports `stale` rather than persisting a test memory or printing secrets.
+
+Status semantics:
+- `up`: current probes succeeded and no recent datastore error signal was found.
+- `stale`: the service is reachable but a freshness/auth/log warning needs attention, such as missing mem0 API key env or recent datastore error logs.
+- `down`: liveness, authenticated search, or available container health checks failed.
 
 Environment variables:
 

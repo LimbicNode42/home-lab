@@ -24,9 +24,16 @@
       "displayUrl": "https://vault.wheeler-network.com"
     },
     {
-      "id": "mem0-api",
-      "label": "Mem0 API (local-only)",
-      "targetUrl": "http://127.0.0.1:8888/openapi.json"
+      "id": "mem0-health",
+      "label": "Mem0 memory provider",
+      "type": "mem0Health",
+      "baseUrl": "http://127.0.0.1:8888",
+      "apiKeyEnv": "MEM0_API_KEY",
+      "searchUserId": "dashboard-smoke",
+      "dockerContainers": ["mem0-mem0-1", "mem0-postgres-1"],
+      "logContainers": ["mem0-mem0-1"],
+      "logSinceSeconds": 900,
+      "logTail": 200
     },
     {
       "id": "mem0-backup",

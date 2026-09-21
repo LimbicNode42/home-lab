@@ -170,6 +170,7 @@ function renderStatus(payload) {
     const detailParts = [
       check.message ?? check.httpStatus ?? check.error ?? 'no response',
       check.updatedAt ? `updated ${formatDateTime(check.updatedAt)}` : null,
+      check.checkedAt ? `checked ${formatDateTime(check.checkedAt)}` : null,
       `${check.latencyMs}ms`
     ].filter(Boolean);
     const body = [

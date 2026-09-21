@@ -1342,7 +1342,10 @@ export async function createApp(options = {}) {
   const statusService = new StatusService({
     checks: config.statusChecks,
     ttlMs: options.statusCacheTtlMs ?? Number(process.env.DASHBOARD_STATUS_CACHE_TTL_MS ?? 30_000),
-    timeoutMs: options.statusProbeTimeoutMs ?? Number(process.env.DASHBOARD_STATUS_PROBE_TIMEOUT_MS ?? 2500)
+    timeoutMs: options.statusProbeTimeoutMs ?? Number(process.env.DASHBOARD_STATUS_PROBE_TIMEOUT_MS ?? 2500),
+    fetchImpl: options.statusFetchImpl ?? globalThis.fetch,
+    execFileImpl: options.statusExecFileImpl,
+    env: options.statusEnv ?? process.env
   });
 
   return async function dashboardApp(request, response) {

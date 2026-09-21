@@ -101,3 +101,52 @@ test('toPublicConfig never exposes backup freshness filesystem paths', async () 
   ]);
   assert.equal(JSON.stringify(publicConfig).includes('/mnt/pve/NAS'), false);
 });
+
+test('loadConfig accepts mem0Health checks but public config hides internals and secret env names', async () => {
+  const path = await writeConfig({
+    title: 'Home Dashboard',
+    sections: [],
+    statusChecks: [
+      {
+        id: 'mem0-health',
+        label: 'Mem0 memory provider',
+        type: 'mem0Health',
+        baseUrl: 'http://127.0.0.1:8888',
+        apiKeyEnv: 'MEM0_API_KEY',
+        searchUserId: 'dashboard-smoke',
+        dockerContainers: ['mem0-mem0-1', 'mem0-postgres-1'],
+        logContainers: ['mem0-mem0-1']
+      }
+    ]
+  });
+
+  const config = await loadConfig({ configPath: path });
+  assert.equal(config.statusChecks[0].type, 'mem0Health');
+  assert.equal(config.statusChecks[0].baseUrl, 'http://127.0.0.1:8888');
+
+  const publicConfig = toPublicConfig(config);
+  assert.deepEqual(publicConfig.statusChecks, [
+    { id: 'mem0-health', label: 'Mem0 memory provider' }
+  ]);
+  assert.equal(JSON.stringify(publicConfig).includes('MEM0_API_KEY'), false);
+  assert.equal(JSON.stringify(publicConfig).includes('127.0.0.1'), false);
+  assert.equal(JSON.stringify(publicConfig).includes('mem0-postgres-1'), false);
+});
+
+test('loadConfig rejects invalid mem0Health API key environment variable names', async () => {
+  const path = await writeConfig({
+    title: 'Home Dashboard',
+    sections: [],
+    statusChecks: [
+      {
+        id: 'mem0-health',
+        label: 'Mem0 memory provider',
+        type: 'mem0Health',
+        baseUrl: 'http://127.0.0.1:8888',
+        apiKeyEnv: 'mem0-api-key'
+      }
+    ]
+  });
+
+  await assert.rejects(() => loadConfig({ configPath: path }), /apiKeyEnv/i);
+});
