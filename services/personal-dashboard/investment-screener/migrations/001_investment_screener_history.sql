@@ -13,7 +13,9 @@ CREATE TABLE IF NOT EXISTS investment_screener_runs (
   source_mix JSONB NOT NULL DEFAULT '{}'::jsonb,
   code_version TEXT,
   config_hash TEXT,
-  metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  universe_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  provider_failures JSONB NOT NULL DEFAULT '[]'::jsonb
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_iss_runs_run_key
@@ -48,6 +50,11 @@ CREATE TABLE IF NOT EXISTS investment_screener_observations (
   raw_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
   derived_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
   missing_fields JSONB NOT NULL DEFAULT '[]'::jsonb,
+  selected_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
+  alternates JSONB NOT NULL DEFAULT '{}'::jsonb,
+  conflicts JSONB NOT NULL DEFAULT '[]'::jsonb,
+  field_quality JSONB NOT NULL DEFAULT '{}'::jsonb,
+  source_confidence JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(run_id, company_id)
 );
@@ -111,7 +118,9 @@ ALTER TABLE investment_screener_runs
   ADD COLUMN IF NOT EXISTS source_mix JSONB NOT NULL DEFAULT '{}'::jsonb,
   ADD COLUMN IF NOT EXISTS code_version TEXT,
   ADD COLUMN IF NOT EXISTS config_hash TEXT,
-  ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
+  ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS universe_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS provider_failures JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 ALTER TABLE investment_screener_companies
   ADD COLUMN IF NOT EXISTS asx_code TEXT,
@@ -125,7 +134,12 @@ ALTER TABLE investment_screener_observations
   ADD COLUMN IF NOT EXISTS currency TEXT,
   ADD COLUMN IF NOT EXISTS source_quality TEXT,
   ADD COLUMN IF NOT EXISTS derived_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
-  ADD COLUMN IF NOT EXISTS missing_fields JSONB NOT NULL DEFAULT '[]'::jsonb;
+  ADD COLUMN IF NOT EXISTS missing_fields JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS selected_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS alternates JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS conflicts JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS field_quality JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS source_confidence JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 ALTER TABLE investment_screener_scores
   ADD COLUMN IF NOT EXISTS company_id BIGINT REFERENCES investment_screener_companies(id),

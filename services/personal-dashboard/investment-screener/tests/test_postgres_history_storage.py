@@ -228,6 +228,24 @@ class TestInsertScreenerRunIdempotent(unittest.TestCase):
         self.assertNotIn("DATABASE_URL", serialized_params)
         self.assertNotIn("password", serialized_params.lower())
 
+    def test_insert_can_label_non_fixture_asx_yahoo_timeseries_runs(self):
+        ranked = rank_companies([company_fixture()], load_config(CONFIG_PATH))
+        conn = RecordingConnection()
+
+        insert_screener_run(
+            conn,
+            ranked,
+            source="asx-yahoo-timeseries",
+            mode="asx-yahoo-timeseries",
+            universe=["BHP.AX"],
+            run_key="investment-screener:ASX:asx-yahoo-timeseries:2026-08",
+            score_version="asx-bootstrap-v1",
+        )
+
+        run_sql, run_params = conn.cursor_obj.statements[0]
+        self.assertEqual(run_params[3], "asx-yahoo-timeseries")
+        self.assertEqual(json.loads(run_params[5])["source"], "asx-yahoo-timeseries")
+
 
 class TestPostgresCliFlags(unittest.TestCase):
     def test_cli_exposes_explicit_history_write_flag_and_env_reference_only(self):
