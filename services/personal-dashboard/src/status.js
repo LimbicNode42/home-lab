@@ -61,6 +61,49 @@ function safeRegex(pattern) {
   }
 }
 
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, `'\''`)}'`;
+}
+
+function safeRemoteName(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9_.:@%/+,-]+$/.test(value);
+}
+
+function sshDestination(check) {
+  if (!check.sshHost) return null;
+  const user = check.sshUser ? `${check.sshUser}@` : '';
+  return `${user}${check.sshHost}`;
+}
+
+function sshArgs(check, remoteCommand, timeoutMs) {
+  const destination = sshDestination(check);
+  if (!destination || !safeRemoteName(destination)) {
+    throw Object.assign(new Error('invalid SSH destination'), { code: 'EINVAL' });
+  }
+  const port = String(check.sshPort ?? 22);
+  if (!/^[0-9]{1,5}$/.test(port)) {
+    throw Object.assign(new Error('invalid SSH port'), { code: 'EINVAL' });
+  }
+  const connectTimeout = Math.max(1, Math.ceil(Number(check.sshConnectTimeoutSeconds ?? timeoutMs / 1000)));
+  return [
+    '-o', 'BatchMode=yes',
+    '-o', `ConnectTimeout=${connectTimeout}`,
+    '-o', 'StrictHostKeyChecking=yes',
+    '-p', port,
+    destination,
+    remoteCommand
+  ];
+}
+
+function httpOkFromStatusCode(stdout) {
+  const statusCode = Number(String(stdout || '').trim().slice(-3));
+  return {
+    ok: statusCode >= 200 && statusCode < 400,
+    status: Number.isFinite(statusCode) ? statusCode : undefined,
+    error: statusCode >= 200 && statusCode < 400 ? null : 'api_unreachable'
+  };
+}
+
 export class StatusService {
   constructor({
     checks = [],
@@ -197,7 +240,7 @@ export class StatusService {
     let status = 'up';
     let error;
 
-    const docs = await this.fetchMem0Get(joinUrl(baseUrl, check.docsPath ?? DEFAULT_MEM0_DOCS_PATH));
+    const docs = await this.probeMem0Get(check, joinUrl(baseUrl, check.docsPath ?? DEFAULT_MEM0_DOCS_PATH));
     if (docs.ok) {
       details.push('docs reachable');
     } else {
@@ -206,7 +249,7 @@ export class StatusService {
       details.push('docs unreachable');
     }
 
-    const openapi = await this.fetchMem0Get(joinUrl(baseUrl, check.openapiPath ?? DEFAULT_MEM0_OPENAPI_PATH));
+    const openapi = await this.probeMem0Get(check, joinUrl(baseUrl, check.openapiPath ?? DEFAULT_MEM0_OPENAPI_PATH));
     if (openapi.ok) {
       details.push('openapi reachable');
     } else {
@@ -216,7 +259,11 @@ export class StatusService {
     }
 
     const apiKey = check.apiKeyEnv ? this.env?.[check.apiKeyEnv] : null;
-    if (check.apiKeyEnv && !apiKey) {
+    if (check.sshHost && check.apiKeyEnv) {
+      if (status === 'up') status = 'stale';
+      error ??= 'auth_not_configured';
+      details.push('memory search skipped for SSH transport');
+    } else if (check.apiKeyEnv && !apiKey) {
       if (status === 'up') status = 'stale';
       error ??= 'auth_not_configured';
       details.push('memory search auth not configured');
@@ -233,7 +280,7 @@ export class StatusService {
       details.push('memory search skipped');
     }
 
-    const containerResult = await this.probeDockerContainers(check.dockerContainers ?? []);
+    const containerResult = await this.probeDockerContainers(check, check.dockerContainers ?? []);
     if (containerResult.error === 'container_unhealthy' || containerResult.error === 'container_missing') {
       status = 'down';
       error = containerResult.error;
@@ -261,6 +308,11 @@ export class StatusService {
     };
   }
 
+  async probeMem0Get(check, url) {
+    if (check.sshHost) return this.fetchRemoteMem0Get(check, url);
+    return this.fetchMem0Get(url);
+  }
+
   async fetchMem0Get(url) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -271,6 +323,17 @@ export class StatusService {
       return { ok: false, error: safeErrorCode(error) };
     } finally {
       clearTimeout(timeout);
+    }
+  }
+
+  async fetchRemoteMem0Get(check, url) {
+    try {
+      const seconds = Math.max(1, Math.ceil(this.timeoutMs / 1000));
+      const command = `curl -fsS -o /dev/null -w '%{http_code}' --max-time ${seconds} ${shellQuote(url)}`;
+      const { stdout } = await this.execFileImpl('ssh', sshArgs(check, command, this.timeoutMs), { timeout: this.timeoutMs + 1000 });
+      return httpOkFromStatusCode(stdout);
+    } catch (error) {
+      return { ok: false, error: safeErrorCode(error) };
     }
   }
 
@@ -304,12 +367,20 @@ export class StatusService {
     }
   }
 
-  async probeDockerContainers(containers) {
+  async runDockerCommand(check, dockerArgs) {
+    if (!check.sshHost) {
+      return this.execFileImpl('docker', dockerArgs, { timeout: this.timeoutMs });
+    }
+    const command = ['docker', ...dockerArgs.map(shellQuote)].join(' ');
+    return this.execFileImpl('ssh', sshArgs(check, command, this.timeoutMs), { timeout: this.timeoutMs + 1000 });
+  }
+
+  async probeDockerContainers(check, containers) {
     if (!Array.isArray(containers) || containers.length === 0) return {};
     const states = [];
     for (const name of containers) {
       try {
-        const { stdout } = await this.execFileImpl('docker', ['inspect', '--format', '{{json .State}}', name], { timeout: this.timeoutMs });
+        const { stdout } = await this.runDockerCommand(check, ['inspect', '--format', '{{json .State}}', name]);
         states.push(containerStateFromDockerInspect(stdout));
       } catch (error) {
         if (error?.code === 'ENOENT') return { message: 'container health unavailable' };
@@ -332,7 +403,7 @@ export class StatusService {
       try {
         const since = `${Number(check.logSinceSeconds ?? DEFAULT_MEM0_LOG_SINCE_SECONDS)}s`;
         const tail = String(Number(check.logTail ?? DEFAULT_MEM0_LOG_TAIL));
-        const { stdout = '', stderr = '' } = await this.execFileImpl('docker', ['logs', '--since', since, '--tail', tail, name], { timeout: this.timeoutMs });
+        const { stdout = '', stderr = '' } = await this.runDockerCommand(check, ['logs', '--since', since, '--tail', tail, name]);
         checked = true;
         const combined = `${stdout}\n${stderr}`;
         for (const line of combined.split(/\r?\n/)) {

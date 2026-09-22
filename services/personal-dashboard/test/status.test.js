@@ -135,3 +135,39 @@ test('mem0Health reports unhealthy containers as down when Docker is available',
   assert.equal(check.status, 'down');
   assert.equal(check.error, 'container_unhealthy');
 });
+
+
+test('mem0Health can probe localhost-only mem0 over SSH without exposing remote internals', async () => {
+  const calls = [];
+  const execFileImpl = async (command, args) => {
+    calls.push({ command, args });
+    assert.equal(command, 'ssh');
+    const remoteCommand = args.at(-1);
+    if (remoteCommand.includes('curl')) return { stdout: '200', stderr: '' };
+    if (remoteCommand.includes('inspect')) return { stdout: JSON.stringify({ Running: true, Health: { Status: 'healthy' } }) };
+    if (remoteCommand.includes('logs')) return { stdout: 'startup complete\n', stderr: '' };
+    throw new Error(`unexpected ssh command: ${remoteCommand}`);
+  };
+  const service = new StatusService({
+    checks: [{
+      ...mem0Check,
+      sshHost: '192.168.0.20',
+      sshUser: 'root',
+      sshPort: 22
+    }],
+    fetchImpl: async () => { throw new Error('local fetch should not be used for SSH mem0'); },
+    execFileImpl,
+    env: { MEM0_API_KEY: 'super-secret-test-key' }
+  });
+
+  const check = (await service.getStatus()).checks[0];
+
+  assert.equal(check.status, 'stale');
+  assert.equal(check.error, 'auth_not_configured');
+  assert.match(check.message, /docs reachable/);
+  assert.match(check.message, /openapi reachable/);
+  assert.match(check.message, /memory search skipped for SSH transport/);
+  assert.match(check.message, /2 containers healthy/);
+  assert.equal(JSON.stringify(check).includes('192.168.0.20'), false);
+  assert.equal(JSON.stringify(calls).includes('super-secret-test-key'), false);
+});

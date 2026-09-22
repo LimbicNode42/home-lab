@@ -28,6 +28,9 @@
       "label": "Mem0 memory provider",
       "type": "mem0Health",
       "baseUrl": "http://127.0.0.1:8888",
+      "sshHost": "192.168.0.20",
+      "sshUser": "root",
+      "sshPort": 22,
       "apiKeyEnv": "MEM0_API_KEY",
       "searchUserId": "dashboard-smoke",
       "dockerContainers": ["mem0-mem0-1", "mem0-postgres-1"],
@@ -39,7 +42,7 @@
       "id": "mem0-backup",
       "label": "Mem0 backup freshness",
       "type": "backupFreshness",
-      "backupDir": "/mnt/pve/NAS/backups/mem0",
+      "backupDir": "/app/mem0-backups",
       "manifestFile": "MANIFEST.txt",
       "maxAgeHours": 36
     }

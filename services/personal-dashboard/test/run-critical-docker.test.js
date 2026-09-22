@@ -99,6 +99,7 @@ test('run-critical-docker.sh syncs NAS artifacts into a host-local runtime cache
     ['finnick', '/app/finnick'],
     ['investment-screener', '/app/investment-screener'],
     ['kanban', '/app/kanban'],
+    ['mem0-backups', '/app/mem0-backups'],
   ]) {
     assert.match(
       script,
@@ -106,6 +107,13 @@ test('run-critical-docker.sh syncs NAS artifacts into a host-local runtime cache
       `Expected read-only host-local cache bind from $PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/${cacheSubdir} to ${target}`
     );
   }
+
+  assert.match(script, /prepare_ssh_cache/, 'critical fallback must prepare a mode-restricted SSH cache for cross-host probes');
+  assert.match(
+    script,
+    /--mount[^\n]*source=\$PERSONAL_DASHBOARD_SSH_CACHE_DIR[^\n]*target=\/home\/node\/.ssh[^\n]*readonly/,
+    'Expected read-only SSH cache bind for cross-host status probes'
+  );
 
   for (const nasVariable of ['FINNICK_REPORT_HOST_DIR', 'INVESTMENT_SCREENER_HOST_DIR', 'KANBAN_DB_HOST_DIR']) {
     assert.doesNotMatch(
@@ -124,6 +132,7 @@ test('run-critical-docker.sh does not bind individual read-only artifact files',
     '/app/investment-screener/latest_report.txt',
     '/app/investment-screener/latest_ranked.json',
     '/app/kanban/kanban.db',
+    '/app/mem0-backups/MANIFEST.txt',
   ]) {
     assert.doesNotMatch(
       script,
@@ -141,6 +150,8 @@ test('docker-compose.yml mounts host-local runtime cache for read-only artifacts
     '${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}/finnick',
     '${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}/investment-screener',
     '${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}/kanban',
+    '${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}/mem0-backups',
+    '${PERSONAL_DASHBOARD_SSH_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache/ssh}',
   ]) {
     assert.match(
       compose,
@@ -201,18 +212,21 @@ test('sync-runtime-snapshots.sh copies expected source files into host-local cac
   const finnickDir = join(root, 'nas', 'finnick');
   const investmentDir = join(root, 'nas', 'investment-screener');
   const kanbanDir = join(root, 'nas', 'kanban');
+  const mem0BackupDir = join(root, 'nas', 'backups', 'mem0', '20260921T173022Z');
   const cacheDir = join(root, 'runtime-cache');
 
   await mkdir(join(appDir, 'config'), { recursive: true });
   await mkdir(finnickDir, { recursive: true });
   await mkdir(investmentDir, { recursive: true });
   await mkdir(kanbanDir, { recursive: true });
+  await mkdir(mem0BackupDir, { recursive: true });
   await writeFile(join(appDir, 'config', 'dashboard.public.json'), '{"title":"Cache Test"}\n', 'utf8');
   await writeFile(join(appDir, 'config', 'home-lab-committed-files.txt'), 'services/personal-dashboard/README.md\n', 'utf8');
   await writeFile(join(finnickDir, 'latest_report.txt'), 'finnick report\n', 'utf8');
   await writeFile(join(investmentDir, 'latest_report.txt'), 'investment report\n', 'utf8');
   await writeFile(join(investmentDir, 'latest_ranked.json'), '{"candidates":[]}\n', 'utf8');
   await writeFile(join(kanbanDir, 'kanban.db'), 'sqlite snapshot bytes\n', 'utf8');
+  await writeFile(join(mem0BackupDir, 'MANIFEST.txt'), 'mem0 manifest\n', 'utf8');
 
   try {
     await execFileAsync('sh', [SYNC_SCRIPT_PATH], {
@@ -222,6 +236,7 @@ test('sync-runtime-snapshots.sh copies expected source files into host-local cac
         FINNICK_REPORT_HOST_DIR: finnickDir,
         INVESTMENT_SCREENER_HOST_DIR: investmentDir,
         KANBAN_DB_HOST_DIR: kanbanDir,
+        MEM0_BACKUP_HOST_DIR: join(root, 'nas', 'backups', 'mem0'),
         PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR: cacheDir
       }
     });
@@ -232,6 +247,7 @@ test('sync-runtime-snapshots.sh copies expected source files into host-local cac
     assert.equal(await readFile(join(cacheDir, 'investment-screener', 'latest_report.txt'), 'utf8'), 'investment report\n');
     assert.equal(await readFile(join(cacheDir, 'investment-screener', 'latest_ranked.json'), 'utf8'), '{"candidates":[]}\n');
     assert.equal(await readFile(join(cacheDir, 'kanban', 'kanban.db'), 'utf8'), 'sqlite snapshot bytes\n');
+    assert.equal(await readFile(join(cacheDir, 'mem0-backups', '20260921T173022Z', 'MANIFEST.txt'), 'utf8'), 'mem0 manifest\n');
   } finally {
     await rm(root, { recursive: true, force: true });
   }

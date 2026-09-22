@@ -112,6 +112,9 @@ test('loadConfig accepts mem0Health checks but public config hides internals and
         label: 'Mem0 memory provider',
         type: 'mem0Health',
         baseUrl: 'http://127.0.0.1:8888',
+        sshHost: '192.168.0.20',
+        sshUser: 'root',
+        sshPort: 22,
         apiKeyEnv: 'MEM0_API_KEY',
         searchUserId: 'dashboard-smoke',
         dockerContainers: ['mem0-mem0-1', 'mem0-postgres-1'],
@@ -123,6 +126,7 @@ test('loadConfig accepts mem0Health checks but public config hides internals and
   const config = await loadConfig({ configPath: path });
   assert.equal(config.statusChecks[0].type, 'mem0Health');
   assert.equal(config.statusChecks[0].baseUrl, 'http://127.0.0.1:8888');
+  assert.equal(config.statusChecks[0].sshHost, '192.168.0.20');
 
   const publicConfig = toPublicConfig(config);
   assert.deepEqual(publicConfig.statusChecks, [
@@ -149,4 +153,23 @@ test('loadConfig rejects invalid mem0Health API key environment variable names',
   });
 
   await assert.rejects(() => loadConfig({ configPath: path }), /apiKeyEnv/i);
+});
+
+
+test('loadConfig rejects invalid mem0Health SSH host values', async () => {
+  const path = await writeConfig({
+    title: 'Home Dashboard',
+    sections: [],
+    statusChecks: [
+      {
+        id: 'mem0-health',
+        label: 'Mem0 memory provider',
+        type: 'mem0Health',
+        baseUrl: 'http://127.0.0.1:8888',
+        sshHost: 'bad host;rm -rf /'
+      }
+    ]
+  });
+
+  await assert.rejects(() => loadConfig({ configPath: path }), /sshHost/i);
 });

@@ -56,6 +56,18 @@ services:
         read_only: true
         bind:
           create_host_path: false
+      - type: bind
+        source: ${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}/mem0-backups
+        target: /app/mem0-backups
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${PERSONAL_DASHBOARD_SSH_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache/ssh}
+        target: /home/node/.ssh
+        read_only: true
+        bind:
+          create_host_path: false
     labels:
       traefik.enable: "false"
     networks:

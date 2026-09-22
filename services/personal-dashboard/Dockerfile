@@ -1,6 +1,7 @@
 FROM node:22-alpine
 
 WORKDIR /app
+RUN apk add --no-cache openssh-client
 ENV NODE_ENV=production
 ENV REPO_DOCS_ROOT=/app/repo-docs
 ENV EPIC_DOCS_INDEX_PATH=/app/repo-docs/services/personal-dashboard/docs/epics/index.json

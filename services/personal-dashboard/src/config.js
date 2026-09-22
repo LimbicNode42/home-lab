@@ -105,10 +105,16 @@ function validateStatusChecks(statusChecks) {
       }
       result.type = type;
       result.baseUrl = baseUrl;
-      for (const field of ['docsPath', 'openapiPath', 'searchPath', 'apiKeyEnv', 'searchUserId', 'logErrorPattern']) {
+      for (const field of ['docsPath', 'openapiPath', 'searchPath', 'apiKeyEnv', 'searchUserId', 'logErrorPattern', 'sshHost', 'sshUser']) {
         if (check[field] !== undefined) {
           result[field] = requireText(check[field], `statusChecks[${index}].${field}`);
         }
+      }
+      if (result.sshHost && !/^[A-Za-z0-9_.-]+$/.test(result.sshHost)) {
+        throw new Error(`Invalid sshHost for ${label}: expected a hostname or IP address`);
+      }
+      if (result.sshUser && !/^[A-Za-z0-9_.-]+$/.test(result.sshUser)) {
+        throw new Error(`Invalid sshUser for ${label}: expected a local account name`);
       }
       if (result.apiKeyEnv && !/^[A-Z_][A-Z0-9_]*$/.test(result.apiKeyEnv)) {
         throw new Error(`Invalid apiKeyEnv for ${label}: expected an environment variable name`);
@@ -121,7 +127,7 @@ function validateStatusChecks(statusChecks) {
           result[field] = check[field].map((value, containerIndex) => requireText(value, `statusChecks[${index}].${field}[${containerIndex}]`));
         }
       }
-      for (const field of ['logSinceSeconds', 'logTail']) {
+      for (const field of ['logSinceSeconds', 'logTail', 'sshPort', 'sshConnectTimeoutSeconds']) {
         if (check[field] !== undefined) {
           const value = Number(check[field]);
           if (!Number.isFinite(value) || value <= 0 || value > 86_400) {

@@ -86,6 +86,9 @@ Config shape:
       "label": "Mem0 memory provider",
       "type": "mem0Health",
       "baseUrl": "http://127.0.0.1:8888",
+      "sshHost": "192.168.0.20",
+      "sshUser": "root",
+      "sshPort": 22,
       "apiKeyEnv": "MEM0_API_KEY",
       "searchUserId": "dashboard-smoke",
       "dockerContainers": ["mem0-mem0-1", "mem0-postgres-1"],
@@ -97,7 +100,7 @@ Config shape:
 
 `targetUrl` is used only server-side and is never returned by `/api/config/public` or `/api/status`. Keep internal topology in config, not in the browser bundle.
 
-`type: "mem0Health"` is a composite status card for the local-only mem0 memory provider. It probes `/docs` and `/openapi.json`, optionally performs an authenticated read-only `/search` smoke check using the API key named by `apiKeyEnv`, optionally inspects Docker container health, and scans recent Docker logs for datastore/Postgres/pgvector error signals. The public status payload reports only coarse states (`up`, `stale`, `down`), timestamps, counts, and sanitized messages; it must not include API keys, raw memory contents, local filesystem paths, or stack traces. If `apiKeyEnv` is set but absent at runtime, the card reports `stale` rather than persisting a test memory or printing secrets.
+`type: "mem0Health"` is a composite status card for the local-only mem0 memory provider. It probes `/docs` and `/openapi.json`, optionally through SSH when `sshHost` is set for localhost-only remote services, optionally performs an authenticated read-only `/search` smoke check using the API key named by `apiKeyEnv` for non-SSH checks, optionally inspects Docker container health, and scans recent Docker logs for datastore/Postgres/pgvector error signals. The public status payload reports only coarse states (`up`, `stale`, `down`), timestamps, counts, and sanitized messages; it must not include API keys, raw memory contents, local filesystem paths, or stack traces. If `apiKeyEnv` is set but absent at runtime, or SSH transport is used, the card reports `stale` rather than persisting a test memory or printing secrets.
 
 Status semantics:
 - `up`: current probes succeeded and no recent datastore error signal was found.

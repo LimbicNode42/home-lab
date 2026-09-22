@@ -12,9 +12,12 @@ CONTAINER=${DASHBOARD_CONTAINER:-personal-dashboard}
 DB_NETWORK=${PERSONAL_DASHBOARD_DB_NETWORK:-critical-internal}
 DB_NETWORK_ALIAS=${PERSONAL_DASHBOARD_DB_ALIAS:-postgres}
 PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR=${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache}
+PERSONAL_DASHBOARD_SSH_HOST_DIR=${PERSONAL_DASHBOARD_SSH_HOST_DIR:-/root/.ssh}
+PERSONAL_DASHBOARD_SSH_CACHE_DIR=${PERSONAL_DASHBOARD_SSH_CACHE_DIR:-$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/ssh}
 FINNICK_REPORT_HOST_DIR=${FINNICK_REPORT_HOST_DIR:-/mnt/nas/services/personal-dashboard/finnick}
 INVESTMENT_SCREENER_HOST_DIR=${INVESTMENT_SCREENER_HOST_DIR:-/mnt/nas/services/personal-dashboard/investment-screener}
 KANBAN_DB_HOST_DIR=${KANBAN_DB_HOST_DIR:-/mnt/nas/services/personal-dashboard/kanban}
+MEM0_BACKUP_HOST_DIR=${MEM0_BACKUP_HOST_DIR:-/mnt/nas/backups/mem0}
 FINNICK_REPORT_HOST_PATH=$FINNICK_REPORT_HOST_DIR/latest_report.txt
 INVESTMENT_SCREENER_REPORT_HOST_PATH=$INVESTMENT_SCREENER_HOST_DIR/latest_report.txt
 INVESTMENT_SCREENER_RANKED_HOST_PATH=$INVESTMENT_SCREENER_HOST_DIR/latest_ranked.json
@@ -79,8 +82,41 @@ PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR="$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR" \
 FINNICK_REPORT_HOST_DIR="$FINNICK_REPORT_HOST_DIR" \
 INVESTMENT_SCREENER_HOST_DIR="$INVESTMENT_SCREENER_HOST_DIR" \
 KANBAN_DB_HOST_DIR="$KANBAN_DB_HOST_DIR" \
+MEM0_BACKUP_HOST_DIR="$MEM0_BACKUP_HOST_DIR" \
 APP_DIR="$APP_DIR" \
   "$APP_DIR/scripts/sync-runtime-snapshots.sh"
+
+# SSH-backed status checks use a read-only copy of the operator-approved SSH
+# identity and known_hosts file. The copy is host-local, mode-restricted, and
+# mounted only at /home/node/.ssh so the app can reach localhost-only services
+# on other homelab hosts without exposing those services on the LAN.
+prepare_ssh_cache() {
+  identity=""
+  for candidate in personal_dashboard_mem0_probe_ed25519 id_ed25519 id_rsa; do
+    if [ -f "$PERSONAL_DASHBOARD_SSH_HOST_DIR/$candidate" ]; then
+      identity=$candidate
+      break
+    fi
+  done
+  if [ -z "$identity" ]; then
+    printf '%s\n' "No SSH identity found in $PERSONAL_DASHBOARD_SSH_HOST_DIR; refusing SSH-backed mem0 dashboard deploy." >&2
+    exit 1
+  fi
+  if [ ! -f "$PERSONAL_DASHBOARD_SSH_HOST_DIR/known_hosts" ]; then
+    printf '%s\n' "No SSH known_hosts found in $PERSONAL_DASHBOARD_SSH_HOST_DIR; verify and add tori host key before deploy." >&2
+    exit 1
+  fi
+  rm -rf "$PERSONAL_DASHBOARD_SSH_CACHE_DIR"
+  mkdir -p "$PERSONAL_DASHBOARD_SSH_CACHE_DIR"
+  cp -f "$PERSONAL_DASHBOARD_SSH_HOST_DIR/$identity" "$PERSONAL_DASHBOARD_SSH_CACHE_DIR/id_ed25519"
+  cp -f "$PERSONAL_DASHBOARD_SSH_HOST_DIR/known_hosts" "$PERSONAL_DASHBOARD_SSH_CACHE_DIR/known_hosts"
+  chown -R 1000:1000 "$PERSONAL_DASHBOARD_SSH_CACHE_DIR"
+  chmod 0700 "$PERSONAL_DASHBOARD_SSH_CACHE_DIR"
+  chmod 0400 "$PERSONAL_DASHBOARD_SSH_CACHE_DIR/id_ed25519"
+  chmod 0444 "$PERSONAL_DASHBOARD_SSH_CACHE_DIR/known_hosts"
+}
+
+prepare_ssh_cache
 
 docker build -t "$IMAGE" .
 
@@ -125,6 +161,8 @@ docker run -d \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/finnick,target=/app/finnick,readonly" \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/investment-screener,target=/app/investment-screener,readonly" \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/kanban,target=/app/kanban,readonly" \
+  --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/mem0-backups,target=/app/mem0-backups,readonly" \
+  --mount "type=bind,source=$PERSONAL_DASHBOARD_SSH_CACHE_DIR,target=/home/node/.ssh,readonly" \
   "$IMAGE"
 
 docker network connect "$DB_NETWORK" "$CONTAINER"
