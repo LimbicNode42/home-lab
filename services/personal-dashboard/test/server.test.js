@@ -1408,6 +1408,90 @@ test('GET /api/investment-screener/ranked can read NYSE EODHD DuckDB artifacts b
   }
 });
 
+
+
+async function writeDashboardMarketRankedExport(dataRoot, market, candidates, extra = {}) {
+  const marketDir = join(dataRoot, 'investment-screener', 'exports', 'dashboard', `market=${market}`);
+  await mkdir(marketDir, { recursive: true });
+  await writeFile(join(marketDir, 'latest_ranked.json'), JSON.stringify({
+    mode: extra.mode ?? `${market.toLowerCase()}-test-mode`,
+    generated_at: extra.generated_at ?? '2026-09-21T00:00:00Z',
+    data_as_of: extra.data_as_of ?? '2026-09-20',
+    coverage: extra.coverage ?? { denominator: candidates.length, usable: candidates.length, denominator_label: `${market} test universe`, denominator_status: 'test_fixture' },
+    source_summary: extra.source_summary ?? { providers: ['fixture'], source_families: ['fixture'], mode: extra.mode ?? `${market.toLowerCase()}-test-mode` },
+    candidates
+  }), 'utf8');
+}
+
+
+test('GET /api/investment-screener/ranked default All filters aggregate dashboard market exports', async () => {
+  const dataRoot = await mkdtemp(join(tmpdir(), 'investment-dashboard-all-markets-'));
+  await writeDashboardMarketRankedExport(dataRoot, 'ASX', [
+    { rank: 1, ticker: 'BHP.AX', name: 'BHP Group', market: 'ASX', currency: 'AUD', sector: 'Materials', industry: 'Metals & Mining', score: 88, sub_scores: { quality: 20 } },
+    { rank: 2, ticker: 'CSL.AX', name: 'CSL Limited', market: 'ASX', currency: 'AUD', sector: 'Health Care', industry: 'Biotechnology', score: 82, sub_scores: { quality: 19 } }
+  ], { mode: 'asx-yahoo-timeseries' });
+  await writeDashboardMarketRankedExport(dataRoot, 'NASDAQ', [
+    { rank: 1, ticker: 'AAPL.US', name: 'Apple Inc.', market: 'NASDAQ', currency: 'USD', sector: 'Technology', industry: 'Consumer Electronics', score: 97, sub_scores: { quality: 25 } },
+    { rank: 2, ticker: 'MSFT.US', name: 'Microsoft Corporation', market: 'NASDAQ', currency: 'USD', sector: 'Technology', industry: 'Software', score: 96, sub_scores: { quality: 24 } }
+  ], { mode: 'nasdaq-eodhd-fundamentals' });
+
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerRankedFile: null, investmentScreenerDataRoot: dataRoot });
+  const server = await listen(app);
+  try {
+    const defaultResponse = await fetch(`${server.baseUrl}/api/investment-screener/ranked`);
+    const defaultBody = await defaultResponse.json();
+    const allResponse = await fetch(`${server.baseUrl}/api/investment-screener/ranked?exchange=All&sector=All&industry=All`);
+    const allBody = await allResponse.json();
+
+    assert.equal(defaultResponse.status, 200);
+    assert.equal(allResponse.status, 200);
+    assert.deepEqual(defaultBody.applied_filters ?? {}, {});
+    assert.deepEqual(allBody.applied_filters ?? {}, {});
+    assert.deepEqual(defaultBody.candidates.map((candidate) => candidate.ticker), allBody.candidates.map((candidate) => candidate.ticker));
+    assert.deepEqual([...new Set(defaultBody.candidates.map((candidate) => candidate.exchange))].sort(), ['ASX', 'NASDAQ']);
+    assert.deepEqual(defaultBody.available_facets.exchanges, ['ASX', 'NASDAQ']);
+    assert.equal(defaultBody.coverage.market, 'ALL');
+    assert.equal(defaultBody.total_candidates, 4);
+  } finally {
+    await server.close();
+    await rm(dataRoot, { recursive: true, force: true });
+  }
+});
+
+test('GET /api/investment-screener/ranked keeps explicit exchange filters narrow against dashboard exports', async () => {
+  const dataRoot = await mkdtemp(join(tmpdir(), 'investment-dashboard-explicit-exchange-'));
+  await writeDashboardMarketRankedExport(dataRoot, 'ASX', [
+    { rank: 1, ticker: 'BHP.AX', name: 'BHP Group', market: 'ASX', currency: 'AUD', score: 88, sub_scores: { quality: 20 } }
+  ], { mode: 'asx-yahoo-timeseries' });
+  await writeDashboardMarketRankedExport(dataRoot, 'NASDAQ', [
+    { rank: 1, ticker: 'AAPL.US', name: 'Apple Inc.', market: 'NASDAQ', currency: 'USD', score: 97, sub_scores: { quality: 25 } }
+  ], { mode: 'nasdaq-eodhd-fundamentals' });
+
+  const configPath = await writeConfig(basicConfig);
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerRankedFile: null, investmentScreenerDataRoot: dataRoot });
+  const server = await listen(app);
+  try {
+    const response = await fetch(`${server.baseUrl}/api/investment-screener/ranked?exchange=NASDAQ&limit=10`);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(body.applied_filters, { exchange: 'NASDAQ', limit: 10 });
+    assert.deepEqual(body.candidates.map((candidate) => candidate.ticker), ['AAPL.US']);
+    assert.equal(body.candidates.every((candidate) => candidate.exchange === 'NASDAQ'), true);
+    assert.equal(JSON.stringify(body).includes('BHP.AX'), false);
+
+    const marketAndExchange = await fetch(`${server.baseUrl}/api/investment-screener/ranked?market=NASDAQ&exchange=NASDAQ&limit=10`);
+    const marketAndExchangeBody = await marketAndExchange.json();
+    assert.equal(marketAndExchange.status, 200);
+    assert.deepEqual(marketAndExchangeBody.candidates.map((candidate) => candidate.ticker), ['AAPL.US']);
+    assert.deepEqual(marketAndExchangeBody.available_facets.exchanges, ['NASDAQ']);
+  } finally {
+    await server.close();
+    await rm(dataRoot, { recursive: true, force: true });
+  }
+});
+
 test('GET /api/investment-screener/ranked preserves bounded ASX Yahoo source mode', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'investment-ranked-asx-mode-'));
   const rankedPath = join(dir, 'latest_ranked.json');

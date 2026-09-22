@@ -1,5 +1,5 @@
 import { accessSync, constants, createReadStream, readFileSync } from 'node:fs';
-import { chmod, mkdir, lstat, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, lstat, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import { execFileSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
@@ -1804,6 +1804,7 @@ const INVESTMENT_SCREENER_UNAVAILABLE_FIELDS = new Set([]);
 const INVESTMENT_SCREENER_METRIC_VALUES = new Set(['composite', 'quality', 'valuation', 'growth', 'graham_safety', 'durability', 'risk_adjustments']);
 const INVESTMENT_SCREENER_WEIGHT_VALUES = new Set(['balanced', 'quality', 'valuation', 'growth', 'graham_safety', 'durability', 'risk_adjustments']);
 const INVESTMENT_SCREENER_QUERY_KEYS = new Set(['market', 'exchange', 'region', 'sector', 'industry', 'metric', 'weight', 'topN', 'q', 'limit', 'offset']);
+const INVESTMENT_SCREENER_DEFAULT_MARKETS = ['ASX', 'NASDAQ', 'NYSE', 'LSE', 'TSE', 'US'];
 const INVESTMENT_SCREENER_ASX_UNIVERSE_FILE = resolve(__dirname, '..', 'investment-screener', 'universe', 'asx-watchlist.json');
 const INVESTMENT_SCREENER_NASDAQ_UNIVERSE_FILE = resolve(__dirname, '..', 'investment-screener', 'universe', 'nasdaq-listed-equities.seed.json');
 const INVESTMENT_SCREENER_NYSE_UNIVERSE_FILE = resolve(__dirname, '..', 'investment-screener', 'universe', 'nyse-listed-equities.seed.json');
@@ -1875,6 +1876,10 @@ function safeMarket(value, fallback = 'ASX') {
   const text = safeText(value, fallback, 20);
   if (!text || !/^[A-Z0-9._-]{1,20}$/i.test(text)) return fallback;
   return text.toUpperCase();
+}
+
+function isAllInvestmentFilterValue(value) {
+  return typeof value === 'string' && value.trim().toLowerCase() === 'all';
 }
 
 function investmentSourceForMarket(market) {
@@ -2473,10 +2478,7 @@ function readInvestmentFilterParams(searchParams) {
 
   for (const field of INVESTMENT_SCREENER_FILTERABLE_FIELDS) {
     const rawValue = searchParams.get(field);
-    if (!rawValue || !rawValue.trim()) {
-      if (searchParams.has(field) && String(rawValue ?? '').trim()) {
-        return investmentFilterError('invalid_investment_screener_filter', 'Investment screener filter values must use plain labels.');
-      }
+    if (!rawValue || !rawValue.trim() || isAllInvestmentFilterValue(rawValue)) {
       continue;
     }
     if (field === 'market' || field === 'exchange' || field === 'region') {
@@ -2559,7 +2561,7 @@ function readInvestmentFilterParams(searchParams) {
     applied.offset = offset;
   }
 
-  return { applied, active: Object.keys(applied).length > 0 || [...searchParams.keys()].length > 0 };
+  return { applied, active: Object.keys(applied).length > 0 };
 }
 
 function searchInvestmentCandidates(candidates, query) {
@@ -2579,7 +2581,7 @@ function matchClassification(candidate, field, wanted) {
 function distinctPlainValues(candidates, field) {
   const values = new Set();
   for (const candidate of candidates) {
-    const value = candidate?.[field];
+    const value = field === 'exchange' ? (candidate?.exchange ?? candidate?.market) : candidate?.[field];
     if (typeof value === 'string' && value.trim()) values.add(value.trim().toUpperCase());
   }
   return [...values].sort((left, right) => left.localeCompare(right));
@@ -2614,16 +2616,27 @@ function applyInvestmentScreenerFilters(payload, searchParams) {
   if (parsed.statusCode) return parsed;
   const allCandidates = Array.isArray(payload.candidates) ? payload.candidates : [];
   if (!parsed.active) {
+    const total = allCandidates.length;
+    const pagination = investmentPagination(total, INVESTMENT_SCREENER_DEFAULT_PAGE_SIZE, 0);
+    const candidates = allCandidates.slice(pagination.offset, pagination.offset + pagination.limit);
+    const includePaginationMetadata = total > candidates.length || payload.coverage?.market === 'ALL';
     return {
       statusCode: 200,
       payload: {
         ...payload,
+        candidates,
         available_facets: {
           exchanges: distinctPlainValues(allCandidates, 'exchange'),
           regions: distinctPlainValues(allCandidates, 'region'),
           sectors: distinctClassifications(allCandidates, 'sector'),
           industries: distinctClassifications(allCandidates, 'industry')
-        }
+        },
+        ...(includePaginationMetadata ? {
+          total_candidates: total,
+          displayed_count: candidates.length,
+          pagination,
+          messages: total > candidates.length ? [`Showing ${candidates.length} of ${total} candidates. Use filters or pagination to narrow the screener.`] : []
+        } : {})
       }
     };
   }
@@ -2638,7 +2651,7 @@ function applyInvestmentScreenerFilters(payload, searchParams) {
   }
   if (applied.exchange) {
     const wanted = applied.exchange.toLowerCase();
-    candidates = candidates.filter((candidate) => String(candidate.exchange ?? '').toLowerCase() === wanted);
+    candidates = candidates.filter((candidate) => String(candidate.exchange ?? candidate.market ?? '').toLowerCase() === wanted);
   }
   if (applied.region) {
     const wanted = applied.region.toLowerCase();
@@ -2844,9 +2857,200 @@ async function coverageFromDuckDbDataRoot(dataRoot, market = 'ASX') {
   };
 }
 
+async function readDashboardRankedExportPayload(dataRoot, market) {
+  const safe = safeMarket(market);
+  const rankedPath = join(dataRoot, 'investment-screener', 'exports', 'dashboard', `market=${safe}`, 'latest_ranked.json');
+  const info = await stat(rankedPath);
+  if (!info.isFile()) return null;
+  const parsed = JSON.parse(await readFile(rankedPath, 'utf8'));
+  const payload = sanitizeInvestmentRankedPayload(parsed, info.mtime);
+  payload.candidates = payload.candidates.map((candidate) => ({
+    ...candidate,
+    market: candidate.market ?? safe,
+    exchange: candidate.exchange ?? candidate.market ?? safe
+  }));
+  payload.excluded = payload.excluded.map((candidate) => ({
+    ...candidate,
+    market: candidate.market ?? safe,
+    exchange: candidate.exchange ?? candidate.market ?? safe
+  }));
+  return {
+    ...payload,
+    source_summary: parsed?.source_summary && typeof parsed.source_summary === 'object'
+      ? {
+          mode: safeMode(parsed.source_summary.mode ?? parsed.mode),
+          mode_label: modeLabel(safeMode(parsed.source_summary.mode ?? parsed.mode)),
+          providers: safeTextArray(parsed.source_summary.providers ?? parsed.source_summary.provider, 8, 80),
+          source_families: safeTextArray(parsed.source_summary.source_families, 8, 80),
+          universe_source: safeText(parsed.source_summary.universe_source, `${safe} dashboard export`, 120),
+          universe_version: safeText(parsed.source_summary.universe_version, null, 120),
+          latest_retrieved_at: safeIsoDate(parsed.source_summary.latest_retrieved_at),
+          latest_hydrated_at: safeIsoDate(parsed.source_summary.latest_hydrated_at ?? parsed.generated_at),
+          data_as_of: isoDateOnly(parsed.source_summary.data_as_of ?? parsed.data_as_of),
+          provenance_rows: safeInteger(parsed.source_summary.provenance_rows),
+          provenance_fields: safeInteger(parsed.source_summary.provenance_fields),
+          caveats: safeTextArray(parsed.source_summary.caveats, 8, 240)
+        }
+      : {
+          mode: safeMode(parsed?.mode),
+          mode_label: modeLabel(safeMode(parsed?.mode)),
+          providers: [],
+          source_families: [],
+          universe_source: `${safe} dashboard export`,
+          universe_version: null,
+          latest_retrieved_at: null,
+          latest_hydrated_at: safeIsoDate(parsed?.generated_at),
+          data_as_of: isoDateOnly(parsed?.data_as_of),
+          provenance_rows: null,
+          provenance_fields: null,
+          caveats: []
+        },
+    coverage: finalizeCoverage({
+      market: safe,
+      mode: safeMode(parsed?.mode),
+      rawCoverage: parsed?.coverage,
+      fallbackUsable: payload.candidates.length
+    })
+  };
+}
+
+async function discoverDashboardRankedExportMarkets(dataRoot) {
+  try {
+    const dashboardDir = join(dataRoot, 'investment-screener', 'exports', 'dashboard');
+    const entries = await readdir(dashboardDir, { withFileTypes: true });
+    const discovered = entries
+      .filter((entry) => entry.isDirectory() && entry.name.startsWith('market='))
+      .map((entry) => safeMarket(entry.name.slice('market='.length), null))
+      .filter(Boolean);
+    return [...new Set([...INVESTMENT_SCREENER_DEFAULT_MARKETS, ...discovered])];
+  } catch {
+    return INVESTMENT_SCREENER_DEFAULT_MARKETS;
+  }
+}
+
+function interleaveCandidatesByMarket(payloads) {
+  const groups = payloads.map((payload) => [...payload.candidates]);
+  const candidates = [];
+  let added = true;
+  while (added) {
+    added = false;
+    for (const group of groups) {
+      const next = group.shift();
+      if (next) {
+        candidates.push(next);
+        added = true;
+      }
+    }
+  }
+  return candidates;
+}
+
+function combineDashboardRankedExportPayloads(payloads) {
+  const candidates = interleaveCandidatesByMarket(payloads);
+  const providers = new Set();
+  const sourceFamilies = new Set();
+  const modes = new Set();
+  let latestGeneratedAt = null;
+  let latestDataAsOf = null;
+  let denominator = 0;
+  let usable = 0;
+  for (const payload of payloads) {
+    modes.add(payload.mode);
+    for (const provider of payload.source_summary?.providers ?? []) providers.add(provider);
+    for (const family of payload.source_summary?.source_families ?? []) sourceFamilies.add(family);
+    if (payload.generated_at && (!latestGeneratedAt || payload.generated_at > latestGeneratedAt)) latestGeneratedAt = payload.generated_at;
+    const dataAsOf = isoDateOnly(payload.data_as_of ?? payload.source_summary?.data_as_of);
+    if (dataAsOf && (!latestDataAsOf || dataAsOf > latestDataAsOf)) latestDataAsOf = dataAsOf;
+    denominator += safeInteger(payload.coverage?.denominator) ?? payload.candidates.length;
+    usable += safeInteger(payload.coverage?.usable) ?? payload.candidates.length;
+  }
+  return {
+    mode: modes.size === 1 ? [...modes][0] : 'live',
+    generated_at: latestGeneratedAt,
+    data_as_of: latestDataAsOf,
+    disclaimer: INVESTMENT_SCREENER_DISCLAIMER,
+    limitations: [],
+    candidates,
+    excluded: payloads.flatMap((payload) => payload.excluded ?? []),
+    doc_links: INVESTMENT_SCREENER_DOC_LINKS,
+    source_summary: {
+      mode: modes.size === 1 ? [...modes][0] : 'live',
+      mode_label: modes.size === 1 ? modeLabel([...modes][0]) : 'Mixed market dashboard exports',
+      providers: [...providers].sort(),
+      source_families: [...sourceFamilies].sort(),
+      universe_source: 'All available dashboard market exports',
+      universe_version: null,
+      latest_retrieved_at: null,
+      latest_hydrated_at: latestGeneratedAt,
+      data_as_of: latestDataAsOf,
+      provenance_rows: null,
+      provenance_fields: null,
+      caveats: []
+    },
+    coverage: {
+      market: 'ALL',
+      mode: modes.size === 1 ? [...modes][0] : 'live',
+      denominator,
+      usable,
+      scored: usable,
+      scraped: null,
+      excluded: payloads.reduce((sum, payload) => sum + (safeInteger(payload.coverage?.excluded) ?? 0), 0),
+      failed: payloads.reduce((sum, payload) => sum + (safeInteger(payload.coverage?.failed) ?? 0), 0),
+      missing_required_fields: null,
+      stale: payloads.some((payload) => payload.coverage?.stale === true),
+      percent: denominator > 0 ? Number(((usable / denominator) * 100).toFixed(1)) : null,
+      denominator_label: 'all available dashboard market exports',
+      denominator_status: 'mixed_market_exports',
+      coverage_label: `${usable} / ${denominator} candidates across all available dashboard market exports.`,
+      freshness: {
+        latest_retrieved_at: null,
+        data_as_of: latestDataAsOf,
+        stale: payloads.some((payload) => payload.coverage?.stale === true)
+      },
+      warnings: [],
+      caveats: ['Default All view interleaves candidates across available market exports so one exchange cannot silently dominate the first page.'],
+      window: null,
+      alternate_denominators: []
+    }
+  };
+}
+
+async function rankedFromDashboardExports(dataRoot, searchParams = null) {
+  if (!dataRoot) return null;
+  const rawMarket = searchParams?.get?.('market');
+  if (rawMarket && !isAllInvestmentFilterValue(rawMarket)) {
+    const market = safeMarket(rawMarket);
+    try {
+      const payload = await readDashboardRankedExportPayload(dataRoot, market);
+      if (!payload) return null;
+      return applyInvestmentScreenerFilters(payload, searchParams);
+    } catch {
+      return null;
+    }
+  }
+  const markets = await discoverDashboardRankedExportMarkets(dataRoot);
+  const payloads = [];
+  for (const market of markets) {
+    try {
+      const payload = await readDashboardRankedExportPayload(dataRoot, market);
+      if (payload && payload.candidates.length > 0) payloads.push(payload);
+    } catch {
+      // Missing per-market exports are normal during staged hydration; skip silently.
+    }
+  }
+  if (payloads.length === 0) return null;
+  return applyInvestmentScreenerFilters(combineDashboardRankedExportPayloads(payloads), searchParams);
+}
+
 async function rankedFromDuckDbDataRoot(dataRoot, searchParams = null) {
   if (!dataRoot) return null;
-  const market = safeMarket(searchParams?.get?.('market') ?? 'ASX');
+  const rawMarket = searchParams?.get?.('market');
+  if (!rawMarket || isAllInvestmentFilterValue(rawMarket)) {
+    const dashboardResult = await rankedFromDashboardExports(dataRoot, searchParams);
+    if (dashboardResult) return dashboardResult;
+    return null;
+  }
+  const market = safeMarket(rawMarket);
   let summary = null;
   for (const source of investmentSourcesForMarket(market)) {
     try {
@@ -2856,8 +3060,8 @@ async function rankedFromDuckDbDataRoot(dataRoot, searchParams = null) {
       // Try the next reviewed source for this market; never leak storage paths or diagnostics.
     }
   }
-  if (!summary) return null;
-  return applyInvestmentScreenerFilters(payloadFromDuckDbSummary(summary), searchParams);
+  if (summary) return applyInvestmentScreenerFilters(payloadFromDuckDbSummary(summary), searchParams);
+  return rankedFromDashboardExports(dataRoot, searchParams);
 }
 
 async function readInvestmentScreenerCoverage({ rankedFile, historyPool, dataRoot = null, searchParams = null }) {
