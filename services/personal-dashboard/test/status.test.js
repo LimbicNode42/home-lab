@@ -183,3 +183,102 @@ test('mem0Health can probe localhost-only mem0 over SSH without exposing remote 
   assert.equal(JSON.stringify(check).includes('192.168.0.20'), false);
   assert.equal(JSON.stringify(calls).includes('super-secret-test-key'), false);
 });
+
+
+test('graphitiNeo4jHealth reports not deployed cards without exposing internal endpoints', async () => {
+  const service = new StatusService({
+    checks: [{
+      id: 'knowledge-graph',
+      label: 'Knowledge graph',
+      type: 'graphitiNeo4jHealth',
+      graphiti: { deployed: false },
+      neo4j: { deployed: false }
+    }],
+    fetchImpl: async () => { throw new Error('not-deployed probes should not call fetch'); }
+  });
+
+  const payload = await service.getStatus();
+
+  assert.equal(payload.checks.length, 2);
+  assert.deepEqual(payload.checks.map((check) => check.status), ['not_deployed', 'not_deployed']);
+  assert.match(payload.checks[0].message, /Graphiti is not deployed/);
+  assert.match(payload.checks[1].message, /Neo4j is not deployed/);
+  assert.equal(JSON.stringify(payload).includes('127.0.0.1'), false);
+});
+
+test('graphitiNeo4jHealth reports healthy Graphiti and Neo4j with safe browser link only when configured', async () => {
+  const tcpCalls = [];
+  const tcpConnectImpl = (options) => {
+    tcpCalls.push(options);
+    return {
+      once(event, callback) {
+        if (event === 'connect') queueMicrotask(callback);
+        return this;
+      },
+      destroy() {}
+    };
+  };
+  const fetchImpl = async (url) => {
+    assert.match(String(url), /^http:\/\/127\.0\.0\.1/);
+    return new Response('', { status: 200 });
+  };
+  const service = new StatusService({
+    checks: [{
+      id: 'knowledge-graph',
+      label: 'Knowledge graph',
+      type: 'graphitiNeo4jHealth',
+      graphiti: { baseUrl: 'http://127.0.0.1:8000' },
+      neo4j: { httpUrl: 'http://127.0.0.1:7474', boltHost: '127.0.0.1', boltPort: 7687, browserUrl: 'https://neo4j-admin.example.test' }
+    }],
+    fetchImpl,
+    tcpConnectImpl
+  });
+
+  const payload = await service.getStatus();
+  const graphiti = payload.checks.find((check) => check.component === 'graphiti');
+  const neo4j = payload.checks.find((check) => check.component === 'neo4j');
+
+  assert.equal(graphiti.status, 'healthy');
+  assert.equal(neo4j.status, 'healthy');
+  assert.equal(neo4j.displayUrl, 'https://neo4j-admin.example.test');
+  assert.equal(graphiti.displayUrl, undefined);
+  assert.equal(tcpCalls[0].port, 7687);
+  assert.equal(JSON.stringify(payload).includes('127.0.0.1'), false);
+});
+
+test('graphitiNeo4jHealth reports degraded when only one Neo4j probe is reachable', async () => {
+  const service = new StatusService({
+    checks: [{
+      id: 'knowledge-graph',
+      label: 'Knowledge graph',
+      type: 'graphitiNeo4jHealth',
+      graphiti: { deployed: false },
+      neo4j: { httpUrl: 'http://127.0.0.1:7474', boltHost: '127.0.0.1', boltPort: 7687 }
+    }],
+    fetchImpl: async () => new Response('', { status: 200 }),
+    tcpConnectImpl: () => ({
+      once(event, callback) {
+        if (event === 'error') queueMicrotask(callback);
+        return this;
+      },
+      destroy() {}
+    })
+  });
+
+  const neo4j = (await service.getStatus()).checks.find((check) => check.component === 'neo4j');
+
+  assert.equal(neo4j.status, 'degraded');
+  assert.equal(neo4j.error, 'neo4j_partial');
+  assert.equal(neo4j.freshness, 'fresh');
+});
+
+test('graphitiNeo4jHealth reports not configured when probes are absent', async () => {
+  const service = new StatusService({
+    checks: [{ id: 'knowledge-graph', label: 'Knowledge graph', type: 'graphitiNeo4jHealth', graphiti: {}, neo4j: {} }]
+  });
+
+  const payload = await service.getStatus();
+
+  assert.deepEqual(payload.checks.map((check) => check.status), ['not_configured', 'not_configured']);
+  assert.ok(payload.checks.every((check) => check.checkedAt && check.freshness === 'fresh'));
+});

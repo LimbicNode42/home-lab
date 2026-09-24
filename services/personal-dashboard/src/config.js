@@ -39,6 +39,21 @@ const DEFAULT_CONFIG = {
       timeoutMs: 2500
     },
     {
+      id: 'knowledge-graph',
+      label: 'Knowledge graph',
+      type: 'graphitiNeo4jHealth',
+      graphiti: {
+        id: 'graphiti',
+        label: 'Graphiti knowledge graph',
+        deployed: false
+      },
+      neo4j: {
+        id: 'neo4j',
+        label: 'Neo4j graph database',
+        deployed: false
+      }
+    },
+    {
       id: 'metamcp-gateway',
       label: 'MetaMCP gateway',
       targetUrl: 'http://192.168.0.20:12008/health',
@@ -148,6 +163,70 @@ function isSafeLinkUrl(value) {
   if (typeof value !== 'string') return false;
   if (value.startsWith('/') && !value.startsWith('//') && !value.includes('\0')) return true;
   return isHttpUrl(value);
+}
+
+function isSafeOperatorUrl(value) {
+  try {
+    const url = new URL(value);
+    return (url.protocol === 'http:' || url.protocol === 'https:')
+      && url.username === ''
+      && url.password === ''
+      && url.search === ''
+      && url.hash === '';
+  } catch {
+    return false;
+  }
+}
+
+function requireObject(value, field) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`Invalid dashboard config: ${field} must be an object`);
+  }
+  return value;
+}
+
+function optionalBoolean(value, field) {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'boolean') {
+    throw new Error(`Invalid dashboard config: ${field} must be true or false`);
+  }
+  return value;
+}
+
+function optionalHttpUrl(value, field) {
+  if (value === undefined) return undefined;
+  const url = requireText(value, field);
+  if (!isHttpUrl(url)) {
+    throw new Error(`Invalid ${field}: only http(s) URLs are allowed`);
+  }
+  return url;
+}
+
+function optionalSafeOperatorUrl(value, field) {
+  if (value === undefined) return undefined;
+  const url = requireText(value, field);
+  if (!isSafeOperatorUrl(url)) {
+    throw new Error(`Invalid ${field}: only credential-free http(s) URLs are allowed`);
+  }
+  return url;
+}
+
+function optionalPath(value, field) {
+  if (value === undefined) return undefined;
+  const path = requireText(value, field);
+  if (!path.startsWith('/') || path.includes('\0')) {
+    throw new Error(`Invalid ${field}: expected a same-service absolute URL path`);
+  }
+  return path;
+}
+
+function optionalComponentId(value, field) {
+  if (value === undefined) return undefined;
+  const id = requireText(value, field);
+  if (!/^[a-z0-9][a-z0-9-]{0,62}$/i.test(id)) {
+    throw new Error(`Invalid dashboard config: ${field} must be DNS-label-like`);
+  }
+  return id;
 }
 
 function requireText(value, field) {
@@ -520,6 +599,47 @@ function validateStatusChecks(statusChecks) {
           throw new Error(`Invalid statusWhenHealthy for ${label}: must be healthy, degraded, stale, or unknown`);
         }
         result.statusWhenHealthy = statusWhenHealthy;
+      }
+    } else if (type === 'graphitiNeo4jHealth') {
+      result.type = type;
+      const graphiti = requireObject(check?.graphiti ?? {}, `statusChecks[${index}].graphiti`);
+      const neo4j = requireObject(check?.neo4j ?? {}, `statusChecks[${index}].neo4j`);
+      result.graphiti = {};
+      result.neo4j = {};
+      for (const [field, value] of Object.entries({
+        id: optionalComponentId(graphiti.id, `statusChecks[${index}].graphiti.id`),
+        label: graphiti.label === undefined ? undefined : requireText(graphiti.label, `statusChecks[${index}].graphiti.label`),
+        deployed: optionalBoolean(graphiti.deployed, `statusChecks[${index}].graphiti.deployed`),
+        baseUrl: optionalHttpUrl(graphiti.baseUrl, `statusChecks[${index}].graphiti.baseUrl`),
+        healthUrl: optionalHttpUrl(graphiti.healthUrl, `statusChecks[${index}].graphiti.healthUrl`),
+        readinessUrl: optionalHttpUrl(graphiti.readinessUrl, `statusChecks[${index}].graphiti.readinessUrl`),
+        healthPath: optionalPath(graphiti.healthPath, `statusChecks[${index}].graphiti.healthPath`),
+        readinessPath: optionalPath(graphiti.readinessPath, `statusChecks[${index}].graphiti.readinessPath`)
+      })) {
+        if (value !== undefined) result.graphiti[field] = value;
+      }
+      for (const [field, value] of Object.entries({
+        id: optionalComponentId(neo4j.id, `statusChecks[${index}].neo4j.id`),
+        label: neo4j.label === undefined ? undefined : requireText(neo4j.label, `statusChecks[${index}].neo4j.label`),
+        deployed: optionalBoolean(neo4j.deployed, `statusChecks[${index}].neo4j.deployed`),
+        httpUrl: optionalHttpUrl(neo4j.httpUrl, `statusChecks[${index}].neo4j.httpUrl`),
+        browserUrl: optionalSafeOperatorUrl(neo4j.browserUrl, `statusChecks[${index}].neo4j.browserUrl`),
+        boltHost: neo4j.boltHost === undefined ? undefined : requireText(neo4j.boltHost, `statusChecks[${index}].neo4j.boltHost`)
+      })) {
+        if (value !== undefined) result.neo4j[field] = value;
+      }
+      if (result.neo4j.boltHost && !/^[A-Za-z0-9_.-]+$/.test(result.neo4j.boltHost)) {
+        throw new Error(`Invalid boltHost for ${label}: expected a hostname or IP address`);
+      }
+      if (neo4j.boltPort !== undefined) {
+        const boltPort = Number(neo4j.boltPort);
+        if (!Number.isInteger(boltPort) || boltPort < 1 || boltPort > 65535) {
+          throw new Error(`Invalid boltPort for ${label}: expected a TCP port from 1 to 65535`);
+        }
+        result.neo4j.boltPort = boltPort;
+      }
+      if ((result.neo4j.boltHost && !result.neo4j.boltPort) || (!result.neo4j.boltHost && result.neo4j.boltPort)) {
+        throw new Error(`Invalid Neo4j Bolt config for ${label}: boltHost and boltPort must be configured together`);
       }
     } else {
       throw new Error(`Invalid dashboard config: unsupported statusChecks[${index}].type`);

@@ -89,7 +89,7 @@ h2, h3 { margin-top: 0; }
 .badge.down { color: #3a1010; background: #ffb4ab; }
 .badge.degraded { color: #3b2600; background: #facc6b; }
 .badge.stale { color: #3b2600; background: #fde68a; }
-.badge.unknown { color: #1f2937; background: #cbd5e1; }
+.badge.not_deployed, .badge.not_configured, .badge.unknown { color: #1f2937; background: #cbd5e1; }
 .warning { color: #facc6b; }
 .link-list { display: flex; flex-direction: column; gap: 0.7rem; }
 .link-list a {

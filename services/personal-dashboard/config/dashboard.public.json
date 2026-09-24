@@ -70,6 +70,21 @@
       "timeoutMs": 2500
     },
     {
+      "id": "knowledge-graph",
+      "label": "Knowledge graph",
+      "type": "graphitiNeo4jHealth",
+      "graphiti": {
+        "id": "graphiti",
+        "label": "Graphiti knowledge graph",
+        "deployed": false
+      },
+      "neo4j": {
+        "id": "neo4j",
+        "label": "Neo4j graph database",
+        "deployed": false
+      }
+    },
+    {
       "id": "metamcp-gateway",
       "label": "MetaMCP gateway",
       "targetUrl": "http://192.168.0.20:12008/health",
