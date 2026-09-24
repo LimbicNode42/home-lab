@@ -2676,6 +2676,8 @@ function applyInvestmentScreenerFilters(payload, searchParams) {
     });
   }
 
+  candidates = withDisplayRanks(candidates);
+
   const total = candidates.length;
   const limit = applied.limit ?? applied.topN ?? INVESTMENT_SCREENER_DEFAULT_PAGE_SIZE;
   const offset = applied.offset ?? 0;
@@ -2928,25 +2930,22 @@ async function discoverDashboardRankedExportMarkets(dataRoot) {
   }
 }
 
-function interleaveCandidatesByMarket(payloads) {
-  const groups = payloads.map((payload) => [...payload.candidates]);
-  const candidates = [];
-  let added = true;
-  while (added) {
-    added = false;
-    for (const group of groups) {
-      const next = group.shift();
-      if (next) {
-        candidates.push(next);
-        added = true;
-      }
-    }
-  }
-  return candidates;
+function investmentRankSort(left, right) {
+  const leftScore = safeNumber(left.score) ?? Number.NEGATIVE_INFINITY;
+  const rightScore = safeNumber(right.score) ?? Number.NEGATIVE_INFINITY;
+  const leftRank = safeNumber(left.rank) ?? Number.POSITIVE_INFINITY;
+  const rightRank = safeNumber(right.rank) ?? Number.POSITIVE_INFINITY;
+  return rightScore - leftScore
+    || leftRank - rightRank
+    || String(left.ticker ?? '').localeCompare(String(right.ticker ?? ''));
+}
+
+function withDisplayRanks(candidates) {
+  return candidates.map((candidate, index) => ({ ...candidate, rank: index + 1 }));
 }
 
 function combineDashboardRankedExportPayloads(payloads) {
-  const candidates = interleaveCandidatesByMarket(payloads);
+  const candidates = withDisplayRanks(payloads.flatMap((payload) => payload.candidates ?? []).sort(investmentRankSort));
   const providers = new Set();
   const sourceFamilies = new Set();
   const modes = new Set();
@@ -3008,7 +3007,7 @@ function combineDashboardRankedExportPayloads(payloads) {
         stale: payloads.some((payload) => payload.coverage?.stale === true)
       },
       warnings: [],
-      caveats: ['Default All view interleaves candidates across available market exports so one exchange cannot silently dominate the first page.'],
+      caveats: ['Default All view ranks candidates globally across available market exports by public screener score.'],
       window: null,
       alternate_denominators: []
     }

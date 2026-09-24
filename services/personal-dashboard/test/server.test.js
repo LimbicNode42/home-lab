@@ -1449,10 +1449,16 @@ test('GET /api/investment-screener/ranked default All filters aggregate dashboar
     assert.deepEqual(defaultBody.applied_filters ?? {}, {});
     assert.deepEqual(allBody.applied_filters ?? {}, {});
     assert.deepEqual(defaultBody.candidates.map((candidate) => candidate.ticker), allBody.candidates.map((candidate) => candidate.ticker));
+    assert.deepEqual(defaultBody.candidates.map((candidate) => candidate.ticker), ['AAPL.US', 'MSFT.US', 'BHP.AX', 'CSL.AX']);
+    assert.deepEqual(defaultBody.candidates.map((candidate) => candidate.rank), [1, 2, 3, 4]);
+    assert.equal(new Set(defaultBody.candidates.map((candidate) => candidate.rank)).size, defaultBody.candidates.length);
     assert.deepEqual([...new Set(defaultBody.candidates.map((candidate) => candidate.exchange))].sort(), ['ASX', 'NASDAQ']);
     assert.deepEqual(defaultBody.available_facets.exchanges, ['ASX', 'NASDAQ']);
     assert.equal(defaultBody.coverage.market, 'ALL');
     assert.equal(defaultBody.total_candidates, 4);
+    for (const forbidden of [dataRoot, '/root/', 'postgres://', 'stderr', 'kanban.db']) {
+      assert.equal(JSON.stringify(defaultBody).includes(forbidden), false, `All-market response leaked ${forbidden}`);
+    }
   } finally {
     await server.close();
     await rm(dataRoot, { recursive: true, force: true });
@@ -1465,7 +1471,8 @@ test('GET /api/investment-screener/ranked keeps explicit exchange filters narrow
     { rank: 1, ticker: 'BHP.AX', name: 'BHP Group', market: 'ASX', currency: 'AUD', score: 88, sub_scores: { quality: 20 } }
   ], { mode: 'asx-yahoo-timeseries' });
   await writeDashboardMarketRankedExport(dataRoot, 'NASDAQ', [
-    { rank: 1, ticker: 'AAPL.US', name: 'Apple Inc.', market: 'NASDAQ', currency: 'USD', score: 97, sub_scores: { quality: 25 } }
+    { rank: 1, ticker: 'AAPL.US', name: 'Apple Inc.', market: 'NASDAQ', currency: 'USD', score: 97, sub_scores: { quality: 25 } },
+    { rank: 2, ticker: 'MSFT.US', name: 'Microsoft Corporation', market: 'NASDAQ', currency: 'USD', score: 96, sub_scores: { quality: 24 } }
   ], { mode: 'nasdaq-eodhd-fundamentals' });
 
   const configPath = await writeConfig(basicConfig);
@@ -1477,14 +1484,16 @@ test('GET /api/investment-screener/ranked keeps explicit exchange filters narrow
 
     assert.equal(response.status, 200);
     assert.deepEqual(body.applied_filters, { exchange: 'NASDAQ', limit: 10 });
-    assert.deepEqual(body.candidates.map((candidate) => candidate.ticker), ['AAPL.US']);
+    assert.deepEqual(body.candidates.map((candidate) => candidate.ticker), ['AAPL.US', 'MSFT.US']);
+    assert.deepEqual(body.candidates.map((candidate) => candidate.rank), [1, 2]);
     assert.equal(body.candidates.every((candidate) => candidate.exchange === 'NASDAQ'), true);
     assert.equal(JSON.stringify(body).includes('BHP.AX'), false);
 
     const marketAndExchange = await fetch(`${server.baseUrl}/api/investment-screener/ranked?market=NASDAQ&exchange=NASDAQ&limit=10`);
     const marketAndExchangeBody = await marketAndExchange.json();
     assert.equal(marketAndExchange.status, 200);
-    assert.deepEqual(marketAndExchangeBody.candidates.map((candidate) => candidate.ticker), ['AAPL.US']);
+    assert.deepEqual(marketAndExchangeBody.candidates.map((candidate) => candidate.ticker), ['AAPL.US', 'MSFT.US']);
+    assert.deepEqual(marketAndExchangeBody.candidates.map((candidate) => candidate.rank), [1, 2]);
     assert.deepEqual(marketAndExchangeBody.available_facets.exchanges, ['NASDAQ']);
   } finally {
     await server.close();
