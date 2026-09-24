@@ -27,6 +27,8 @@ HOMELAB_HEALTH_HOST_PATH=$HOMELAB_HEALTH_HOST_DIR/latest_report.txt
 WRITING_POSTS_HOST_PATH=$WRITING_POSTS_HOST_DIR/writing-posts.json
 PERSONAL_DASHBOARD_ENV_FILE=${PERSONAL_DASHBOARD_ENV_FILE:-/root/.hermes/rendered/personal-dashboard.env}
 MOBILE_VIEWER_NOVNC_TOKEN_FILE_HOST=${MOBILE_VIEWER_NOVNC_TOKEN_FILE_HOST:-/var/lib/personal-dashboard/secrets/mobile-viewer-novnc-token}
+PERSONAL_DASHBOARD_SSH_HOST_DIR=${PERSONAL_DASHBOARD_SSH_HOST_DIR:-/var/lib/personal-dashboard/ssh}
+PERSONAL_DASHBOARD_SSH_CACHE_DIR=${PERSONAL_DASHBOARD_SSH_CACHE_DIR:-/var/lib/personal-dashboard/runtime-cache/ssh}
 
 # Source an operator-local rendered secret file when present. This keeps the
 # committed deploy script portable while avoiding secret values in Git, command
@@ -127,6 +129,45 @@ METAMCP_STATUS_HOST_DIR="$METAMCP_STATUS_HOST_DIR" \
 APP_DIR="$APP_DIR" \
   "$APP_DIR/scripts/sync-runtime-snapshots.sh"
 
+# SSH-backed status checks use a read-only copy of the operator-approved SSH
+# identity and known_hosts file. This lets the dashboard probe localhost-only
+# services on tori without opening those services on the LAN or exposing keys in
+# config, command lines, or Kanban handoffs.
+prepare_ssh_cache() {
+  identity=""
+  for candidate in personal_dashboard_mem0_probe_ed25519 id_ed25519 id_rsa; do
+    if [ -f "$PERSONAL_DASHBOARD_SSH_HOST_DIR/$candidate" ]; then
+      identity=$candidate
+      break
+    fi
+  done
+  if [ -z "$identity" ]; then
+    if [ -f "$PERSONAL_DASHBOARD_SSH_CACHE_DIR/id_ed25519" ] && [ -f "$PERSONAL_DASHBOARD_SSH_CACHE_DIR/known_hosts" ]; then
+      chown -R 1000:1000 "$PERSONAL_DASHBOARD_SSH_CACHE_DIR"
+      chmod 0700 "$PERSONAL_DASHBOARD_SSH_CACHE_DIR"
+      chmod 0400 "$PERSONAL_DASHBOARD_SSH_CACHE_DIR/id_ed25519"
+      chmod 0444 "$PERSONAL_DASHBOARD_SSH_CACHE_DIR/known_hosts"
+      return
+    fi
+    printf '%s\n' "No SSH identity found in $PERSONAL_DASHBOARD_SSH_HOST_DIR; refusing SSH-backed mem0 dashboard deploy." >&2
+    exit 1
+  fi
+  if [ ! -f "$PERSONAL_DASHBOARD_SSH_HOST_DIR/known_hosts" ]; then
+    printf '%s\n' "No SSH known_hosts found in $PERSONAL_DASHBOARD_SSH_HOST_DIR; verify and add tori host key before deploy." >&2
+    exit 1
+  fi
+  rm -rf "$PERSONAL_DASHBOARD_SSH_CACHE_DIR"
+  mkdir -p "$PERSONAL_DASHBOARD_SSH_CACHE_DIR"
+  cp -f "$PERSONAL_DASHBOARD_SSH_HOST_DIR/$identity" "$PERSONAL_DASHBOARD_SSH_CACHE_DIR/id_ed25519"
+  cp -f "$PERSONAL_DASHBOARD_SSH_HOST_DIR/known_hosts" "$PERSONAL_DASHBOARD_SSH_CACHE_DIR/known_hosts"
+  chown -R 1000:1000 "$PERSONAL_DASHBOARD_SSH_CACHE_DIR"
+  chmod 0700 "$PERSONAL_DASHBOARD_SSH_CACHE_DIR"
+  chmod 0400 "$PERSONAL_DASHBOARD_SSH_CACHE_DIR/id_ed25519"
+  chmod 0444 "$PERSONAL_DASHBOARD_SSH_CACHE_DIR/known_hosts"
+}
+
+prepare_ssh_cache
+
 docker build -t "$IMAGE" .
 
 if ! docker network inspect "$DB_NETWORK" >/dev/null 2>&1; then
@@ -183,6 +224,7 @@ docker run -d \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/mobile-workflow,target=/app/mobile-workflow,readonly" \
   --mount "type=bind,source=$MOBILE_VIEWER_NOVNC_TOKEN_FILE_HOST,target=/run/secrets/mobile-viewer-novnc-token,readonly" \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/metamcp,target=/app/metamcp,readonly" \
+  --mount "type=bind,source=$PERSONAL_DASHBOARD_SSH_CACHE_DIR,target=/home/node/.ssh,readonly" \
   --mount "type=bind,source=$WRITING_POSTS_HOST_DIR,target=/app/writing" \
   "$IMAGE"
 

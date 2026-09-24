@@ -22,6 +22,22 @@ const DEFAULT_CONFIG = {
       targetUrl: 'http://192.168.0.20:9119/kanban',
       displayUrl: 'http://192.168.0.20:9119/kanban'
     },
+
+    {
+      id: 'mem0-health',
+      label: 'Mem0 memory provider',
+      type: 'mem0Health',
+      baseUrl: 'http://127.0.0.1:8888',
+      displayUrl: 'http://192.168.0.20:8888',
+      sshHost: '192.168.0.20',
+      sshUser: 'root',
+      statusWhenHealthy: 'degraded',
+      statusDetail: 'Read/search path is reachable; write/add is currently degraded by upstream LLM quota/access. Dashboard shows only coarse health and freshness.',
+      unresolvedFollowUp: 'Provide a chat-capable mem0 LLM credential/model or reset OpenRouter quota, then restart only the mem0 API container and verify synthetic add plus Hermes mem0 path.',
+      dockerContainers: ['mem0-mem0-1', 'mem0-postgres-1'],
+      logContainers: ['mem0-mem0-1'],
+      timeoutMs: 2500
+    },
     {
       id: 'metamcp-gateway',
       label: 'MetaMCP gateway',
@@ -128,6 +144,12 @@ function isHttpUrl(value) {
   }
 }
 
+function isSafeLinkUrl(value) {
+  if (typeof value !== 'string') return false;
+  if (value.startsWith('/') && !value.startsWith('//') && !value.includes('\0')) return true;
+  return isHttpUrl(value);
+}
+
 function requireText(value, field) {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new Error(`Invalid dashboard config: ${field} is required`);
@@ -149,8 +171,8 @@ function validateSections(sections) {
     const links = section.links.map((link, linkIndex) => {
       const label = requireText(link?.label, `sections[${sectionIndex}].links[${linkIndex}].label`);
       const href = requireText(link?.href, `sections[${sectionIndex}].links[${linkIndex}].href`);
-      if (!isHttpUrl(href)) {
-        throw new Error(`Invalid link href for ${label}: only http(s) URLs are allowed`);
+      if (!isSafeLinkUrl(href)) {
+        throw new Error(`Invalid link href for ${label}: only http(s) or same-origin URLs are allowed`);
       }
       return { label, href };
     });
@@ -445,9 +467,62 @@ function validateStatusChecks(statusChecks) {
       throw new Error(`Invalid dashboard config: statusChecks[${index}].id must be DNS-label-like`);
     }
     const label = requireText(check?.label, `statusChecks[${index}].label`);
-    const targetUrl = requireText(check?.targetUrl, `statusChecks[${index}].targetUrl`);
-    if (!isHttpUrl(targetUrl)) {
-      throw new Error(`Invalid status targetUrl for ${label}: only http(s) URLs are allowed`);
+    const type = check?.type === undefined ? 'http' : requireText(check.type, `statusChecks[${index}].type`);
+    const result = { id, label };
+
+    if (type === 'http') {
+      const targetUrl = requireText(check?.targetUrl, `statusChecks[${index}].targetUrl`);
+      if (!isHttpUrl(targetUrl)) {
+        throw new Error(`Invalid status targetUrl for ${label}: only http(s) URLs are allowed`);
+      }
+      result.targetUrl = targetUrl;
+    } else if (type === 'mem0Health') {
+      const baseUrl = requireText(check?.baseUrl, `statusChecks[${index}].baseUrl`);
+      if (!isHttpUrl(baseUrl)) {
+        throw new Error(`Invalid mem0 baseUrl for ${label}: only http(s) URLs are allowed`);
+      }
+      result.type = type;
+      result.baseUrl = baseUrl;
+      for (const field of ['docsPath', 'openapiPath', 'searchPath', 'apiKeyEnv', 'searchUserId', 'logErrorPattern', 'sshHost', 'sshUser']) {
+        if (check[field] !== undefined) {
+          result[field] = requireText(check[field], `statusChecks[${index}].${field}`);
+        }
+      }
+      if (result.sshHost && !/^[A-Za-z0-9_.-]+$/.test(result.sshHost)) {
+        throw new Error(`Invalid sshHost for ${label}: expected a hostname or IP address`);
+      }
+      if (result.sshUser && !/^[A-Za-z0-9_.-]+$/.test(result.sshUser)) {
+        throw new Error(`Invalid sshUser for ${label}: expected a local account name`);
+      }
+      if (result.apiKeyEnv && !/^[A-Z_][A-Z0-9_]*$/.test(result.apiKeyEnv)) {
+        throw new Error(`Invalid apiKeyEnv for ${label}: expected an environment variable name`);
+      }
+      for (const field of ['dockerContainers', 'logContainers']) {
+        if (check[field] !== undefined) {
+          if (!Array.isArray(check[field])) {
+            throw new Error(`Invalid ${field} for ${label}: expected an array`);
+          }
+          result[field] = check[field].map((value, containerIndex) => requireText(value, `statusChecks[${index}].${field}[${containerIndex}]`));
+        }
+      }
+      for (const field of ['logSinceSeconds', 'logTail', 'sshPort', 'sshConnectTimeoutSeconds']) {
+        if (check[field] !== undefined) {
+          const value = Number(check[field]);
+          if (!Number.isFinite(value) || value <= 0 || value > 86_400) {
+            throw new Error(`Invalid ${field} for ${label}: expected a positive number up to 86400`);
+          }
+          result[field] = value;
+        }
+      }
+      if (check.statusWhenHealthy !== undefined) {
+        const statusWhenHealthy = validateStateValue(check.statusWhenHealthy, `statusChecks[${index}].statusWhenHealthy`);
+        if (!['healthy', 'degraded', 'stale', 'unknown'].includes(statusWhenHealthy)) {
+          throw new Error(`Invalid statusWhenHealthy for ${label}: must be healthy, degraded, stale, or unknown`);
+        }
+        result.statusWhenHealthy = statusWhenHealthy;
+      }
+    } else {
+      throw new Error(`Invalid dashboard config: unsupported statusChecks[${index}].type`);
     }
 
     const acceptableStatuses = check.acceptableStatuses ?? [200, 204, 301, 302];
@@ -461,12 +536,12 @@ function validateStatusChecks(statusChecks) {
       }
       return parsed;
     });
+    result.acceptableStatuses = normalizedStatuses;
 
-    const result = { id, label, targetUrl, acceptableStatuses: normalizedStatuses };
     if (check.statusWhenUp !== undefined) {
       const statusWhenUp = validateStateValue(check.statusWhenUp, `statusChecks[${index}].statusWhenUp`);
-      if (!['up', 'degraded', 'unknown'].includes(statusWhenUp)) {
-        throw new Error(`Invalid statusWhenUp for ${label}: must be up, degraded, or unknown`);
+      if (!['up', 'healthy', 'degraded', 'stale', 'unknown'].includes(statusWhenUp)) {
+        throw new Error(`Invalid statusWhenUp for ${label}: must be up, healthy, degraded, stale, or unknown`);
       }
       result.statusWhenUp = statusWhenUp;
     }

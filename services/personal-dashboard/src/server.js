@@ -3500,7 +3500,7 @@ function sanitizeIsoTimestamp(value) {
 }
 
 const METAMCP_CACHE_STATUSES = new Set(['fresh', 'not_configured', 'missing', 'malformed', 'read_error']);
-const METAMCP_RUNTIME_STATES = new Set(['up', 'down', 'degraded', 'unknown']);
+const METAMCP_RUNTIME_STATES = new Set(['up', 'healthy', 'down', 'degraded', 'stale', 'unknown']);
 
 function sanitizeMetaMcpText(value, fallback = null, maxLength = 160) {
   if (typeof value !== 'string' && typeof value !== 'number') return fallback;
@@ -3539,7 +3539,7 @@ function publicMetaMcpGateway(check) {
   return {
     id: 'metamcp-gateway',
     label: 'MetaMCP gateway',
-    status: check.status === 'up' ? 'up' : (check.status === 'down' ? 'down' : 'unknown'),
+    status: check.status === 'up' || check.status === 'healthy' ? 'healthy' : (check.status === 'down' ? 'down' : 'unknown'),
     ...(Number.isInteger(check.httpStatus) ? { httpStatus: check.httpStatus } : {}),
     ...(sanitizeMetaMcpText(check.error, null, 80) ? { error: sanitizeMetaMcpText(check.error, null, 80) } : {}),
     ...(Number.isFinite(Number(check.latencyMs)) ? { latencyMs: Number(check.latencyMs) } : {}),
@@ -3599,10 +3599,12 @@ function metaMcpStatusPayload({ config, gateway, registry = null, cacheStatus, m
   let status = 'unknown';
   if (gatewayStatus === 'down') {
     status = 'down';
-  } else if (!registry || cacheStatus !== 'fresh' || registry.freshness?.stale || registry.counts?.unhealthyServers > 0) {
-    status = gatewayStatus === 'up' ? 'degraded' : 'unknown';
-  } else if (gatewayStatus === 'up') {
-    status = 'up';
+  } else if (registry?.freshness?.stale) {
+    status = gatewayStatus === 'healthy' ? 'stale' : 'unknown';
+  } else if (!registry || cacheStatus !== 'fresh' || registry.counts?.unhealthyServers > 0) {
+    status = gatewayStatus === 'healthy' ? 'degraded' : 'unknown';
+  } else if (gatewayStatus === 'healthy') {
+    status = 'healthy';
   }
   return {
     enabled: config?.enabled !== false,

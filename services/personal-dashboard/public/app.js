@@ -202,9 +202,9 @@ function renderConfig(config) {
 
 
 function metaMcpBadgeClass(status) {
-  if (status === 'up') return 'up';
+  if (status === 'up' || status === 'healthy') return 'healthy';
   if (status === 'down') return 'down';
-  if (status === 'degraded') return 'degraded';
+  if (status === 'degraded' || status === 'stale') return status;
   return 'neutral';
 }
 
@@ -679,6 +679,9 @@ function renderStatus(payload) {
     ];
     if (check.detail) {
       body.push(el('p', { className: 'muted', text: check.detail }));
+    }
+    if (check.message) {
+      body.push(el('p', { className: check.status === 'healthy' || check.status === 'up' ? 'muted' : 'warning', text: check.message }));
     }
     if (check.unresolvedFollowUp) {
       body.push(el('p', { className: 'warning', text: `Unresolved: ${check.unresolvedFollowUp}` }));

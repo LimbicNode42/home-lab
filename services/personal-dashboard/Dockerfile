@@ -4,6 +4,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV REPO_DOCS_ROOT=/app/repo-docs
 ENV EPIC_DOCS_INDEX_PATH=/app/repo-docs/services/personal-dashboard/docs/epics/index.json
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssh-client \
+  && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json* ./
 RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev --package-lock=false; fi

@@ -75,3 +75,54 @@ test('default public config includes external Hermes Kanban link and status chec
   assert.equal(serialized.includes('targetUrl'), false);
   assert.equal(serialized.includes('192.168.0.20:9119/kanban'), true);
 });
+
+
+test('loadConfig accepts mem0Health checks but public config hides internals and secret env names', async () => {
+  const path = await writeConfig({
+    title: 'Home Dashboard',
+    sections: [],
+    statusChecks: [{
+      id: 'mem0-health',
+      label: 'Mem0 memory provider',
+      type: 'mem0Health',
+      baseUrl: 'http://127.0.0.1:8888',
+      displayUrl: 'http://192.168.0.20:8888',
+      apiKeyEnv: 'MEM0_API_KEY',
+      sshHost: '192.168.0.20',
+      sshUser: 'root',
+      statusWhenHealthy: 'degraded',
+      statusDetail: 'Read/search is reachable; write/add is degraded by upstream LLM quota/access.',
+      dockerContainers: ['mem0-mem0-1', 'mem0-postgres-1'],
+      logContainers: ['mem0-mem0-1']
+    }]
+  });
+
+  const config = await loadConfig({ configPath: path });
+  const publicConfig = toPublicConfig(config);
+  const serialized = JSON.stringify(publicConfig);
+
+  assert.equal(config.statusChecks[0].type, 'mem0Health');
+  assert.equal(config.statusChecks[0].statusWhenHealthy, 'degraded');
+  assert.deepEqual(publicConfig.statusChecks, [
+    { id: 'mem0-health', label: 'Mem0 memory provider', displayUrl: 'http://192.168.0.20:8888', statusDetail: 'Read/search is reachable; write/add is degraded by upstream LLM quota/access.' }
+  ]);
+  assert.equal(serialized.includes('127.0.0.1:8888'), false);
+  assert.equal(serialized.includes('MEM0_API_KEY'), false);
+  assert.equal(serialized.includes('mem0-postgres-1'), false);
+});
+
+test('loadConfig rejects invalid mem0Health API key environment variable names', async () => {
+  const path = await writeConfig({
+    title: 'Home Dashboard',
+    sections: [],
+    statusChecks: [{
+      id: 'mem0-health',
+      label: 'Mem0 memory provider',
+      type: 'mem0Health',
+      baseUrl: 'http://127.0.0.1:8888',
+      apiKeyEnv: 'mem0-api-key'
+    }]
+  });
+
+  await assert.rejects(() => loadConfig({ configPath: path }), /Invalid apiKeyEnv/i);
+});

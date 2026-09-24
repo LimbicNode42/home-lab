@@ -50,6 +50,26 @@
       "displayUrl": "http://192.168.0.20:9119/kanban"
     },
     {
+      "id": "mem0-health",
+      "label": "Mem0 memory provider",
+      "type": "mem0Health",
+      "baseUrl": "http://127.0.0.1:8888",
+      "displayUrl": "http://192.168.0.20:8888",
+      "sshHost": "192.168.0.20",
+      "sshUser": "root",
+      "statusWhenHealthy": "degraded",
+      "statusDetail": "Read/search path is reachable; write/add is currently degraded by upstream LLM quota/access. Dashboard shows only coarse health and freshness.",
+      "unresolvedFollowUp": "Provide a chat-capable mem0 LLM credential/model or reset OpenRouter quota, then restart only the mem0 API container and verify synthetic add plus Hermes mem0 path.",
+      "dockerContainers": [
+        "mem0-mem0-1",
+        "mem0-postgres-1"
+      ],
+      "logContainers": [
+        "mem0-mem0-1"
+      ],
+      "timeoutMs": 2500
+    },
+    {
       "id": "metamcp-gateway",
       "label": "MetaMCP gateway",
       "targetUrl": "http://192.168.0.20:12008/health",

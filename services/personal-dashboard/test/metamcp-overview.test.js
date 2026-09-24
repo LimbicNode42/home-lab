@@ -214,8 +214,8 @@ test('GET /api/metamcp/status reports live gateway and fresh publisher snapshot'
     const body = await response.json();
 
     assert.equal(response.status, 200);
-    assert.equal(body.status, 'up');
-    assert.equal(body.gateway.status, 'up');
+    assert.equal(body.status, 'healthy');
+    assert.equal(body.gateway.status, 'healthy');
     assert.equal(body.gateway.displayUrl, 'http://metamcp.local:12008');
     assert.equal(body.registry.counts.servers, 3);
     assert.deepEqual(body.registry.namespaces.map((namespace) => namespace.name), ['financial-data', 'homelab']);
@@ -226,7 +226,7 @@ test('GET /api/metamcp/status reports live gateway and fresh publisher snapshot'
   }
 });
 
-test('GET /api/metamcp/status reports degraded when publisher snapshot is stale', async () => {
+test('GET /api/metamcp/status reports stale when publisher snapshot is stale', async () => {
   const statusFile = await writeMetaMcpStatusFile({ ...liveMetaMcpSnapshot, generatedAt: '2026-01-01T00:00:00.000Z' });
   const { server, probe } = await metamcpStatusApp({ statusFile, staleAfterMs: 1000 });
 
@@ -235,7 +235,7 @@ test('GET /api/metamcp/status reports degraded when publisher snapshot is stale'
     const body = await response.json();
 
     assert.equal(response.status, 200);
-    assert.equal(body.status, 'degraded');
+    assert.equal(body.status, 'stale');
     assert.equal(body.registry.freshness.stale, true);
     assert.match(body.message, /stale/i);
   } finally {
