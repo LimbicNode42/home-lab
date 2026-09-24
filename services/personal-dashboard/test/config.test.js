@@ -173,3 +173,103 @@ test('loadConfig rejects invalid mem0Health SSH host values', async () => {
 
   await assert.rejects(() => loadConfig({ configPath: path }), /sshHost/i);
 });
+
+
+test('loadConfig accepts graphitiNeo4jHealth checks and hides internal probe config publicly', async () => {
+  const path = await writeConfig({
+    title: 'Home Dashboard',
+    sections: [],
+    statusChecks: [
+      {
+        id: 'knowledge-graph',
+        label: 'Knowledge graph',
+        type: 'graphitiNeo4jHealth',
+        graphiti: {
+          baseUrl: 'http://127.0.0.1:8000',
+          healthPath: '/health',
+          readinessPath: '/ready'
+        },
+        neo4j: {
+          httpUrl: 'http://127.0.0.1:7474',
+          boltHost: '127.0.0.1',
+          boltPort: 7687,
+          browserUrl: 'https://neo4j-admin.example.test'
+        }
+      }
+    ]
+  });
+
+  const config = await loadConfig({ configPath: path });
+  assert.equal(config.statusChecks[0].type, 'graphitiNeo4jHealth');
+  assert.equal(config.statusChecks[0].neo4j.boltPort, 7687);
+
+  const publicConfig = toPublicConfig(config);
+  assert.deepEqual(publicConfig.statusChecks, [
+    { id: 'knowledge-graph', label: 'Knowledge graph' }
+  ]);
+  assert.equal(JSON.stringify(publicConfig).includes('127.0.0.1'), false);
+  assert.equal(JSON.stringify(publicConfig).includes('neo4j-admin'), false);
+});
+
+test('loadConfig accepts explicit not-deployed graphitiNeo4jHealth checks', async () => {
+  const path = await writeConfig({
+    title: 'Home Dashboard',
+    sections: [],
+    statusChecks: [
+      {
+        id: 'knowledge-graph',
+        label: 'Knowledge graph',
+        type: 'graphitiNeo4jHealth',
+        graphiti: { deployed: false },
+        neo4j: { deployed: false }
+      }
+    ]
+  });
+
+  const config = await loadConfig({ configPath: path });
+
+  assert.equal(config.statusChecks[0].graphiti.deployed, false);
+  assert.equal(config.statusChecks[0].neo4j.deployed, false);
+});
+
+test('loadConfig rejects credential-bearing Neo4j browser links', async () => {
+  for (const browserUrl of [
+    'https://neo4j:password@neo4j.example.test',
+    'https://neo4j.example.test/?session=fixture',
+    'https://neo4j.example.test/#token'
+  ]) {
+    const path = await writeConfig({
+      title: 'Home Dashboard',
+      sections: [],
+      statusChecks: [
+        {
+          id: 'knowledge-graph',
+          label: 'Knowledge graph',
+          type: 'graphitiNeo4jHealth',
+          graphiti: { deployed: false },
+          neo4j: { browserUrl, deployed: false }
+        }
+      ]
+    });
+
+    await assert.rejects(() => loadConfig({ configPath: path }), /browserUrl/i);
+  }
+});
+
+test('loadConfig requires Neo4j bolt host and port together', async () => {
+  const path = await writeConfig({
+    title: 'Home Dashboard',
+    sections: [],
+    statusChecks: [
+      {
+        id: 'knowledge-graph',
+        label: 'Knowledge graph',
+        type: 'graphitiNeo4jHealth',
+        graphiti: { deployed: false },
+        neo4j: { boltHost: '127.0.0.1' }
+      }
+    ]
+  });
+
+  await assert.rejects(() => loadConfig({ configPath: path }), /boltHost and boltPort/i);
+});

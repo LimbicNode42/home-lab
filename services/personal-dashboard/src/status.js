@@ -1,4 +1,5 @@
 import { execFile as execFileCallback } from 'node:child_process';
+import { connect as netConnect } from 'node:net';
 import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -11,6 +12,8 @@ const DEFAULT_MEM0_SEARCH_PATH = '/search';
 const DEFAULT_MEM0_LOG_SINCE_SECONDS = 900;
 const DEFAULT_MEM0_LOG_TAIL = 200;
 const DEFAULT_MEM0_ERROR_PATTERN = 'datastore|database|postgres|pgvector|connection.*closed|closed.*connection|502';
+const GRAPHITI_DEFAULT_HEALTH_PATH = '/health';
+const GRAPHITI_DEFAULT_READY_PATH = '/ready';
 const execFile = promisify(execFileCallback);
 
 function hoursBetween(now, then) {
@@ -111,6 +114,7 @@ export class StatusService {
     timeoutMs = DEFAULT_TIMEOUT_MS,
     fetchImpl = globalThis.fetch,
     execFileImpl = execFile,
+    tcpConnectImpl = netConnect,
     env = process.env
   } = {}) {
     this.checks = checks;
@@ -118,6 +122,7 @@ export class StatusService {
     this.timeoutMs = timeoutMs;
     this.fetchImpl = fetchImpl;
     this.execFileImpl = execFileImpl;
+    this.tcpConnectImpl = tcpConnectImpl;
     this.env = env;
     this.cache = null;
   }
@@ -128,7 +133,8 @@ export class StatusService {
       return this.cache.payload;
     }
 
-    const checks = await Promise.all(this.checks.map((check) => this.probe(check)));
+    const probedChecks = await Promise.all(this.checks.map((check) => this.probe(check)));
+    const checks = probedChecks.flat();
     const payload = {
       generatedAt: new Date(now).toISOString(),
       checks
@@ -144,7 +150,139 @@ export class StatusService {
     if (check.type === 'mem0Health') {
       return this.probeMem0Health(check);
     }
+    if (check.type === 'graphitiNeo4jHealth') {
+      return this.probeGraphitiNeo4jHealth(check);
+    }
     return this.probeHttp(check);
+  }
+
+
+  async probeGraphitiNeo4jHealth(check) {
+    const [graphiti, neo4j] = await Promise.all([
+      this.probeGraphitiComponent(check),
+      this.probeNeo4jComponent(check)
+    ]);
+    return [graphiti, neo4j];
+  }
+
+  componentIdentity(check, key, fallbackLabel) {
+    const component = check[key] ?? {};
+    return {
+      id: component.id ?? `${check.id}-${key}`,
+      label: component.label ?? fallbackLabel,
+      component: key,
+      ...(component.browserUrl ? { displayUrl: component.browserUrl } : {})
+    };
+  }
+
+  async probeGraphitiComponent(check) {
+    const started = Date.now();
+    const graphiti = check.graphiti ?? {};
+    const identity = this.componentIdentity(check, 'graphiti', 'Graphiti knowledge graph');
+    if (graphiti.deployed === false) {
+      return this.graphStatus(identity, 'not_deployed', started, 'Graphiti is not deployed on this dashboard instance');
+    }
+    const healthUrl = graphiti.healthUrl ?? (graphiti.baseUrl ? joinUrl(graphiti.baseUrl, graphiti.healthPath ?? GRAPHITI_DEFAULT_HEALTH_PATH) : null);
+    const readinessUrl = graphiti.readinessUrl ?? (graphiti.baseUrl ? joinUrl(graphiti.baseUrl, graphiti.readinessPath ?? GRAPHITI_DEFAULT_READY_PATH) : null);
+    const probes = [
+      healthUrl ? ['health', healthUrl] : null,
+      readinessUrl ? ['readiness', readinessUrl] : null
+    ].filter(Boolean);
+    if (probes.length === 0) {
+      return this.graphStatus(identity, 'not_configured', started, 'Graphiti probe is not configured');
+    }
+
+    const results = [];
+    for (const [name, url] of probes) {
+      results.push({ name, ...(await this.probeGraphHttp(url)) });
+    }
+    const okCount = results.filter((result) => result.ok).length;
+    if (okCount === results.length) {
+      return this.graphStatus(identity, 'healthy', started, `Graphiti ${results.map((result) => result.name).join(' and ')} reachable`);
+    }
+    if (okCount > 0) {
+      return this.graphStatus(identity, 'degraded', started, 'Graphiti partially reachable', 'graphiti_partial');
+    }
+    return this.graphStatus(identity, 'down', started, 'Graphiti is not reachable', results.find((result) => result.error)?.error ?? 'graphiti_unreachable');
+  }
+
+  async probeNeo4jComponent(check) {
+    const started = Date.now();
+    const neo4j = check.neo4j ?? {};
+    const identity = this.componentIdentity(check, 'neo4j', 'Neo4j graph database');
+    if (neo4j.deployed === false) {
+      return this.graphStatus(identity, 'not_deployed', started, 'Neo4j is not deployed on this dashboard instance');
+    }
+    const probes = [];
+    if (neo4j.httpUrl) probes.push({ name: 'browser HTTP', run: () => this.probeGraphHttp(neo4j.httpUrl) });
+    if (neo4j.boltHost && neo4j.boltPort) probes.push({ name: 'Bolt TCP', run: () => this.probeTcp(neo4j.boltHost, neo4j.boltPort) });
+    if (probes.length === 0) {
+      return this.graphStatus(identity, 'not_configured', started, 'Neo4j probe is not configured');
+    }
+
+    const results = [];
+    for (const probe of probes) {
+      results.push({ name: probe.name, ...(await probe.run()) });
+    }
+    const okCount = results.filter((result) => result.ok).length;
+    if (okCount === results.length) {
+      return this.graphStatus(identity, 'healthy', started, `Neo4j ${results.map((result) => result.name).join(' and ')} reachable`);
+    }
+    if (okCount > 0) {
+      return this.graphStatus(identity, 'degraded', started, 'Neo4j partially reachable', 'neo4j_partial');
+    }
+    return this.graphStatus(identity, 'down', started, 'Neo4j is not reachable', results.find((result) => result.error)?.error ?? 'neo4j_unreachable');
+  }
+
+  graphStatus(identity, status, started, message, error) {
+    return {
+      ...identity,
+      status,
+      freshness: 'fresh',
+      message,
+      ...(error ? { error } : {}),
+      latencyMs: Date.now() - started,
+      checkedAt: new Date().toISOString()
+    };
+  }
+
+  async probeGraphHttp(url) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await this.fetchImpl(url, { method: 'GET', redirect: 'manual', signal: controller.signal });
+      return {
+        ok: response.ok || response.status === 204 || response.status === 301 || response.status === 302 || response.status === 401,
+        error: response.ok || response.status === 204 || response.status === 301 || response.status === 302 || response.status === 401 ? null : 'http_unreachable'
+      };
+    } catch (error) {
+      return { ok: false, error: safeErrorCode(error) };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async probeTcp(host, port) {
+    return new Promise((resolve) => {
+      let settled = false;
+      let socket;
+      let timeout;
+      const done = (result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        socket?.destroy?.();
+        resolve(result);
+      };
+      try {
+        socket = this.tcpConnectImpl({ host, port: Number(port) });
+        timeout = setTimeout(() => done({ ok: false, error: 'timeout' }), this.timeoutMs);
+        socket.once?.('connect', () => done({ ok: true, error: null }));
+        socket.once?.('error', () => done({ ok: false, error: 'tcp_unreachable' }));
+      } catch {
+        done({ ok: false, error: 'tcp_unreachable' });
+      }
+    });
   }
 
   async probeBackupFreshness(check) {

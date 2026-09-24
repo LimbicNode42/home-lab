@@ -93,6 +93,13 @@ Config shape:
       "searchUserId": "dashboard-smoke",
       "dockerContainers": ["mem0-mem0-1", "mem0-postgres-1"],
       "logContainers": ["mem0-mem0-1"]
+    },
+    {
+      "id": "knowledge-graph",
+      "label": "Graphiti / Neo4j knowledge graph",
+      "type": "graphitiNeo4jHealth",
+      "graphiti": { "deployed": false },
+      "neo4j": { "deployed": false }
     }
   ]
 }
@@ -102,10 +109,17 @@ Config shape:
 
 `type: "mem0Health"` is a composite status card for the local-only mem0 memory provider. It probes `/docs` and `/openapi.json`, optionally through SSH when `sshHost` is set for localhost-only remote services, optionally performs an authenticated read-only `/search` smoke check using the API key named by `apiKeyEnv` for non-SSH checks, optionally inspects Docker container health, and scans recent Docker logs for datastore/Postgres/pgvector error signals. The public status payload reports only coarse states (`up`, `stale`, `down`), timestamps, counts, and sanitized messages; it must not include API keys, raw memory contents, local filesystem paths, or stack traces. If `apiKeyEnv` is set but absent at runtime, or SSH transport is used, the card reports `stale` rather than persisting a test memory or printing secrets.
 
+`type: "graphitiNeo4jHealth"` expands into separate Graphiti and Neo4j status cards. For the current environment use `"deployed": false` for both components so the dashboard explicitly reports `not_deployed` and shows no operator link. When a reviewed deployment exists, configure non-secret Graphiti HTTP health/readiness URLs and Neo4j browser HTTP plus Bolt reachability probes. `neo4j.browserUrl` is optional and is the only operator link surfaced; it must be a credential-free `http(s)` URL for a protected LAN/admin route. The public payload intentionally omits probe URLs, hosts, ports, Cypher, graph content, connection strings, auth errors, stack traces, and filesystem paths.
+
 Status semantics:
-- `up`: current probes succeeded and no recent datastore error signal was found.
+- `up`: current legacy HTTP/mem0 probes succeeded and no recent datastore error signal was found.
+- `healthy`: Graphiti/Neo4j component probes succeeded.
+- `degraded`: at least one Graphiti/Neo4j component probe succeeded and at least one failed.
 - `stale`: the service is reachable but a freshness/auth/log warning needs attention, such as missing mem0 API key env or recent datastore error logs.
-- `down`: liveness, authenticated search, or available container health checks failed.
+- `down`: liveness, authenticated search, available container health, or all configured Graphiti/Neo4j component probes failed.
+- `not_deployed`: the component is intentionally absent in this environment.
+- `not_configured`: no safe probe target is configured yet.
+- `unknown`: reserved for future probes that cannot classify their state safely.
 
 Environment variables:
 

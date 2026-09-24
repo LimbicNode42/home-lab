@@ -169,9 +169,10 @@ function renderStatus(payload) {
     const badge = el('span', { className: `badge ${check.status}`, text: check.status });
     const detailParts = [
       check.message ?? check.httpStatus ?? check.error ?? 'no response',
+      check.freshness ? `check ${check.freshness}` : null,
       check.updatedAt ? `updated ${formatDateTime(check.updatedAt)}` : null,
       check.checkedAt ? `checked ${formatDateTime(check.checkedAt)}` : null,
-      `${check.latencyMs}ms`
+      Number.isFinite(check.latencyMs) ? `${check.latencyMs}ms` : null
     ].filter(Boolean);
     const body = [
       el('div', { className: 'status-title', text: check.label }),

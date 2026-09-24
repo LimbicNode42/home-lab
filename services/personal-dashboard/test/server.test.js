@@ -152,6 +152,37 @@ test('GET /api/status probes configured targets and hides target URLs', async ()
   }
 });
 
+
+test('GET /api/status expands Graphiti and Neo4j cards and keeps current no-link not-deployed state explicit', async () => {
+  const configPath = await writeConfig({
+    title: 'Home Dashboard',
+    sections: [],
+    statusChecks: [{
+      id: 'knowledge-graph',
+      label: 'Knowledge graph',
+      type: 'graphitiNeo4jHealth',
+      graphiti: { deployed: false },
+      neo4j: { deployed: false }
+    }]
+  });
+  const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, statusCacheTtlMs: 1000 });
+  const server = await listen(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/status`);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.checks.length, 2);
+    assert.deepEqual(body.checks.map((check) => check.component), ['graphiti', 'neo4j']);
+    assert.deepEqual(body.checks.map((check) => check.status), ['not_deployed', 'not_deployed']);
+    assert.ok(body.checks.every((check) => !check.displayUrl));
+    assert.equal(JSON.stringify(body).includes('bolt'), false);
+  } finally {
+    await server.close();
+  }
+});
+
 test('GET /api/finnick/report returns 503 when finnickReportFile is not configured', async () => {
   const configPath = await writeConfig(basicConfig);
   // Pass finnickReportFile: null explicitly to override any env var set in the process environment

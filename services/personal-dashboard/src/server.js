@@ -1345,6 +1345,7 @@ export async function createApp(options = {}) {
     timeoutMs: options.statusProbeTimeoutMs ?? Number(process.env.DASHBOARD_STATUS_PROBE_TIMEOUT_MS ?? 2500),
     fetchImpl: options.statusFetchImpl ?? globalThis.fetch,
     execFileImpl: options.statusExecFileImpl,
+    tcpConnectImpl: options.statusTcpConnectImpl,
     env: options.statusEnv ?? process.env
   });
 
