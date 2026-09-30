@@ -308,7 +308,9 @@ Use this spec plus the scaffold as the implementation contract. The infra task o
 
 ### Ingest policy task (`t_87852d3e` / scribe)
 
-Define the curation policy before broad automation: allowed sources, prohibited data classes, redaction checklist, grouping, temporal invalidation review, OpenRouter spend controls, and initial seed set. The wrapper/ingest automation should not expand beyond disposable/manual seed data until this policy exists.
+Policy artifact: `services/graphiti/runbooks/curated-ingest-policy.md`.
+
+Define the curation policy before broad automation: allowed sources, prohibited data classes, redaction checklist, grouping, temporal invalidation review, OpenRouter spend controls, and initial seed set. The wrapper/ingest automation should not expand beyond disposable/manual seed data until this policy exists and is used as an enforcement contract.
 
 ### Wrapper/review/dashboard tasks
 

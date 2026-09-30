@@ -55,6 +55,7 @@ Unsafe fit: source-of-truth memory or automatic remediation. Retrieval missed at
 - `runbooks/backup-restore.md` - backup, restore, and restore-test plan.
 - `runbooks/dashboard-status-design.md` - Home Dashboard status/freshness design for later deployment.
 - `runbooks/read-only-agent-wrapper.md` - wrapper/tool contract that prevents direct destructive access.
+- `runbooks/curated-ingest-policy.md` - production policy for allowed sources, redaction, grouping, temporal review, seed sets, and OpenRouter spend controls.
 
 ## Guardrails
 
