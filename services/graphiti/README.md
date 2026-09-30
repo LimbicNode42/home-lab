@@ -56,6 +56,8 @@ Unsafe fit: source-of-truth memory or automatic remediation. Retrieval missed at
 - `runbooks/dashboard-status-design.md` - Home Dashboard status/freshness design for later deployment.
 - `runbooks/read-only-agent-wrapper.md` - wrapper/tool contract that prevents direct destructive access.
 - `runbooks/curated-ingest-policy.md` - production policy for allowed sources, redaction, grouping, temporal review, seed sets, and OpenRouter spend controls.
+- `runbooks/infra-implementation-status.md` - current infra implementation receipt and blocker status for `t_5a650bed`.
+- `receipts/` - sanitized machine-readable deployment/preflight receipts; no secrets or raw graph data.
 
 ## Guardrails
 

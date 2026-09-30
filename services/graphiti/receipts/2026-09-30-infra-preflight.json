@@ -1,0 +1,54 @@
+{
+  "checked_at": "2026-09-30T10:07:48Z",
+  "task_id": "t_5a650bed",
+  "status": "blocked_before_deploy",
+  "openrouter_preflight": {
+    "base_url": "https://openrouter.ai/api/v1",
+    "checked_at": "2026-09-30T10:07:24Z",
+    "completion_model": "openai/gpt-4o-mini",
+    "embedding_model": "openai/text-embedding-3-small",
+    "embedding_dim_expected": 1536,
+    "credential_present": true,
+    "overall": "failed_model_access_or_guardrail_preflight",
+    "results": {
+      "chat_completion": {
+        "ok": false,
+        "status": 403,
+        "classification": "possible_workspace_guardrail_or_allowlist_block"
+      },
+      "embedding": {
+        "ok": false,
+        "status": 403,
+        "embedding_dim_observed": null,
+        "classification": "possible_workspace_guardrail_or_allowlist_block"
+      }
+    }
+  },
+  "tori_read_only_prereq_check": {
+    "host": "tori",
+    "ip": "192.168.0.20",
+    "ssh_batch_mode": "ok",
+    "docker_version": "Docker version 26.1.5+dfsg1, build a72d7cd",
+    "existing_graphiti_or_neo4j_containers_seen": false,
+    "paths": {
+      "/opt/graphiti": "missing",
+      "/var/lib/graphiti": "missing",
+      "/var/lib/graphiti/neo4j": "missing",
+      "/mnt/pve/NAS/services/graphiti": "missing",
+      "/mnt/pve/NAS/services": "present_nfs"
+    },
+    "mounts": {
+      "/var/lib": "local_ext4_root",
+      "/mnt/pve/NAS/services": "nfs_192.168.0.250_export_nas"
+    },
+    "ports_7474_7687_8000_listeners_seen": false
+  },
+  "safety": {
+    "live_homelab_mutation_performed": false,
+    "public_route_created": false,
+    "hermes_memory_provider_changed": false,
+    "secrets_printed_or_committed": false,
+    "neo4j_live_data_on_nas": false
+  },
+  "blocker": "OpenRouter deployment credential path returned 403 for both required completion and embedding model probes; production acceptance gate 1 failed."
+}
