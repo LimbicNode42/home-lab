@@ -15,8 +15,8 @@ services:
     image: ${NEO4J_IMAGE:-neo4j:5.26.2}
     container_name: graphiti-neo4j
     restart: unless-stopped
-    env_file:
-      - .env
+    security_opt:
+      - apparmor=unconfined
     environment:
       NEO4J_AUTH: "${NEO4J_USER}/${NEO4J_PASSWORD}"
       NEO4J_server_memory_heap_initial__size: "${NEO4J_HEAP_INITIAL:-512m}"
@@ -46,6 +46,8 @@ services:
     image: ${GRAPHITI_IMAGE:?GRAPHITI_IMAGE must be set to a reviewed immutable digest before deploy}
     container_name: graphiti-api
     restart: unless-stopped
+    security_opt:
+      - apparmor=unconfined
     env_file:
       - .env
     depends_on:
@@ -66,7 +68,7 @@ services:
     ports:
       - "127.0.0.1:${GRAPHITI_API_PORT:-8000}:8000"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8000/healthcheck || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/healthcheck || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 20

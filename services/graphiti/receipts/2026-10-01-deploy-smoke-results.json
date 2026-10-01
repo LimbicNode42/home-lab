@@ -1,0 +1,92 @@
+{
+  "created_at_utc": "2026-10-01T14:57:45Z",
+  "worker": "kobold",
+  "task": "t_f6f186d3",
+  "outcome": "deployed_but_ingest_and_backup_blocked_upstream",
+  "deploy": {
+    "status": "deployed",
+    "neo4j": "healthy",
+    "graphiti_api": "healthy_serving",
+    "graphiti_image": "zepai/graphiti@sha256:21818c8a8e3b0513fe167370527fec32ed117e98bcc3423f9eb3bc6c73af7d43",
+    "neo4j_image": "neo4j:5.26.2",
+    "digest_verified_live": true,
+    "digest_resolved_latest_and_0_30_2": "21818c8a8e3b0513fe167370527fec32ed117e98bcc3423f9eb3bc6c73af7d43",
+    "ports": {
+      "graphiti_api": "127.0.0.1:8000",
+      "neo4j_http": "127.0.0.1:7474",
+      "neo4j_bolt": "127.0.0.1:7687"
+    },
+    "loopback_only": true,
+    "neo4j_live_data_fstype": "ext4",
+    "neo4j_live_data_source": "/dev/sda2",
+    "neo4j_live_data_local": true,
+    "secrets_rendered_from_vaultwarden": true,
+    "openrouter_preflight": "passed_exact_models_available",
+    "embedding_dim_observed": 1536
+  },
+  "fixes_applied_during_deploy": [
+    {
+      "issue": "Neo4j crash-loop: java.io.IOException Permission denied in FileDispatcherImpl.<clinit>",
+      "root_cause": "tori daemon AppArmor profile incompatible with neo4j:5.26.2; every other container on tori runs apparmor=unconfined",
+      "fix": "added security_opt: [apparmor=unconfined] to neo4j and graphiti-api services in docker-compose.tori.yml",
+      "verified": "A/B control reproduced crash under default profile and started clean under apparmor=unconfined; live neo4j now healthy"
+    },
+    {
+      "issue": "Neo4j crash-loop: Unrecognized setting HEAP.INITIAL",
+      "root_cause": "env_file .env injected NEO4J_HEAP_INITIAL/MAX/PAGECACHE shorthands; Neo4j 5.x parses any NEO4J_* env as a config setting",
+      "fix": "removed env_file from neo4j service (explicit environment block already carries proper NEO4J_server_memory_* names)",
+      "verified": "neo4j reached healthy, Bolt+HTTP enabled"
+    }
+  ],
+  "smoke_results": {
+    "healthcheck": { "http_200": true, "status": "healthy" },
+    "neo4j_readiness": { "healthy": true, "bolt_enabled": true, "http_enabled": true },
+    "synchronous_entity_write": {
+      "endpoint": "POST /entity-node",
+      "result": "201 created, 1536-dim embedding observed, persisted to neo4j",
+      "status": "passed"
+    },
+    "async_ingest": {
+      "endpoint": "POST /messages",
+      "result": "202 accepted but never processed; graph stays empty",
+      "status": "FAILED_UPSTREAM",
+      "root_cause": "zepai/graphiti:0.30.2 server bug: AsyncWorker queues graphiti.add_episode on a request-scoped ZepGraphiti dependency; get_graphiti teardown runs 'finally: await client.close()' immediately after POST returns, so the queued job runs on a closed Neo4j driver -> neo4j.exceptions.DriverError: Driver closed. Full traceback captured in container logs.",
+      "root_cause_class": "upstream_image_defect",
+      "not_fixable_in_scope": true
+    },
+    "read_only_query_with_provenance": {
+      "endpoint": "POST /search",
+      "result": "empty because no facts exist (ingest broken); returns {'facts':[]}",
+      "status": "BLOCKED_BY_INGEST"
+    }
+  },
+  "backup_restore": {
+    "backup": {
+      "status": "FAILED_NFS",
+      "root_cause": "Stale file handle when bind-mounting /mnt/pve/NAS/services/graphiti (NFSv3 from 192.168.0.250) into a Docker container for the offline dump; host stat works but container mount is stale",
+      "root_cause_class": "nfs_v3_instability",
+      "matches_known_memory": "ben recurring stale-NFS pg_filenode.map ESTALE pattern"
+    },
+    "restore_test": {
+      "status": "NOT_RUN",
+      "reason": "blocked by backup dump absence"
+    }
+  },
+  "healthcheck_note": {
+    "graphiti_api_container_healthcheck": "unhealthy (cosmetic)",
+    "cause": "image lacks wget; healthcheck command 'wget -q --spider http://127.0.0.1:8000/healthcheck' fails; app itself serves /healthcheck 200 via curl",
+    "impact": "compose considers graphiti-api 'unhealthy' though it is serving"
+  },
+  "safety": {
+    "mem0_provider_changed": false,
+    "public_route_created": false,
+    "raw_destructive_endpoint_agent_facing": false,
+    "secrets_committed": false,
+    "neo4j_live_data_on_nas": false
+  },
+  "remaining_blockers_for_production_done": [
+    "async /messages ingest worker bug in zepai/graphiti:0.30.2 (upstream, needs pinned-image fix/override or newer release)",
+    "NAS NFSv3 stale-handle on container bind-mount blocks offline dump + restore-test (needs NAS/NFS remediation or non-NAS backup target)",
+    "graphiti-api healthcheck uses missing wget (cosmetic; add curl-based healthcheck)"
+  ]
+}
