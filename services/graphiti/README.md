@@ -50,9 +50,9 @@ Unsafe fit: source-of-truth memory or automatic remediation. Retrieval missed at
 - `scripts/openrouter-guardrail-preflight.py` - exact-model guardrail probe for OpenRouter.
 - `scripts/deploy-tori-local.sh` - gated deployment helper; supports read-only preflight and refuses live mutation unless explicitly approved.
 - `scripts/verify-loopback-exposure.sh` - non-invasive listener check for unsafe all-interface raw Graphiti/Neo4j binds.
-- `scripts/backup-neo4j-dump.sh` - draft backup command with approval gate.
-- `scripts/restore-neo4j-dump.sh` - draft restore command with approval gate.
-- `scripts/restore-test-neo4j.sh` - draft isolated restore-test outline with approval gate.
+- `scripts/backup-neo4j-dump.sh` - gated Neo4j dump/config-snapshot/manifest automation with dry-run mode.
+- `scripts/restore-neo4j-dump.sh` - gated live restore helper; destructive and intentionally harder to run than restore-test.
+- `scripts/restore-test-neo4j.sh` - gated disposable restore-test automation that writes sanitized NAS evidence.
 - `runbooks/production-architecture-rollout.md` - production architecture, boundaries, rollout order, and acceptance gates.
 - `runbooks/deploy-read-only-service.md` - reviewed deployment checklist for a later card.
 - `runbooks/backup-restore.md` - backup, restore, and restore-test plan.
