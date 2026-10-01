@@ -47,6 +47,10 @@ Unsafe fit: source-of-truth memory or automatic remediation. Retrieval missed at
 - `docker-compose.tori.yml` - reviewed tori-local production template: loopback-only ports, local Neo4j data, NAS backups/evidence only.
 - `.env.example` - non-secret variable names and safe defaults/placeholders.
 - `config/vaultwarden-map.example.yml` and `graphiti.env.map.example` - Vaultwarden folder/item/field references only.
+- `agent_graphiti/` - safe Python wrapper package for agent read-only query normalization and curated-ingest validation; not a Hermes memory provider.
+- `scripts/graphiti-agent-wrapper.py` - CLI entrypoint for safe `status`, `query`, `validate-ingest`, and dry-run/default curated ingest operations.
+- `seeds/initial-approved-episodes.json` - sanitized representative seed episodes for provenance/query smokes.
+- `tests/test_agent_graphiti.py` - unit tests for query normalization, service-down degradation, redaction/sanitization, seed validation, and destructive-path rejection.
 - `scripts/openrouter-guardrail-preflight.py` - exact-model guardrail probe for OpenRouter.
 - `scripts/deploy-tori-local.sh` - gated deployment helper; supports read-only preflight and refuses live mutation unless explicitly approved.
 - `scripts/verify-loopback-exposure.sh` - non-invasive listener check for unsafe all-interface raw Graphiti/Neo4j binds.
