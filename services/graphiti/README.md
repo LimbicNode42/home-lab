@@ -54,6 +54,7 @@ Unsafe fit: source-of-truth memory or automatic remediation. Retrieval missed at
 - `scripts/restore-neo4j-dump.sh` - gated live restore helper; destructive and intentionally harder to run than restore-test.
 - `scripts/restore-test-neo4j.sh` - gated disposable restore-test automation that writes sanitized NAS evidence.
 - `runbooks/production-architecture-rollout.md` - production architecture, boundaries, rollout order, and acceptance gates.
+- `runbooks/production-runbook.md` - operator runbook and handoff for deploy/update, verification, backup/restore-test, dashboard interpretation, rollback, blockers, and safety boundaries.
 - `runbooks/deploy-read-only-service.md` - reviewed deployment checklist for a later card.
 - `runbooks/backup-restore.md` - backup, restore, and restore-test plan.
 - `runbooks/dashboard-status-design.md` - Home Dashboard status/freshness design for later deployment.
