@@ -1,47 +1,73 @@
-# Graphiti infra implementation status — 2026-09-30
+# Graphiti infra implementation status — 2026-10-01
 
-Task: `t_5a650bed`
+Task: `t_78b195bc`
 
-Status: blocked before live deployment.
+Status: ready-to-run blocked configuration; no live deployment performed.
 
-## What was verified
+## What was implemented
 
-Read-only checks completed against the current repo and target host:
+This task finalized the non-secret tori-local deployment configuration while preserving the deployment gate from the parent audit:
 
-- Graphiti scaffold scripts still parse:
-  - `python3 -m py_compile services/graphiti/scripts/openrouter-guardrail-preflight.py`
-  - `bash -n services/graphiti/scripts/*.sh`
-  - `git diff --check -- services/graphiti`
-- Tori is reachable by SSH as `root@192.168.0.20`.
-- Tori Docker is present: `Docker version 26.1.5+dfsg1, build a72d7cd`.
-- No existing Graphiti/Neo4j containers were observed by the bounded read-only probe.
-- `/var/lib` is local ext4 on tori, suitable as the intended parent for Neo4j live data after approval.
-- `/mnt/pve/NAS/services` is reachable as NFS from `192.168.0.250:/export/nas`, suitable for future dump/snapshot/restore-test evidence.
-- No listeners were observed on `7474`, `7687`, or `8000` during the bounded probe.
+- `services/graphiti/docker-compose.tori.yml`
+  - production template for tori-local Graphiti + Neo4j
+  - Graphiti, Neo4j HTTP, and Neo4j Bolt bind to `127.0.0.1` only
+  - Neo4j live `/data` binds to `/var/lib/graphiti/neo4j/data` by default, which is local disk on tori
+  - NAS paths are used only for backup dumps, config snapshots, manifests, and restore-test evidence
+- `services/graphiti/graphiti.env.map.example`
+  - pipe-format Vaultwarden map for the repo-wide secret rendering helpers
+  - references folder `Homelab` (case-sensitive), item `graphiti/openrouter`, LOGIN password for the current OpenRouter key placement
+  - references folder `Homelab`, item `graphiti/neo4j`, fields `username` and `password`
+- `services/graphiti/scripts/deploy-tori-local.sh`
+  - repo-root helper that runs the Vaultwarden-backed OpenRouter preflight first
+  - supports `--preflight-only` for no-mutation validation
+  - refuses `--apply` without `GRAPHITI_ENABLE_LIVE_MUTATION=reviewed-approved`
+- `services/graphiti/scripts/verify-loopback-exposure.sh`
+  - non-invasive `ss` receipt helper that fails on all-interface raw Graphiti/Neo4j binds
+- `services/graphiti/runbooks/implementation-unblock-instructions.md`
+  - exact unblock/run order for the next worker/operator
+- `services/graphiti/receipts/2026-10-01-implementation-blocked.json`
+  - sanitized receipt for this run
 
-## Blocker
+## Read-only live checks performed
 
-The OpenRouter guardrail preflight failed using the current deployment credential path available to this worker:
+Current tori state was rechecked without mutation:
 
-- base URL: `https://openrouter.ai/api/v1`
-- completion model: `openai/gpt-4o-mini`
-- embedding model: `openai/text-embedding-3-small`
-- completion probe: HTTP `403`, classified as `possible_workspace_guardrail_or_allowlist_block`
-- embedding probe: HTTP `403`, classified as `possible_workspace_guardrail_or_allowlist_block`
+- SSH to `root@192.168.0.20`: OK
+- hostname: `tori`
+- Docker: `Docker version 26.1.5+dfsg1, build a72d7cd`
+- `/` and `/var/lib`: `/dev/sda2` ext4, local disk
+- `/mnt/pve/NAS`: NFS mount from `192.168.0.250:/export/nas`; `/mnt/pve/NAS/services` reachable
+- no `graphiti`/`neo4j` containers observed by the bounded name/image probe
+- no listeners observed on `7474`, `7687`, or `8000`
 
-No API key or secret value is recorded in this repo. The sanitized machine-readable receipt is `services/graphiti/receipts/2026-09-30-infra-preflight.json`.
+## Current blocker
+
+Vaultwarden remains locked in this worker environment:
+
+- `bw status`: `locked`
+- `BW_SESSION_present`: no
+- `BW_PASSWORD_present`: no
+
+Because the deployment credential path cannot be read by this worker, the OpenRouter guardrail preflight was not rerun here. Starting live services without that preflight would violate the production gate and produce the usual kind of optimistic infrastructure fiction.
+
+## Required unblock
+
+Unlock Vaultwarden for the worker/operator or provide an ephemeral `BW_SESSION`/`BW_PASSWORD`, then run:
+
+```bash
+cd /root/work/home-lab
+services/graphiti/scripts/deploy-tori-local.sh --preflight-only
+```
+
+Only if that passes, and only under the already-approved bounded deployment gate:
+
+```bash
+GRAPHITI_ENABLE_LIVE_MUTATION=reviewed-approved \
+services/graphiti/scripts/deploy-tori-local.sh --apply
+```
+
+The next live worker must still capture Neo4j readiness, Graphiti health, disposable ingest/query/provenance evidence, backup manifest, restore-test evidence, and dashboard status receipts before calling production ready.
 
 ## Safety state
 
-No live homelab mutation was performed. The task did not create `/opt/graphiti`, `/var/lib/graphiti`, NAS Graphiti directories, containers, public routes, Traefik routes, Cloudflare routes, or Hermes memory-provider changes.
-
-This is intentionally a hard stop: production gate 1 failed, and continuing would only produce a handsomely documented lie. We already have enough of those in the industry.
-
-## Required human action
-
-Provide or allow a Graphiti/OpenRouter deployment credential that can access both required models through OpenRouter:
-
-- `openai/gpt-4o-mini` for completion/rerank/small model
-- `openai/text-embedding-3-small` with observed dimension `1536`
-
-Preferred shape: store/update the credential in Vaultwarden under folder `homelab`, item `graphiti/openrouter`, field `api_key`, then unblock this task so the preflight can be rerun before any deployment.
+No live homelab mutation was performed. This task did not create `/opt/graphiti`, `/var/lib/graphiti`, NAS Graphiti directories, containers, public routes, Traefik routes, Cloudflare routes, raw agent-facing destructive endpoints, or Hermes memory-provider changes. No secret values were printed or committed.

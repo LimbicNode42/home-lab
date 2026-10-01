@@ -1,6 +1,6 @@
 # Graphiti shared knowledge graph (experimental candidate)
 
-Status: **candidate desired-state scaffold only**. This directory is Git-backed design and draft automation for a future read-only shared knowledge graph service. It is not deployed from this commit.
+Status: **ready-to-run blocked configuration**. This directory contains Git-backed, non-secret production templates and gated automation for a tori-local Graphiti + Neo4j deployment. It is not live because this worker cannot unlock Vaultwarden to rerun the mandatory OpenRouter/Vaultwarden preflight.
 
 ## Decision summary
 
@@ -43,10 +43,13 @@ Unsafe fit: source-of-truth memory or automatic remediation. Retrieval missed at
 
 ## Files in this scaffold
 
-- `docker-compose.candidate.yml` - non-secret candidate container topology; not an apply instruction.
+- `docker-compose.candidate.yml` - historical non-secret candidate container topology; not an apply instruction.
+- `docker-compose.tori.yml` - reviewed tori-local production template: loopback-only ports, local Neo4j data, NAS backups/evidence only.
 - `.env.example` - non-secret variable names and safe defaults/placeholders.
-- `config/vaultwarden-map.example.yml` - Vaultwarden folder/item/field references only.
+- `config/vaultwarden-map.example.yml` and `graphiti.env.map.example` - Vaultwarden folder/item/field references only.
 - `scripts/openrouter-guardrail-preflight.py` - exact-model guardrail probe for OpenRouter.
+- `scripts/deploy-tori-local.sh` - gated deployment helper; supports read-only preflight and refuses live mutation unless explicitly approved.
+- `scripts/verify-loopback-exposure.sh` - non-invasive listener check for unsafe all-interface raw Graphiti/Neo4j binds.
 - `scripts/backup-neo4j-dump.sh` - draft backup command with approval gate.
 - `scripts/restore-neo4j-dump.sh` - draft restore command with approval gate.
 - `scripts/restore-test-neo4j.sh` - draft isolated restore-test outline with approval gate.
@@ -57,11 +60,12 @@ Unsafe fit: source-of-truth memory or automatic remediation. Retrieval missed at
 - `runbooks/read-only-agent-wrapper.md` - wrapper/tool contract that prevents direct destructive access.
 - `runbooks/curated-ingest-policy.md` - production policy for allowed sources, redaction, grouping, temporal review, seed sets, and OpenRouter spend controls.
 - `runbooks/infra-implementation-status.md` - current infra implementation receipt and blocker status for `t_5a650bed`.
+- `runbooks/implementation-unblock-instructions.md` - exact operator unblock/run order for the current Vaultwarden/OpenRouter gate.
 - `receipts/` - sanitized machine-readable deployment/preflight receipts; no secrets or raw graph data.
 
 ## Guardrails
 
-1. Do not deploy this scaffold without a separate reviewed deploy task.
+1. Do not deploy this scaffold unless Vaultwarden is unlocked for the worker/operator and `scripts/deploy-tori-local.sh --preflight-only` passes from the deployment credential path.
 2. Do not expose raw Graphiti to agents. It has destructive endpoints.
 3. Do not expose Neo4j browser/Bolt beyond loopback/LAN-reviewed access.
 4. Do not place live Neo4j data on NAS/NFS.

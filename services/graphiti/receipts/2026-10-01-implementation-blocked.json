@@ -1,0 +1,25 @@
+{
+  "task": "t_78b195bc",
+  "checked_at": "2026-10-01T09:31:54Z",
+  "status": "blocked_before_live_deployment",
+  "blocker": "Vaultwarden/Bitwarden CLI is locked in this worker environment; no BW_SESSION or BW_PASSWORD is exported.",
+  "live_homelab_mutation_performed": false,
+  "public_route_created": false,
+  "mem0_provider_changed": false,
+  "secrets_accessed_or_persisted": false,
+  "tori_read_only_receipt": {
+    "ssh": "ok",
+    "docker": "Docker version 26.1.5+dfsg1, build a72d7cd",
+    "local_storage": "/ and /var/lib are /dev/sda2 ext4",
+    "nas_mount": "/mnt/pve/NAS is 192.168.0.250:/export/nas nfs and /mnt/pve/NAS/services is reachable",
+    "graphiti_neo4j_listeners_7474_7687_8000": "none observed"
+  },
+  "ready_to_run_artifacts": [
+    "services/graphiti/docker-compose.tori.yml",
+    "services/graphiti/graphiti.env.map.example",
+    "services/graphiti/scripts/deploy-tori-local.sh",
+    "services/graphiti/scripts/verify-loopback-exposure.sh",
+    "services/graphiti/runbooks/implementation-unblock-instructions.md"
+  ],
+  "required_unblock": "Unlock Vaultwarden or provide ephemeral BW_SESSION/BW_PASSWORD, then rerun the Vaultwarden-backed OpenRouter preflight before any service start. Use folder Homelab, item graphiti/openrouter, LOGIN password or custom api_key for OPENROUTER_API_KEY."
+}

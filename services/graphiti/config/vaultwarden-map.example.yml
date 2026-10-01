@@ -1,11 +1,12 @@
 # Non-secret render map. Values live in Ben's personal Vaultwarden vault.
 vaultwarden:
   server: http://192.168.0.50:8084
-  folder: homelab
+  folder: Homelab  # case-sensitive; operator audit observed this folder name on 2026-10-01
 
 items:
   graphiti/openrouter:
     fields:
+      password: OPENROUTER_API_KEY  # current operator-verified field is LOGIN password; api_key may be used if later normalized
       api_key: OPENROUTER_API_KEY
       base_url: OPENROUTER_BASE_URL
       completion_model: GRAPHITI_COMPLETION_MODEL
