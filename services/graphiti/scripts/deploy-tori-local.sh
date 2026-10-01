@@ -11,11 +11,13 @@ usage() {
 Usage:
   eval "$(scripts/secrets/bw-login-vaultwarden.sh)"
   services/graphiti/scripts/deploy-tori-local.sh --preflight-only
-  GRAPHITI_ENABLE_LIVE_MUTATION=reviewed-approved services/graphiti/scripts/deploy-tori-local.sh --apply
+  GRAPHITI_IMAGE=zepai/graphiti@sha256:<reviewed_digest> \
+    GRAPHITI_ENABLE_LIVE_MUTATION=reviewed-approved services/graphiti/scripts/deploy-tori-local.sh --apply
 
 Options:
   --preflight-only   Validate Vaultwarden/OpenRouter and target posture; no live mutation.
-  --apply            Copy reviewed compose/env to tori and start loopback-only services.
+  --apply            Copy reviewed compose/env to tori and start loopback-only Neo4j.
+                     Refuses unless GRAPHITI_IMAGE is an explicit sha256 digest.
 USAGE
 }
 
@@ -46,6 +48,23 @@ for required in "$secret_runner" "$render_env" "$map_file" "$compose_template" "
     exit 1
   fi
 done
+
+validate_graphiti_image() {
+  if [[ -z "${GRAPHITI_IMAGE:-}" ]]; then
+    echo "ERROR: refusing apply; GRAPHITI_IMAGE must be set to a reviewed immutable image digest." >&2
+    echo "Example: GRAPHITI_IMAGE=zepai/graphiti@sha256:<64-hex-digest>" >&2
+    exit 2
+  fi
+  if [[ ! "${GRAPHITI_IMAGE}" =~ @sha256:[0-9a-fA-F]{64}$ ]]; then
+    echo "ERROR: refusing apply; GRAPHITI_IMAGE must be an immutable sha256 digest, not a mutable tag." >&2
+    echo "got: ${GRAPHITI_IMAGE%%:*}:<redacted>" >&2
+    exit 2
+  fi
+}
+
+if [[ "$mode" == "--apply" ]]; then
+  validate_graphiti_image
+fi
 
 if [[ -z "${BW_SESSION:-}" ]]; then
   echo "ERROR: BW_SESSION is not exported; unlock Vaultwarden before deployment preflight." >&2
@@ -87,6 +106,7 @@ if [[ "${GRAPHITI_ENABLE_LIVE_MUTATION:-}" != "reviewed-approved" ]]; then
   exit 2
 fi
 
+
 tmpdir="$(mktemp -d)"
 cleanup() { rm -rf "$tmpdir"; }
 trap cleanup EXIT
@@ -104,6 +124,7 @@ GRAPHITI_NEO4J_LOG_DIR=$local_log_dir
 GRAPHITI_NAS_BACKUP_DIR=$nas_root/backups/neo4j-dumps
 GRAPHITI_NAS_SNAPSHOT_DIR=$nas_root/config-snapshots
 GRAPHITI_NAS_RESTORE_TEST_DIR=$nas_root/restore-tests
+GRAPHITI_IMAGE=$GRAPHITI_IMAGE
 GRAPHITI_API_PORT=8000
 NEO4J_HTTP_PORT=7474
 NEO4J_BOLT_PORT=7687
@@ -119,4 +140,5 @@ scp -q "$tmpdir/docker-compose.yml" "$target_host:$runtime_dir/docker-compose.ym
 scp -q "$tmpdir/.env" "$target_host:$runtime_dir/.env"
 ssh "$target_host" "set -e; chmod 0600 '$runtime_dir/.env'; cd '$runtime_dir'; docker compose config >/tmp/graphiti-compose.rendered.yml; docker compose up -d neo4j; docker compose ps"
 
-echo "Neo4j start requested. Start graphiti-api only after Neo4j health/log receipts are reviewed."
+echo "Neo4j start requested. After Neo4j health/log receipts are reviewed, start Graphiti with:"
+echo "  ssh $target_host \"cd $runtime_dir && docker compose up -d graphiti-api && docker compose ps\""

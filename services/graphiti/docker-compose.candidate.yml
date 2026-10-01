@@ -30,8 +30,8 @@ services:
       - graphiti-internal
 
   graphiti-api:
-    # Pin to a reviewed tag or digest before deployment. The spike verified graphiti-core 0.30.2.
-    image: zepai/graphiti:latest
+    # Set to a reviewed immutable digest before deployment. The spike verified graphiti-core 0.30.2.
+    image: ${GRAPHITI_IMAGE:?GRAPHITI_IMAGE must be set to a reviewed immutable digest before deploy}
     container_name: graphiti-api
     restart: unless-stopped
     depends_on:

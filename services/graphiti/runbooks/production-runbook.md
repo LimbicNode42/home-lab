@@ -178,17 +178,28 @@ Only after preflight passes and the deploy card is approved:
 
 ```bash
 cd /root/work/home-lab
+GRAPHITI_IMAGE=zepai/graphiti@sha256:<reviewed_64_hex_digest> \
 GRAPHITI_ENABLE_LIVE_MUTATION=reviewed-approved \
   services/graphiti/scripts/deploy-tori-local.sh --apply
 ```
 
 Expected effects of apply, per the committed helper/template:
 
+- require `GRAPHITI_IMAGE` to be an explicit reviewed `@sha256:<64-hex>` image digest;
 - render/copy reviewed runtime material to tori;
 - keep secrets out of Git;
-- start Graphiti and Neo4j from the tori-local compose shape;
+- start Neo4j only from the tori-local compose shape;
 - bind raw service ports to loopback;
 - keep live Neo4j data on `/var/lib/graphiti/neo4j/data`.
+
+The Graphiti API start is a reviewed second stage after Neo4j health/log receipts are captured:
+
+```bash
+ssh root@192.168.0.20 \
+  "cd /opt/graphiti && docker compose up -d graphiti-api && docker compose ps"
+```
+
+Before running that command, confirm `/opt/graphiti/.env` still contains the reviewed immutable `GRAPHITI_IMAGE` digest and the Neo4j readiness/exposure receipts are acceptable. Do not use the second-stage command to bypass the preflight/apply gates.
 
 After any update, repeat the health and exposure verification below and update receipts.
 
@@ -221,7 +232,7 @@ ss -ltnp | grep -E ':(7474|7687|8000)\b' || true
 docker ps --format '{{.Names}} {{.Image}} {{.Status}}'
 ```
 
-Expected state after deployment:
+Expected state after full two-stage deployment:
 
 - `/var/lib/graphiti/neo4j/data` is on local disk, not NAS/NFS/CIFS/FUSE.
 - `neo4j` is healthy/ready.
