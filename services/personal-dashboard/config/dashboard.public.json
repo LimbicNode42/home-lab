@@ -50,6 +50,40 @@
       "displayUrl": "http://192.168.0.20:9119/kanban"
     },
     {
+      "id": "knowledge-graph",
+      "label": "Knowledge graph (Graphiti / Neo4j)",
+      "type": "graphitiNeo4jHealth",
+      "graphiti": {
+        "deployed": false
+      },
+      "neo4j": {
+        "deployed": false
+      },
+      "statusDetail": "Graphiti/Neo4j shared operational/provenance graph is not deployed yet: live service remains blocked on the Vaultwarden/OpenRouter preflight prerequisite. Config, deploy, backup, and restore-test automation are committed but have not been run live.",
+      "unresolvedFollowUp": "Unlock Vaultwarden (Homelab graphiti/openrouter) and rerun services/graphiti/scripts/deploy-tori-local.sh --preflight-only; only after it passes, deploy, run backup/restore-test, and flip these cards to live probes."
+    },
+    {
+      "id": "mem0-health",
+      "label": "Mem0 memory provider",
+      "type": "mem0Health",
+      "baseUrl": "http://127.0.0.1:8888",
+      "displayUrl": "http://192.168.0.20:8888",
+      "sshHost": "192.168.0.20",
+      "sshUser": "root",
+      "statusWhenHealthy": "healthy",
+      "statusDetail": "Mem0 API liveness, container health, and recent datastore log checks are passing; dashboard exposes coarse health only.",
+      "dockerContainers": [
+        "mem0-mem0-1",
+        "mem0-postgres-1"
+      ],
+      "logContainers": [
+        "mem0-mem0-1"
+      ],
+      "timeoutMs": 2500,
+      "logErrorPattern": "(datastore|pgvector|connection\\s+(?:closed|refused)|(?:closed|refused)\\s+connection|database\\s+(?:unavailable|error|failed|failure)|psycopg.*(?:error|closed)|5(?:02|03))",
+      "logSinceSeconds": 180
+    },
+    {
       "id": "metamcp-gateway",
       "label": "MetaMCP gateway",
       "targetUrl": "http://192.168.0.20:12008/health",

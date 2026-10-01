@@ -4,8 +4,14 @@
     {
       "title": "Core services",
       "links": [
-        { "label": "Vaultwarden", "href": "https://vault.wheeler-network.com" },
-        { "label": "Traefik", "href": "https://traefik.wheeler-network.com" }
+        {
+          "label": "Vaultwarden",
+          "href": "https://vault.wheeler-network.com"
+        },
+        {
+          "label": "Traefik",
+          "href": "https://traefik.wheeler-network.com"
+        }
       ]
     }
   ],
@@ -15,6 +21,19 @@
       "label": "Vaultwarden",
       "targetUrl": "http://192.168.0.50:8084/alive",
       "displayUrl": "https://vault.wheeler-network.com"
+    },
+    {
+      "id": "knowledge-graph",
+      "label": "Knowledge graph (Graphiti / Neo4j)",
+      "type": "graphitiNeo4jHealth",
+      "graphiti": {
+        "deployed": false
+      },
+      "neo4j": {
+        "deployed": false
+      },
+      "statusDetail": "Graphiti/Neo4j shared operational/provenance graph is not deployed on this dashboard instance.",
+      "unresolvedFollowUp": "Deploy the reviewed Graphiti/Neo4j service and flip these component cards to live loopback probes."
     }
   ]
 }
