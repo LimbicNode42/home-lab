@@ -10,7 +10,11 @@ Graphiti + Neo4j stores curated, source-backed operational episodes and temporal
 
 mem0 remains the active personal/preference memory provider for Ben's durable preferences, personal facts, and assistant behavior context. This deployment does not switch Hermes away from mem0, migrate mem0 records, delete mem0 data, or make recovery depend on Graphiti.
 
+Session search remains the right tool for recalling prior Hermes conversations and locating past discussion context. Graphiti is for curated shared operational/provenance facts, not raw transcript recall.
+
 Graphiti output is advisory context with provenance. Operators and agents must still verify current live state from the original system before remediation. The graph can point at evidence; it is not the source of truth by royal YAML decree.
+
+Agent-facing usage guidance lives in `services/graphiti/runbooks/agent-usage-guide.md`. It covers when to use mem0 vs session search vs Graphiti, safe wrapper queries, provenance interpretation, curated ingest boundaries, dashboard fields, degraded/down fallback, backup/restore boundaries, and upgrade notes.
 
 ## 2. What is deployed
 
