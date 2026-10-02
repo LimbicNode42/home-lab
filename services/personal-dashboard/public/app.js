@@ -683,6 +683,12 @@ function renderStatus(payload) {
     if (check.unresolvedFollowUp) {
       body.push(el('p', { className: 'warning', text: `Unresolved: ${check.unresolvedFollowUp}` }));
     }
+    if (check.evidence && typeof check.evidence === 'object') {
+      const evidenceItems = Object.entries(check.evidence)
+        .filter(([, value]) => value !== undefined && value !== null && value !== '')
+        .map(([key, value]) => el('li', { text: `${key.replace(/([A-Z])/g, ' $1').toLowerCase()}: ${value}` }));
+      if (evidenceItems.length > 0) body.push(el('ul', { className: 'status-evidence' }, evidenceItems));
+    }
     if (check.displayUrl) {
       body.push(el('a', { href: check.displayUrl, text: 'Open', rel: 'noreferrer noopener' }));
     }

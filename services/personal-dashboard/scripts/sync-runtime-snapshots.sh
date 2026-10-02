@@ -13,6 +13,7 @@ KANBAN_DB_HOST_DIR=${KANBAN_DB_HOST_DIR:-/mnt/nas/services/personal-dashboard/ka
 HOMELAB_HEALTH_HOST_DIR=${HOMELAB_HEALTH_HOST_DIR:-/mnt/nas/services/personal-dashboard/homelab-health}
 MOBILE_WORKFLOW_STATUS_HOST_DIR=${MOBILE_WORKFLOW_STATUS_HOST_DIR:-/mnt/nas/services/personal-dashboard/mobile-workflow}
 METAMCP_STATUS_HOST_DIR=${METAMCP_STATUS_HOST_DIR:-/mnt/nas/services/personal-dashboard/metamcp}
+GRAPHITI_STATUS_HOST_FILE=${GRAPHITI_STATUS_HOST_FILE:-/mnt/nas/services/graphiti/status/latest-smoke-backup.json}
 
 copy_snapshot() {
   source_path=$1
@@ -87,6 +88,7 @@ cleanup() {
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/homelab-health/latest_report.txt.tmp.$$" \
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/mobile-workflow/status.json.tmp.$$" \
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/metamcp/status.json.tmp.$$" \
+    "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/graphiti/latest-smoke-backup.json.tmp.$$" \
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/kanban/kanban.db.tmp.$$"
   rm -rf \
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/investment-screener.tmp.$$" \
@@ -120,5 +122,8 @@ copy_optional_snapshot "$MOBILE_WORKFLOW_STATUS_HOST_DIR/status.json" \
 copy_optional_snapshot "$METAMCP_STATUS_HOST_DIR/status.json" \
   "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/metamcp/status.json" \
   "MetaMCP publisher snapshot"
+copy_optional_snapshot "$GRAPHITI_STATUS_HOST_FILE" \
+  "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/graphiti/latest-smoke-backup.json" \
+  "Graphiti/Neo4j smoke and backup snapshot"
 
 printf '%s\n' "Synced personal-dashboard runtime snapshots to $PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR"

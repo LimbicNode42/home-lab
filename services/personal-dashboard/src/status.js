@@ -1,4 +1,5 @@
 import { execFile as execFileCallback } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { connect as netConnect } from 'node:net';
 import { promisify } from 'node:util';
 
@@ -6,6 +7,7 @@ const DEFAULT_TIMEOUT_MS = 2500;
 const CHECK_RESULT_STATUSES = new Set(['up', 'healthy', 'down', 'degraded', 'stale', 'unknown', 'not_deployed', 'not_configured']);
 const GRAPHITI_DEFAULT_HEALTH_PATH = '/health';
 const GRAPHITI_DEFAULT_READY_PATH = '/ready';
+const DEFAULT_GRAPHITI_STATUS_STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_MEM0_DOCS_PATH = '/docs';
 const DEFAULT_MEM0_OPENAPI_PATH = '/openapi.json';
 const DEFAULT_MEM0_SEARCH_PATH = '/search';
@@ -38,6 +40,13 @@ function joinUrl(baseUrl, path) {
   const normalizedBase = String(baseUrl).replace(/\/+$/, '');
   const normalizedPath = String(path || '').startsWith('/') ? path : `/${path}`;
   return `${normalizedBase}${normalizedPath}`;
+}
+
+
+function safeIsoTimestamp(value) {
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? null : date.toISOString();
 }
 
 function safeErrorCode(error) {
@@ -108,13 +117,14 @@ function httpOkFromStatusCode(stdout) {
 }
 
 export class StatusService {
-  constructor({ checks = [], ttlMs = 30_000, timeoutMs = DEFAULT_TIMEOUT_MS, fetchImpl = globalThis.fetch, execFileImpl = execFile, tcpConnectImpl = netConnect, env = process.env } = {}) {
+  constructor({ checks = [], ttlMs = 30_000, timeoutMs = DEFAULT_TIMEOUT_MS, fetchImpl = globalThis.fetch, execFileImpl = execFile, tcpConnectImpl = netConnect, readFileImpl = readFile, env = process.env } = {}) {
     this.checks = checks;
     this.ttlMs = ttlMs;
     this.timeoutMs = timeoutMs;
     this.fetchImpl = fetchImpl;
     this.execFileImpl = execFileImpl;
     this.tcpConnectImpl = tcpConnectImpl;
+    this.readFileImpl = readFileImpl;
     this.env = env;
     this.cache = null;
   }
@@ -148,10 +158,13 @@ export class StatusService {
   }
 
   async probeGraphitiNeo4jHealth(check, checkedAt = new Date().toISOString()) {
-    const [graphiti, neo4j] = await Promise.all([
-      this.probeGraphitiComponent(check, checkedAt),
-      this.probeNeo4jComponent(check, checkedAt)
-    ]);
+    const receiptStatus = check.statusFile ? await this.readGraphitiStatusSnapshot(check, checkedAt) : null;
+    const [graphiti, neo4j] = receiptStatus?.cards
+      ? receiptStatus.cards
+      : await Promise.all([
+        this.probeGraphitiComponent(check, checkedAt),
+        this.probeNeo4jComponent(check, checkedAt)
+      ]);
     // The parent check carries a single human-readable status narrative that should
     // surface on both component cards (e.g. "blocked on Vaultwarden/OpenRouter
     // preflight"). It is non-secret prose, so safe to expose. componentIdentity has
@@ -163,6 +176,109 @@ export class StatusService {
       ...(detailText ? { detail: detailText } : {}),
       ...(followUpText ? { unresolvedFollowUp: followUpText } : {})
     }));
+  }
+
+  async readGraphitiStatusSnapshot(check, checkedAt = new Date().toISOString()) {
+    const started = Date.now();
+    const graphitiIdentity = this.componentIdentity(check, 'graphiti', 'Graphiti operational/provenance graph');
+    const neo4jIdentity = this.componentIdentity(check, 'neo4j', 'Neo4j graph database');
+    let parsed;
+    try {
+      parsed = JSON.parse(await this.readFileImpl(check.statusFile, 'utf8'));
+    } catch (error) {
+      const message = error?.code === 'ENOENT'
+        ? 'Graphiti/Neo4j status snapshot has not been published yet'
+        : 'Graphiti/Neo4j status snapshot could not be read';
+      const status = error?.code === 'ENOENT' ? 'not_configured' : 'stale';
+      return {
+        cards: [
+          this.graphStatus(graphitiIdentity, status, started, message, 'graphiti_status_snapshot_unavailable', checkedAt),
+          this.graphStatus(neo4jIdentity, status, started, message, 'graphiti_status_snapshot_unavailable', checkedAt)
+        ]
+      };
+    }
+
+    const receipt = this.summarizeGraphitiStatusSnapshot(parsed, check, checkedAt);
+    const stale = receipt.isStale;
+    const graphitiPassed = receipt.healthcheckPassed && receipt.ingestPassed && receipt.queryPassed;
+    const neo4jPassed = receipt.neo4jReadinessPassed && receipt.backupPassed && receipt.restoreTestPassed;
+    const graphitiStatus = graphitiPassed ? (stale ? 'stale' : 'healthy') : 'degraded';
+    const neo4jStatus = neo4jPassed ? (stale ? 'stale' : 'healthy') : 'degraded';
+    const graphitiMessage = graphitiPassed
+      ? `Last Graphiti health/ingest/query smoke passed ${receipt.ingestAgeLabel}`
+      : 'Graphiti health/ingest/query smoke is missing or failed in the latest snapshot';
+    const neo4jMessage = neo4jPassed
+      ? `Last Neo4j readiness/backup/restore check passed ${receipt.backupAgeLabel}`
+      : 'Neo4j readiness/backup/restore evidence is missing or failed in the latest snapshot';
+    return {
+      cards: [
+        {
+          ...this.graphStatus(graphitiIdentity, graphitiStatus, started, graphitiMessage, graphitiStatus === 'healthy' ? null : (stale ? 'graphiti_status_stale' : 'graphiti_smoke_failed'), checkedAt),
+          evidence: receipt.graphitiEvidence
+        },
+        {
+          ...this.graphStatus(neo4jIdentity, neo4jStatus, started, neo4jMessage, neo4jStatus === 'healthy' ? null : (stale ? 'neo4j_status_stale' : 'neo4j_backup_or_readiness_failed'), checkedAt),
+          evidence: receipt.neo4jEvidence
+        }
+      ]
+    };
+  }
+
+  summarizeGraphitiStatusSnapshot(snapshot, check, checkedAt) {
+    const createdAt = safeIsoTimestamp(snapshot.created_at_utc) ?? safeIsoTimestamp(snapshot.createdAt) ?? null;
+    const ingest = snapshot.curated_ingest_and_query_smoke ?? {};
+    const backup = snapshot.backup_and_restore ?? {};
+    const live = snapshot.live_state_after_checks ?? {};
+    const ingestAt = safeIsoTimestamp(ingest.timestamp_utc) ?? createdAt;
+    const backupAt = safeIsoTimestamp(backup.timestamp_utc) ?? createdAt;
+    const staleAfterMs = Number(check.statusFileStaleAfterMs ?? DEFAULT_GRAPHITI_STATUS_STALE_AFTER_MS);
+    const newestSignalMs = Math.max(
+      Date.parse(createdAt ?? '') || 0,
+      Date.parse(ingestAt ?? '') || 0,
+      Date.parse(backupAt ?? '') || 0
+    );
+    const ageMs = newestSignalMs ? Date.parse(checkedAt) - newestSignalMs : Number.POSITIVE_INFINITY;
+    const isStale = !Number.isFinite(staleAfterMs) || staleAfterMs <= 0 ? false : ageMs > staleAfterMs;
+    const ingestPassed = ingest.passed === true && ingest.ingest_actual?.status === 201;
+    const queryPassed = ingest.passed === true && (ingest.query_actual?.status === 200) && Number(ingest.query_actual?.result_count ?? 0) > 0;
+    const healthcheckPassed = live.healthcheck?.passed === true;
+    const neo4jReadinessPassed = live.neo4j_readiness?.passed === true;
+    const backupPassed = backup.passed === true && typeof backup.backup_size_bytes === 'number' && backup.backup_size_bytes > 0;
+    const restoreTestPassed = backup.restore_test?.passed === true;
+    return {
+      healthcheckPassed,
+      ingestPassed,
+      queryPassed,
+      neo4jReadinessPassed,
+      backupPassed,
+      restoreTestPassed,
+      isStale,
+      ingestAgeLabel: ingestAt ? `at ${ingestAt}` : 'in the latest snapshot',
+      backupAgeLabel: backupAt ? `at ${backupAt}` : 'in the latest snapshot',
+      graphitiEvidence: {
+        service: 'Graphiti shared operational/provenance graph; mem0 remains separate personal/preference memory',
+        snapshotCreatedAt: createdAt,
+        lastIngestSmokeAt: ingestAt,
+        lastQuerySmokeAt: ingestAt,
+        healthcheckPassed,
+        ingestPassed,
+        queryPassed,
+        sourceRef: typeof ingest.source_ref === 'string' ? ingest.source_ref : undefined,
+        resultCount: Number.isFinite(Number(ingest.query_actual?.result_count)) ? Number(ingest.query_actual.result_count) : undefined,
+        stale: isStale
+      },
+      neo4jEvidence: {
+        service: 'Neo4j backing store for Graphiti operational/provenance graph',
+        snapshotCreatedAt: createdAt,
+        lastBackupAt: backupAt,
+        readinessPassed: neo4jReadinessPassed,
+        backupPassed,
+        restoreTestPassed,
+        backupSizeBytes: typeof backup.backup_size_bytes === 'number' ? backup.backup_size_bytes : undefined,
+        liveDataStorage: backup.live_data_storage?.fstype ? `${backup.live_data_storage.fstype} local disk` : undefined,
+        stale: isStale
+      }
+    };
   }
 
   componentIdentity(check, key, fallbackLabel) {

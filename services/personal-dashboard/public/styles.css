@@ -618,3 +618,14 @@ h2, h3 { margin-top: 0; }
 .unified-inbox-detail-list li { margin: 0.25rem 0; }
 .unified-inbox-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.65rem; margin: 0.8rem 0; }
 .unified-inbox-connectors { margin-top: 1rem; }
+
+.status-evidence {
+  margin: 0.75rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.status-evidence li + li {
+  margin-top: 0.25rem;
+}

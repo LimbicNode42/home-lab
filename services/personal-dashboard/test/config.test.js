@@ -133,15 +133,17 @@ test('loadConfig rejects invalid mem0Health API key environment variable names',
 
 
 
-test('repository dashboard config surface the Graphiti/Neo4j status card as explicit not-deployed', async () => {
+test('repository dashboard config surfaces the Graphiti/Neo4j live snapshot status card', async () => {
   const configPath = new URL('../config/dashboard.public.json', import.meta.url).pathname;
   const config = await loadConfig({ configPath });
 
   const knowledgeGraph = config.statusChecks.filter((check) => check.type === 'graphitiNeo4jHealth');
   assert.equal(knowledgeGraph.length, 1);
   assert.equal(knowledgeGraph[0].id, 'knowledge-graph');
-  assert.equal(knowledgeGraph[0].graphiti.deployed, false);
-  assert.equal(knowledgeGraph[0].neo4j.deployed, false);
+  assert.equal(knowledgeGraph[0].graphiti.deployed, true);
+  assert.equal(knowledgeGraph[0].neo4j.deployed, true);
+  assert.equal(knowledgeGraph[0].statusFile, '/app/graphiti/latest-smoke-backup.json');
+  assert.equal(knowledgeGraph[0].statusFileStaleAfterMs, 86400000);
   assert.ok(config.statusChecks.some((check) => check.id === 'mem0-health' && check.statusWhenHealthy === 'healthy' && check.logSinceSeconds === 180));
 });
 
@@ -164,7 +166,9 @@ test('loadConfig accepts graphitiNeo4jHealth checks and hides internal probe con
           boltHost: '127.0.0.1',
           boltPort: 7687,
           browserUrl: 'https://neo4j-admin.example.test'
-        }
+        },
+        statusFile: '/app/graphiti/latest-smoke-backup.json',
+        statusFileStaleAfterMs: 86400000
       }
     ]
   });
@@ -172,6 +176,7 @@ test('loadConfig accepts graphitiNeo4jHealth checks and hides internal probe con
   const config = await loadConfig({ configPath: path });
   assert.equal(config.statusChecks[0].type, 'graphitiNeo4jHealth');
   assert.equal(config.statusChecks[0].neo4j.boltPort, 7687);
+  assert.equal(config.statusChecks[0].statusFile, '/app/graphiti/latest-smoke-backup.json');
 
   const publicConfig = toPublicConfig(config);
   assert.deepEqual(publicConfig.statusChecks, [

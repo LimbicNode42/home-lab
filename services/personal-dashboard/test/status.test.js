@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 import { StatusService } from '../src/status.js';
 
@@ -357,5 +360,66 @@ test('graphitiNeo4jHealth surfaces blocked/degraded narrative on both component 
     assert.equal(JSON.stringify(check).includes('127.0.0.1'), false);
     assert.equal(JSON.stringify(check).includes('password'), false);
     assert.equal(JSON.stringify(check).includes('api_key'), false);
+  }
+});
+
+
+test('graphitiNeo4jHealth summarizes smoke and backup snapshot without leaking artifact paths', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'graphiti-status-'));
+  try {
+    const statusFile = join(dir, 'latest-smoke-backup.json');
+    await writeFile(statusFile, JSON.stringify({
+      created_at_utc: '2026-10-02T10:56:00Z',
+      live_state_after_checks: {
+        healthcheck: { passed: true },
+        neo4j_readiness: { passed: true }
+      },
+      curated_ingest_and_query_smoke: {
+        timestamp_utc: '2026-10-02T10:23:56Z',
+        source_ref: 'kanban:t_8a57f068:20261002T102356Z',
+        ingest_actual: { status: 201, body: { success: true } },
+        query_actual: { status: 200, result_count: 1 },
+        passed: true
+      },
+      backup_and_restore: {
+        timestamp_utc: '2026-10-02T10:36:58Z',
+        backup_artifact_location: '/mnt/pve/NAS/services/graphiti/backups/neo4j-dumps/artifact.dump',
+        backup_sha256: 'not-public',
+        backup_size_bytes: 74127,
+        restore_test: { passed: true },
+        live_data_storage: { path: '/var/lib/graphiti/neo4j/data', fstype: 'ext4', source: '/dev/sda2' },
+        passed: true
+      }
+    }));
+    const service = new StatusService({
+      checks: [{
+        id: 'knowledge-graph',
+        label: 'Knowledge graph',
+        type: 'graphitiNeo4jHealth',
+        statusFile,
+        statusFileStaleAfterMs: 24 * 60 * 60 * 1000,
+        graphiti: { label: 'Graphiti operational/provenance graph', deployed: true },
+        neo4j: { label: 'Neo4j graph store', deployed: true },
+        statusDetail: 'Graphiti is shared operational/provenance memory; mem0 remains personal/preference memory.'
+      }]
+    });
+
+    const payload = await service.probeGraphitiNeo4jHealth(service.checks[0], '2026-10-02T11:00:00Z');
+    const graphiti = payload.find((check) => check.component === 'graphiti');
+    const neo4j = payload.find((check) => check.component === 'neo4j');
+
+    assert.equal(graphiti.status, 'healthy');
+    assert.equal(neo4j.status, 'healthy');
+    assert.equal(graphiti.evidence.ingestPassed, true);
+    assert.equal(graphiti.evidence.queryPassed, true);
+    assert.equal(neo4j.evidence.backupPassed, true);
+    assert.equal(neo4j.evidence.restoreTestPassed, true);
+    assert.match(graphiti.evidence.service, /mem0 remains separate/);
+    const serialized = JSON.stringify(payload);
+    assert.equal(serialized.includes('/mnt/pve/NAS'), false);
+    assert.equal(serialized.includes('not-public'), false);
+    assert.equal(serialized.includes('/var/lib/graphiti'), false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });

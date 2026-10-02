@@ -27,13 +27,17 @@
       "label": "Knowledge graph (Graphiti / Neo4j)",
       "type": "graphitiNeo4jHealth",
       "graphiti": {
-        "deployed": false
+        "label": "Graphiti operational/provenance graph",
+        "deployed": true
       },
       "neo4j": {
-        "deployed": false
+        "label": "Neo4j graph store",
+        "deployed": true
       },
-      "statusDetail": "Graphiti/Neo4j shared operational/provenance graph is not deployed on this dashboard instance.",
-      "unresolvedFollowUp": "Deploy the reviewed Graphiti/Neo4j service and flip these component cards to live loopback probes."
+      "statusDetail": "Graphiti/Neo4j is the shared operational/provenance graph; mem0 remains the separate personal/preference memory provider. Configure GRAPHITI_STATUS_HOST_FILE to publish smoke/backup freshness.",
+      "unresolvedFollowUp": "Publish a sanitized latest-smoke-backup.json snapshot from the Graphiti production smoke/backup receipt.",
+      "statusFile": "/app/graphiti/latest-smoke-backup.json",
+      "statusFileStaleAfterMs": 86400000
     }
   ]
 }

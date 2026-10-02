@@ -54,13 +54,17 @@
       "label": "Knowledge graph (Graphiti / Neo4j)",
       "type": "graphitiNeo4jHealth",
       "graphiti": {
-        "deployed": false
+        "label": "Graphiti operational/provenance graph",
+        "deployed": true
       },
       "neo4j": {
-        "deployed": false
+        "label": "Neo4j graph store",
+        "deployed": true
       },
-      "statusDetail": "Graphiti/Neo4j shared operational/provenance graph is not deployed yet: live service remains blocked on the Vaultwarden/OpenRouter preflight prerequisite. Config, deploy, backup, and restore-test automation are committed but have not been run live.",
-      "unresolvedFollowUp": "Unlock Vaultwarden (Homelab graphiti/openrouter) and rerun services/graphiti/scripts/deploy-tori-local.sh --preflight-only; only after it passes, deploy, run backup/restore-test, and flip these cards to live probes."
+      "statusDetail": "Graphiti/Neo4j is the shared operational/provenance graph for agent/homelab facts. mem0 remains the separate personal/preference memory provider; this card does not imply Graphiti replaced mem0.",
+      "unresolvedFollowUp": "Recurring backup/status publishing is still an operational follow-up; current dashboard state is based on the latest sanitized production smoke/backup snapshot.",
+      "statusFile": "/app/graphiti/latest-smoke-backup.json",
+      "statusFileStaleAfterMs": 86400000
     },
     {
       "id": "mem0-health",

@@ -627,6 +627,19 @@ function validateStatusChecks(statusChecks) {
       if ((result.neo4j.boltHost && !result.neo4j.boltPort) || (!result.neo4j.boltHost && result.neo4j.boltPort)) {
         throw new Error(`Invalid Neo4j Bolt config for ${label}: boltHost and boltPort must be configured together`);
       }
+      if (check.statusFile !== undefined) {
+        result.statusFile = requireText(check.statusFile, `statusChecks[${index}].statusFile`);
+        if (!result.statusFile.startsWith('/')) {
+          throw new Error(`Invalid statusFile for ${label}: expected an absolute in-container path`);
+        }
+      }
+      if (check.statusFileStaleAfterMs !== undefined) {
+        const statusFileStaleAfterMs = Number(check.statusFileStaleAfterMs);
+        if (!Number.isInteger(statusFileStaleAfterMs) || statusFileStaleAfterMs < 60_000 || statusFileStaleAfterMs > 30 * 24 * 60 * 60 * 1000) {
+          throw new Error(`Invalid statusFileStaleAfterMs for ${label}: must be an integer between 60000 and 2592000000`);
+        }
+        result.statusFileStaleAfterMs = statusFileStaleAfterMs;
+      }
     } else {
       throw new Error(`Invalid dashboard config: unsupported statusChecks[${index}].type`);
     }
