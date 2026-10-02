@@ -1,0 +1,53 @@
+{
+  "task": "t_fc9d63a6",
+  "title": "fix: Graphiti not agent-usable (empty graph, stripped provenance, search hang)",
+  "completed_at": "2026-10-02T12:52:00Z",
+  "host": "tori / 192.168.0.20",
+  "outcome": "fixed",
+  "defects": [
+    {
+      "id": "empty_graph",
+      "status": "fixed",
+      "evidence": "5 approved seed episodes --apply-ingested; live Episodic group counts now: decisions_graphiti-memory-boundary, homelab_nippon-quorum, incidents_media-stack, services_graphiti, services_vaultwarden, plus the pre-existing smoke group. Entity count went 2 -> 17."
+    },
+    {
+      "id": "missing_vector_index_search_hang",
+      "status": "fixed",
+      "root_cause": "graphiti-core 0.30.2 build_indices_and_constraints() creates only RANGE + FULLTEXT indexes (graph_queries.py get_range_indices/get_fulltext_indices); it never creates a VECTOR index, leaving fact_embedding (1536-dim relationship property) unindexed and vector.similarity.cosine brute-force.",
+      "evidence": "Created fact_embedding_vector (VECTOR, RELATIONSHIP, RELATES_TO.fact_embedding, 1536-dim cosine) via new idempotent script scripts/ensure-vector-index.sh; SHOW INDEXES WHERE type='VECTOR' now returns it ONLINE at populationPercent 100.0. /search observed ~0.8-1.5s across repeated runs (was 120s+ hang / HTTP 000)."
+    },
+    {
+      "id": "stripped_provenance",
+      "status": "fixed",
+      "evidence": "normalize_results() now reads the real /search shape (facts[] with episodes[]; no group_id/source_ref/source_episode) and resolves provenance via GET /episodes/{group_id} (episode name -> source_episode, source_description -> source_ref, group_id -> group). Live query now returns source_episode, source_ref, group, valid_at, domain all populated."
+    },
+    {
+      "id": "group_id_contract_mismatch",
+      "status": "fixed",
+      "evidence": "Curated services.graphiti seed lives in wire group services_graphiti; wrapper _wire_group_id maps dotted<->underscore consistently on both query and ingest, and normalize_results prefers the caller's dotted fallback_group. Documented agent group services.graphiti now returns real facts."
+    }
+  ],
+  "changes": {
+    "needs_review": true,
+    "changed_files": [
+      "services/graphiti/agent_graphiti/client.py",
+      "services/graphiti/tests/test_agent_graphiti.py",
+      "services/graphiti/scripts/ensure-vector-index.sh",
+      "services/graphiti/scripts/deploy-tori-local.sh",
+      "services/graphiti/runbooks/production-runbook.md",
+      "services/graphiti/runbooks/agent-usage-guide.md"
+    ]
+  },
+  "tests": {
+    "unit": "python3 -m unittest discover -s services/graphiti/tests -v -> 7/7 pass (incl. refactored provenance regression test reflecting the real /search facts[]/episodes[] shape)"
+  },
+  "known_artifact": {
+    "duplicate_decisions_episode": "First --apply (8s default timeout) committed server-side before the client timed out; the 120s retry re-ingested, leaving one near-duplicate episode in decisions_graphiti-memory-boundary (facts differ only by a leading 'Hermes '). Left in place per safety boundary: live DELETE is not run against curated (non-disposable) content without explicit approval. Query returns both; harmless dedupe follow-up if Ben wants it."
+  },
+  "safety": {
+    "mem0_untouched": true,
+    "no_exposure_change": true,
+    "no_destructive_clear_or_restore": true,
+    "secrets_committed": "none"
+  }
+}

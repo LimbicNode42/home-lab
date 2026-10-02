@@ -147,3 +147,6 @@ ssh "$target_host" "set -e; chmod 0600 '$runtime_dir/.env'; chmod 0644 '$runtime
 
 echo "Neo4j start requested. After Neo4j health/log receipts are reviewed, start Graphiti with:"
 echo "  ssh $target_host \"cd $runtime_dir && docker compose up -d graphiti-api && docker compose ps\""
+echo ""
+echo "After graphiti-api is healthy, apply the required Neo4j VECTOR index (graphiti-core does not create it):"
+echo "  see services/graphiti/runbooks/production-runbook.md -> 'Vector index' (ensure-vector-index.sh)"

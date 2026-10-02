@@ -51,24 +51,37 @@ class AgentGraphitiTests(unittest.TestCase):
 
     def test_normalize_results_returns_required_provenance_fields(self):
         payload = {
-            "results": [
+            "facts": [  # live /search emits `facts`, not `results`
                 {
+                    "uuid": "edge-1",
+                    "name": "CONFIRMS",
                     "fact": "mem0 remains active provider; Graphiti is advisory.",
-                    "source_episode": "Graphiti policy boundary",
-                    "source_ref": "services/graphiti/runbooks/curated-ingest-policy.md",
-                    "source_timestamp": "2026-09-30T00:00:00Z",
                     "valid_at": "2026-09-30T00:00:00Z",
-                    "confidence": "high",
-                    "caveat": "Policy fact; verify live config before remediation.",
-                    "group_id": "decisions.graphiti-memory-boundary",
+                    "created_at": "2026-10-01T00:00:00Z",
+                    "source_node_uuid": "n1",
+                    "target_node_uuid": "n2",
+                    "episodes": ["ep-uuid-1"],
                 }
             ]
         }
-        [result] = normalize_results(payload)
+        episodes_by_uuid = {
+            "ep-uuid-1": {
+                "uuid": "ep-uuid-1",
+                "name": "Graphiti policy boundary",
+                "group_id": "decisions_graphiti_memory_boundary",
+                "source_description": "services/graphiti/runbooks/curated-ingest-policy.md",
+                "valid_at": "2026-09-30T00:00:00Z",
+            }
+        }
+        [result] = normalize_results(
+            payload, fallback_group="decisions.graphiti-memory-boundary", episodes_by_uuid=episodes_by_uuid
+        )
+        self.assertEqual(result.group, "decisions.graphiti-memory-boundary")
         self.assertEqual(result.domain, "decisions")
-        self.assertEqual(result.confidence, "high")
-        self.assertIsNone(result.invalid_at)
         self.assertEqual(result.source_episode, "Graphiti policy boundary")
+        self.assertEqual(result.source_ref, "services/graphiti/runbooks/curated-ingest-policy.md")
+        self.assertEqual(result.confidence, "unknown")
+        self.assertIsNone(result.invalid_at)
 
     def test_query_degrades_when_graphiti_down(self):
         def opener(req: Request, timeout: float):
@@ -81,33 +94,44 @@ class AgentGraphitiTests(unittest.TestCase):
         self.assertIn("mem0", result["caveat"])
 
     def test_query_uses_only_configured_read_path_and_strips_raw_graph(self):
-        seen = {}
+        seen = []
 
         def opener(req: Request, timeout: float):
-            seen["url"] = req.full_url
-            seen["method"] = req.get_method()
-            self.assertIsInstance(req.data, bytes)
-            body = json.loads(req.data.decode("utf-8"))
-            self.assertEqual(body["group_ids"], ["services_graphiti"])
-            self.assertEqual(body["max_facts"], 5)
-            return FakeResponse({
-                "facts": [{
-                    "fact": "Graphiti raw endpoints are not agent-facing.",
-                    "episode": "Wrapper contract",
-                    "reference_time": "2026-10-01T00:00:00Z",
-                    "group_id": "services.graphiti",
-                    "confidence": "high",
-                    "nodes": ["raw graph data should not be surfaced"],
-                }]
-            })
+            seen.append((req.get_method(), req.full_url, req.data))
+            if req.get_method() == "POST":
+                self.assertIsInstance(req.data, bytes)
+                body = json.loads(req.data.decode("utf-8"))
+                self.assertEqual(body["group_ids"], ["services_graphiti"])
+                self.assertEqual(body["max_facts"], 5)
+                return FakeResponse({
+                    "facts": [{
+                        "fact": "Graphiti raw endpoints are not agent-facing.",
+                        "episodes": ["ep-uuid-1"],
+                        "created_at": "2026-10-01T00:00:00Z",
+                        "nodes": ["raw graph data should not be surfaced"],
+                    }]
+                })
+            # GET: the episode provenance lookup for a group-scoped query.
+            self.assertEqual(req.get_method(), "GET")
+            self.assertTrue(req.full_url.startswith("http://127.0.0.1:8000/episodes/"))
+            return FakeResponse([{
+                "uuid": "ep-uuid-1",
+                "name": "Wrapper contract",
+                "group_id": "services_graphiti",
+                "source_description": "t_smoke source",
+                "valid_at": "2026-10-01T00:00:00Z",
+            }])
 
         client = GraphitiReadOnlyClient("http://127.0.0.1:8000", opener=opener)
         result = client.search_facts("agent wrapper", group_id="services.graphiti")
-        self.assertEqual(seen["method"], "POST")
-        self.assertTrue(seen["url"].endswith("/search"))
+        self.assertEqual(seen[0][0], "POST")
+        self.assertTrue(seen[0][1].endswith("/search"))
+        self.assertEqual(seen[1][0], "GET")
         self.assertEqual(result["status"], "ok")
         self.assertNotIn("nodes", json.dumps(result))
         self.assertEqual(result["results"][0]["domain"], "services")
+        self.assertEqual(result["results"][0]["group"], "services.graphiti")
+        self.assertEqual(result["results"][0]["source_episode"], "Wrapper contract")
 
     def test_ingest_maps_policy_group_id_to_graphiti_safe_wire_id(self):
         seen = {}

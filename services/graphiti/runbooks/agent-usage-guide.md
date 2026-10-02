@@ -111,6 +111,15 @@ The second command is a dry run by default. Live curated ingest requires explici
 services/graphiti/scripts/graphiti-agent-wrapper.py ingest services/graphiti/seeds/initial-approved-episodes.json --apply
 ```
 
+Ingest calls the LLM (entity extraction) synchronously; the default 8s wrapper timeout can be too short for a 5-episode batch. Use a longer timeout for the apply:
+
+```bash
+GRAPHITI_TIMEOUT_SECONDS=120 \
+  services/graphiti/scripts/graphiti-agent-wrapper.py ingest services/graphiti/seeds/initial-approved-episodes.json --apply
+```
+
+Note: a timed-out ingest client may STILL have committed server-side (extraction + write complete but the response was late). Re-running `--apply` can therefore create a near-duplicate episode. Before re-running, query the target group for existing facts; do not blindly re-ingest on timeout.
+
 After ingest, query the affected group for expected facts and provenance, then update sanitized status/receipt evidence only. Do not commit raw graph content.
 
 ## 6. Home Dashboard Overview fields

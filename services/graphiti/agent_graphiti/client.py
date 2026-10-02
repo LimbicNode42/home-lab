@@ -103,6 +103,28 @@ class GraphitiReadOnlyClient:
             raise GraphitiUnavailable("graphiti_unexpected_response")
         return decoded
 
+    def _request_any(self, method: str, path: str) -> Any:
+        """Like ``_request`` but tolerate list responses (used by /episodes/{id})."""
+
+        if method != "GET":
+            raise ValueError("only GET is allowed for _request_any")
+        req = urllib.request.Request(
+            self.base_url + path,
+            method=method,
+            headers={"Accept": "application/json"},
+        )
+        try:
+            with self._opener(req, self.timeout_seconds) as response:
+                payload = response.read().decode("utf-8")
+        except (TimeoutError, OSError, urllib.error.URLError, urllib.error.HTTPError) as exc:
+            raise GraphitiUnavailable("graph_unavailable") from exc
+        if not payload.strip():
+            return []
+        try:
+            return json.loads(payload)
+        except json.JSONDecodeError as exc:
+            raise GraphitiUnavailable("graphiti_invalid_json") from exc
+
     def status(self) -> dict[str, Any]:
         try:
             payload = self._request("GET", self.health_path)
@@ -124,7 +146,35 @@ class GraphitiReadOnlyClient:
             payload = self._request("POST", self.search_path, body)
         except GraphitiUnavailable:
             return {"status": "graph_unavailable", "results": [], "caveat": "Graphiti is unavailable; use mem0/session/source-of-truth/live inspection instead."}
-        return {"status": "ok", "results": [item.as_dict() for item in normalize_results(payload, fallback_group=group_id)]}
+        # The raw /search response carries episode UUIDs but no group_id or
+        # source metadata, so resolve episode provenance from the group listing
+        # endpoint when the query is group-scoped.
+        episodes_by_uuid: dict[str, dict[str, Any]] = {}
+        if group_id:
+            episodes_by_uuid = self._list_group_episodes(group_id)
+        return {"status": "ok", "results": [item.as_dict() for item in normalize_results(payload, fallback_group=group_id, episodes_by_uuid=episodes_by_uuid)]}
+
+    def _list_group_episodes(self, group_id: str, last_n: int = 50) -> dict[str, dict[str, Any]]:
+        """Return {episode_uuid: episode_payload} for a policy (dotted) group id.
+
+        The read-only retrieve surface is keyed by group, so this is the way the
+        wrapper recovers per-episode provenance (name, source_description,
+        group_id) that the /search endpoint does not echo back.
+        """
+
+        wire = _wire_group_id(group_id)
+        path = f"{self.ingest_path}/{urllib.parse.quote(wire)}?last_n={last_n}"
+        try:
+            payload = self._request_any("GET", path)
+        except GraphitiUnavailable:
+            return {}
+        if not isinstance(payload, list):
+            return {}
+        out: dict[str, dict[str, Any]] = {}
+        for ep in payload:
+            if isinstance(ep, dict) and isinstance(ep.get("uuid"), str):
+                out[ep["uuid"]] = ep
+        return out
 
     def ingest_episode(self, graphiti_payload: dict[str, Any]) -> dict[str, Any]:
         """Send one already-validated curated episode to Graphiti.
@@ -162,12 +212,30 @@ def _strip_raw(payload: dict[str, Any]) -> dict[str, Any]:
     return safe
 
 
-def normalize_results(payload: dict[str, Any], *, fallback_group: str | None = None) -> list[GraphitiQueryResult]:
+def normalize_results(
+    payload: dict[str, Any],
+    *,
+    fallback_group: str | None = None,
+    episodes_by_uuid: dict[str, dict[str, Any]] | None = None,
+) -> list[GraphitiQueryResult]:
+    """Map the live /search response into provenance-safe results.
+
+    The live endpoint emits ``facts`` (not ``results``) whose records carry
+    ``uuid``, ``name``, ``fact``, ``valid_at``, ``invalid_at``, ``created_at``,
+    ``expired_at``, ``source_node_uuid``, ``target_node_uuid``, and ``episodes``
+    (a list of episode UUIDs). It does NOT echo ``group_id``, ``source_ref``,
+    ``source_episode``, or ``confidence``. Those come from the episode objects
+    reachable via ``GET /episodes/{group_id}``, keyed by UUID in
+    ``episodes_by_uuid``, with ``fallback_group`` (the query's policy group id)
+    as the last-resort group.
+    """
+
     raw_results = payload.get("results", payload.get("facts", payload.get("edges", [])))
     if isinstance(raw_results, dict):
         raw_results = [raw_results]
     if not isinstance(raw_results, list):
         raw_results = []
+    episodes_by_uuid = episodes_by_uuid or {}
     normalized: list[GraphitiQueryResult] = []
     for raw in raw_results:
         if not isinstance(raw, dict):
@@ -175,14 +243,33 @@ def normalize_results(payload: dict[str, Any], *, fallback_group: str | None = N
         fact = raw.get("fact") or raw.get("text") or raw.get("name") or raw.get("content")
         if not isinstance(fact, str) or not fact.strip():
             continue
-        group = raw.get("group_id") or raw.get("group") or fallback_group
+        episode = _resolve_episode(raw.get("episodes"), episodes_by_uuid)
+        # Prefer fallback_group (the dotted policy id the agent asked for) over
+        # the episode's stored group_id, which is the wire-safe underscore form.
+        group = (
+            raw.get("group_id")
+            or raw.get("group")
+            or fallback_group
+            or (episode.get("group_id") if isinstance(episode, dict) else None)
+        )
         domain = raw.get("domain")
         if not domain and isinstance(group, str) and "." in group:
             domain = group.split(".", 1)[0]
-        source_episode = raw.get("source_episode") or raw.get("episode") or raw.get("source") or raw.get("source_episode_name")
-        source_ref = raw.get("source_ref") or raw.get("source_reference") or raw.get("source_path")
+        source_episode = (
+            raw.get("source_episode")
+            or raw.get("episode")
+            or raw.get("source")
+            or raw.get("source_episode_name")
+            or (episode.get("name") if isinstance(episode, dict) else None)
+        )
+        source_ref = (
+            raw.get("source_ref")
+            or raw.get("source_reference")
+            or raw.get("source_path")
+            or (episode.get("source_description") if isinstance(episode, dict) else None)
+        )
         source_timestamp = raw.get("source_timestamp") or raw.get("created_at") or raw.get("reference_time")
-        valid_at = raw.get("valid_at") or raw.get("validAt")
+        valid_at = raw.get("valid_at") or raw.get("validAt") or (episode.get("valid_at") if isinstance(episode, dict) else None)
         invalid_at = raw.get("invalid_at") or raw.get("invalidAt")
         confidence = raw.get("confidence", "unknown")
         if confidence not in {"low", "medium", "high", "unknown"}:
@@ -205,3 +292,16 @@ def normalize_results(payload: dict[str, Any], *, fallback_group: str | None = N
             )
         )
     return normalized
+
+
+def _resolve_episode(episode_refs: Any, episodes_by_uuid: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
+    """Return the first episode object whose uuid matches any of ``episode_refs``."""
+
+    if not isinstance(episode_refs, list):
+        return None
+    for ref in episode_refs:
+        if isinstance(ref, str) and ref in episodes_by_uuid:
+            return episodes_by_uuid[ref]
+        if isinstance(ref, dict) and ref.get("uuid") in episodes_by_uuid:
+            return episodes_by_uuid[ref["uuid"]]
+    return None

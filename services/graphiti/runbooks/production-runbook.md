@@ -185,6 +185,20 @@ Record sanitized results under `services/graphiti/receipts/`; do not commit secr
 
 Use sanitized, synthetic operational facts and a unique smoke-test group. Do not ingest credentials, raw Hermes transcripts, sensitive incident logs, or personally sensitive data.
 
+### Vector index (required — do not skip)
+
+graphiti-core 0.30.2 does NOT create a VECTOR index on `fact_embedding` (its `build_indices_and_constraints()` only creates RANGE + FULLTEXT indexes). Without the vector index, `vector.similarity.cosine` runs brute-force and `/search` can intermittently hang. Apply the index after every fresh deploy and after a live restore (the dump does not carry indexes):
+
+```bash
+cd /root/work/home-lab
+NEO4J_USER=neo4j NEO4J_PASSWORD=<runtime-secret> \
+  services/graphiti/scripts/ensure-vector-index.sh          # idempotent, verified
+NEO4J_USER=neo4j NEO4J_PASSWORD=<runtime-secret> \
+  services/graphiti/scripts/ensure-vector-index.sh --dry-run  # read-only plan
+```
+
+The index (`fact_embedding_vector`, VECTOR, RELATIONSHIP on `RELATES_TO.fact_embedding`, 1536-dim cosine) must show `ONLINE` / `populationPercent 100.0`.
+
 Production smoke evidence from `t_8a57f068`:
 
 ```text
