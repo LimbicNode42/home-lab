@@ -1,0 +1,87 @@
+{
+  "task_id": "t_8a57f068",
+  "created_at_utc": "2026-10-02T10:56:00Z",
+  "host": "tori / 192.168.0.20",
+  "service": "Graphiti/Neo4j shared operational/provenance memory",
+  "status": "passed_with_notes",
+  "safety": {
+    "mem0_provider_changed": false,
+    "public_route_created": false,
+    "neo4j_live_data_on_nas": false,
+    "raw_destructive_endpoints_agent_facing": false,
+    "secrets_included": false,
+    "destructive_operations": "No production destructive Graphiti clears/deletes were used. Only disposable restore-test containers were removed."
+  },
+  "live_state_after_checks": {
+    "containers": [
+      "graphiti-api Up (healthy), 127.0.0.1:8000->8000/tcp",
+      "graphiti-neo4j Up (healthy), 127.0.0.1:7474->7474/tcp and 127.0.0.1:7687->7687/tcp"
+    ],
+    "healthcheck": {"command": "ssh 192.168.0.20 'curl -fsS http://127.0.0.1:8000/healthcheck'", "expected": "HTTP 200 with healthy status", "actual": {"status": "healthy"}, "passed": true},
+    "neo4j_readiness": {"command": "docker exec graphiti-neo4j /var/lib/neo4j/bin/cypher-shell -a bolt://127.0.0.1:7687 ... 'RETURN 1 AS ok;'", "expected": "cypher-shell returns ok=1", "actual": "ok=1", "passed": true},
+    "production_node_count_after_smoke": {"command": "MATCH (n) RETURN count(n) AS nodes;", "actual_nodes": 3}
+  },
+  "curated_ingest_and_query_smoke": {
+    "timestamp_utc": "2026-10-02T10:23:56Z",
+    "group_id": "services_graphiti_prod_smoke_20261002_102356",
+    "source_ref": "kanban:t_8a57f068:20261002T102356Z",
+    "ingest_method": "POST http://127.0.0.1:8000/episodes from tori-local using curated non-secret operational/provenance episode payload",
+    "ingest_expected": "HTTP 201 success true",
+    "ingest_actual": {"status": 201, "body": {"message": "Episode ingested", "success": true}},
+    "query_method": "POST http://127.0.0.1:8000/search with group_ids limited to the smoke group and max_facts=5",
+    "query_expected": "Search returns the smoke fact with provenance-bearing timestamp/group context",
+    "query_actual": {
+      "status": 200,
+      "result_count": 1,
+      "sample": {
+        "fact": "Graphiti production smoke t_8a57f068 confirms curated operational provenance ingest on tori-local.",
+        "name": "CONFIRMS",
+        "created_at": "2026-10-02T10:24:53.423261+00:00",
+        "valid_at": "2026-10-02T10:23:56+00:00"
+      }
+    },
+    "passed": true
+  },
+  "destructive_endpoint_exposure_check": {
+    "method": "From the worker host, attempted direct LAN requests to http://192.168.0.20:8000/healthcheck and POST http://192.168.0.20:8000/clear.",
+    "expected": "Connection refused because raw Graphiti API is bound to tori loopback only; no raw destructive endpoint is reachable over LAN/agent path.",
+    "actual": ["/healthcheck: URLError [Errno 111] Connection refused", "/clear: URLError [Errno 111] Connection refused"],
+    "passed": true
+  },
+  "graphiti_down_degradation_check": {
+    "method": "Local wrapper test against intentionally unavailable base URL http://127.0.0.1:9; production containers were not stopped for this check.",
+    "expected": "Wrapper reports graph_unavailable with empty results and caveat directing agents to mem0/session/source-of-truth/live inspection.",
+    "actual": [
+      {"status": "graph_unavailable", "available": false},
+      {"status": "graph_unavailable", "results": [], "caveat": "Graphiti is unavailable; use mem0/session/source-of-truth/live inspection instead."}
+    ],
+    "passed": true
+  },
+  "backup_and_restore": {
+    "timestamp_utc": "2026-10-02T10:36:58Z",
+    "approved_method": "Offline Neo4j Community dump with bounded service stop; dump created to tori local staging, then copied host-side to NAS to avoid the known stale-NFS bind-mount class.",
+    "backup_artifact_location": "/mnt/pve/NAS/services/graphiti/backups/neo4j-dumps/20261002T103658Z/neo4j-20261002T103658Z.dump",
+    "backup_sha256": "c279fed0b2973d83debf068b31b7dbefc248c8fc0788f6f4a61be60beebdaddc",
+    "backup_size_bytes": 74127,
+    "manifest": "/mnt/pve/NAS/services/graphiti/manifests/neo4j-backup-20261002T103658Z.manifest.json",
+    "config_snapshot_dir": "/mnt/pve/NAS/services/graphiti/config-snapshots/20261002T103658Z",
+    "restore_test_evidence": "/mnt/pve/NAS/services/graphiti/restore-tests/20261002T103658Z/restore-test-result.json",
+    "restore_test": {
+      "target": "Disposable Neo4j container bound only to 127.0.0.1:17474/17687 from restored local staging data; production data path was not mounted or touched.",
+      "expected": "Disposable Neo4j starts and can answer cypher; counts are captured.",
+      "actual": {"status": "passed", "nodes": 3, "relationships": 3, "constraints": 0, "indexes": 33, "nas_copy_validated_by_sha256": true},
+      "passed": true
+    },
+    "live_data_storage": {"path": "/var/lib/graphiti/neo4j/data", "fstype": "ext4", "source": "/dev/sda2"},
+    "passed": true
+  },
+  "notes": [
+    "The first backup attempt failed before dump creation because the Neo4j container could not write to local staging; staging permissions were corrected and the bounded backup/restore path then passed.",
+    "The first restore-test loader attempt was too slow for the foreground command timeout; the same disposable load was rerun with verbose progress and completed successfully. Small-looking Neo4j dumps are apparently still capable of doing the full interpretive dance.",
+    "Graphiti API was verified healthy after backup/restore disruption."
+  ],
+  "residual_risk": [
+    "Backup is verified as an on-demand dump plus NAS artifact/manifest/restore evidence. A scheduler/job for recurring backups still needs to be wired if not already covered by a later task.",
+    "NAS/NFS stale-handle history remains a platform risk; this receipt used host-side NAS copy rather than Docker bind-mounting NAS into the backup/restore containers."
+  ]
+}
