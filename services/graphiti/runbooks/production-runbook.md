@@ -1,96 +1,81 @@
 # Graphiti + Neo4j production runbook
 
-Last updated: 2026-10-02T10:12:00Z
+Last updated: 2026-10-02T11:23:47Z
 
-Status: deployed on tori (Neo4j + Graphiti API healthy, loopback-only, local disk, digest-pinned). The 2026-10-02 bounded remediation bind-mounts a reviewed tori-local ingest patch over the pinned zepai/graphiti:0.30.2 /messages bug and verifies /episodes ingest + /search against disposable data. Production-complete status still depends on the downstream production smoke/backup lane proving curated seed ingest, representative read-only query, NAS dump/staging copy, and disposable restore-test evidence. See services/graphiti/receipts/2026-10-02-bounded-deploy-remediation.json.
+Status: deployed and production-smoke verified on `tori` (`192.168.0.20`). Graphiti API and Neo4j are healthy, loopback-only, backed by local Neo4j live data, and have a verified on-demand NAS backup plus disposable restore-test receipt. This service is a shared operational/provenance graph for Hermes homelab work. It does not replace mem0.
 
 ## 1. Purpose and scope
 
-Graphiti + Neo4j is the planned shared operational/provenance graph for Hermes homelab work. Its job is to store curated, source-backed operational episodes and temporal facts: service topology, task handoffs, incident timelines, backup/restore evidence, dependency notes, caveats, and supersession history.
+Graphiti + Neo4j stores curated, source-backed operational episodes and temporal facts for homelab work: service topology, task handoffs, incident timelines, backup/restore evidence, dependency notes, caveats, and supersession history.
 
-It is not the personal memory provider.
+mem0 remains the active personal/preference memory provider for Ben's durable preferences, personal facts, and assistant behavior context. This deployment does not switch Hermes away from mem0, migrate mem0 records, delete mem0 data, or make recovery depend on Graphiti.
 
-mem0 remains the active personal/preference provider for Ben's durable preferences, personal facts, and assistant behavior context. This rollout must not switch Hermes away from mem0, migrate mem0 records, delete mem0 data, or make homelab recovery depend on Graphiti.
+Graphiti output is advisory context with provenance. Operators and agents must still verify current live state from the original system before remediation. The graph can point at evidence; it is not the source of truth by royal YAML decree.
 
-Graphiti output is advisory context only. Operators and agents must still verify current live state from the original system before remediation. The graph can point at evidence; it is not the source of truth by decree. Small mercy.
+## 2. What is deployed
 
-## 2. Current verified state
-
-Live state, as captured by the verified infrastructure handoff:
-
-- Target host: `tori` (`192.168.0.20`).
-- SSH to `root@192.168.0.20`: verified OK by the infra worker.
-- Docker on tori: `Docker version 26.1.5+dfsg1, build a72d7cd`.
-- `/` and `/var/lib`: `/dev/sda2` ext4, local disk.
-- `/mnt/pve/NAS`: NFS mount from `192.168.0.250:/export/nas`; `/mnt/pve/NAS/services` reachable.
-- No `graphiti` or `neo4j` containers were observed by the bounded name/image probe.
-- No listeners were observed on `7474`, `7687`, or `8000`.
-- No live deployment, backup, restore test, public route, Cloudflare Tunnel route, Traefik route, raw agent-facing endpoint, or Hermes memory-provider change has been performed.
-
-Blocked prerequisite:
-
-- `bw status` in the worker environment was `locked`.
-- No `BW_SESSION` or `BW_PASSWORD` was available.
-- The OpenRouter guardrail preflight could not be rerun through the Vaultwarden-backed credential path.
-
-Evidence locations:
-
-- `services/graphiti/runbooks/infra-implementation-status.md`
-- `services/graphiti/runbooks/implementation-unblock-instructions.md`
-- `services/graphiti/receipts/2026-10-01-implementation-blocked.json`
-- `services/graphiti/receipts/2026-10-01-backup-restore-blocked.json`
-- `services/graphiti/receipts/2026-10-01-dashboard-status.json`
-
-## 3. Architecture and posture
-
-Production candidate posture:
-
-- Host: `tori` (`192.168.0.20`) first.
-- Runtime root: `/opt/graphiti` on tori.
-- Graphiti API: loopback-only by default.
-- Neo4j HTTP and Bolt: loopback-only by default.
-- Public exposure: none.
-- Cloudflare Tunnel route: none.
-- Public Traefik route: none.
-- Agent access: only through a later reviewed read-only wrapper/tool. Do not point agents at raw Graphiti.
-- Neo4j live data: tori-local disk only.
-- NAS: backup dumps, config snapshots, manifests, and restore-test evidence only.
-
-Default binds from the production candidate:
+Live host and services:
 
 ```text
-Graphiti API: 127.0.0.1:8000
-Neo4j HTTP:   127.0.0.1:7474
-Neo4j Bolt:   127.0.0.1:7687
+host:             tori / 192.168.0.20
+runtime root:     /opt/graphiti
+Graphiti API:     graphiti-api, 127.0.0.1:8000 only
+Neo4j HTTP:       graphiti-neo4j, 127.0.0.1:7474 only
+Neo4j Bolt:       graphiti-neo4j, 127.0.0.1:7687 only
+Neo4j image:      neo4j:5.26.2
+Graphiti image:   zepai/graphiti@sha256:21818c8a8e3b0513fe167370527fec32ed117e98bcc3423f9eb3bc6c73
 ```
 
-Expected repository artifacts:
+The deployed Graphiti API includes a reviewed tori-local bind-mounted patch:
 
-- `services/graphiti/docker-compose.tori.yml` - reviewed tori-local production template.
-- `services/graphiti/.env.example` - non-secret environment shape.
-- `services/graphiti/config/vaultwarden-map.example.yml` - Vaultwarden item/field references.
-- `services/graphiti/graphiti.env.map.example` - repo-wide secret-rendering map format.
-- `services/graphiti/scripts/deploy-tori-local.sh` - preflight/deploy helper.
-- `services/graphiti/scripts/openrouter-guardrail-preflight.py` - exact-model OpenRouter probe.
-- `services/graphiti/scripts/verify-loopback-exposure.sh` - unsafe-bind check.
-- `services/graphiti/scripts/backup-neo4j-dump.sh` - gated Neo4j dump/config snapshot/manifest automation.
-- `services/graphiti/scripts/restore-test-neo4j.sh` - gated disposable restore-test automation.
-- `services/graphiti/scripts/restore-neo4j-dump.sh` - destructive live restore helper, not routine verification.
+```text
+/opt/graphiti/patches/ingest.py -> /app/graph_service/routers/ingest.py (read-only)
+```
 
-## 4. Data placement
+That patch works around the pinned `zepai/graphiti:0.30.2` async ingest bug by processing the reviewed curated `/episodes` path synchronously. The service still contains upstream raw destructive routes internally, so agents must not talk to raw Graphiti directly.
 
-Runtime paths on tori:
+Repository evidence:
+
+- `services/graphiti/receipts/2026-10-02-bounded-deploy-remediation.json`
+- `services/graphiti/receipts/2026-10-02-production-smoke-backup.json`
+- `services/graphiti/docker-compose.tori.yml`
+- `services/graphiti/patches/ingest.py`
+- `services/graphiti/agent_graphiti/`
+- `services/graphiti/scripts/graphiti-agent-wrapper.py`
+
+## 3. Network exposure and access posture
+
+Intended exposure:
+
+- No public Graphiti route.
+- No public Neo4j route.
+- No Cloudflare Tunnel route for raw Graphiti or Neo4j.
+- No public Traefik route for raw Graphiti or Neo4j.
+- Raw ports are bound to tori loopback only.
+- Agent access must go through the reviewed wrapper/tool path, not raw write/delete/clear endpoints.
+
+Verified exposure evidence from the production smoke receipt:
+
+- `GET http://127.0.0.1:8000/healthcheck` from tori returned healthy.
+- `cypher-shell RETURN 1 AS ok` returned `ok=1`.
+- Worker LAN attempts to reach `http://192.168.0.20:8000/healthcheck` and `POST http://192.168.0.20:8000/clear` were refused.
+- The raw destructive endpoint was not agent-facing.
+
+## 4. Data and backup layout
+
+Live data stays local to tori:
 
 ```text
 /opt/graphiti/
-  docker-compose.yml              # rendered/reviewed runtime compose; not committed with secrets
+  docker-compose.yml              # reviewed runtime compose; rendered/deployed, may reference local secrets
   .env                            # rendered from Vaultwarden; mode 0600; never committed
+  patches/ingest.py               # reviewed non-secret tori-local patch
 
-/var/lib/graphiti/neo4j/data/      # live Neo4j database on tori-local disk
-/var/lib/graphiti/neo4j/logs/      # local logs if not container-managed
+/var/lib/graphiti/neo4j/data/      # live Neo4j database on tori-local ext4 /dev/sda2
+/var/lib/graphiti/neo4j/logs/      # Neo4j logs
 ```
 
-NAS evidence paths:
+NAS is evidence/backup storage only:
 
 ```text
 /mnt/pve/NAS/services/graphiti/
@@ -98,116 +83,90 @@ NAS evidence paths:
   config-snapshots/<stamp>/
   restore-tests/<stamp>/
   manifests/neo4j-backup-<stamp>.manifest.json
+  status/latest-smoke-backup.json
 ```
 
-Hard rule: do not place live Neo4j `/data` on NAS, NFS, CIFS, or FUSE storage unless Ben explicitly approves a later exception with a written risk note. The backup script checks the live data filesystem type before apply and refuses unsafe live data targets.
+Hard rule: do not place live Neo4j `/data` on NAS, NFS, CIFS, or FUSE storage unless Ben explicitly approves a later exception with a written risk note. The verified live data path is `/var/lib/graphiti/neo4j/data` on ext4 from `/dev/sda2`.
 
-## 5. Secret references and BW/Vaultwarden usage
+## 5. Secret references and Vaultwarden/BW usage
 
-Vaultwarden is the homelab secret reference model. Git stores only item and field names, placeholders, render maps, and non-secret receipts.
+Vaultwarden is the homelab secret reference model. Git stores only item names, field names, placeholders, render maps, and non-secret receipts.
 
-Vaultwarden location:
+Vaultwarden location/reference shape:
 
 ```text
 server: http://192.168.0.50:8084
-folder: Homelab / homelab as documented by the current map in use
+folder: Homelab
+item: graphiti/openrouter
+item: graphiti/neo4j
+item: graphiti/service-auth          # reserved for later reviewed wrapper auth, if used
 ```
 
-Important note: repository files currently contain both historical lower-case `homelab` references and current implementation references to case-sensitive `Homelab`. Before running, use the exact folder spelling from the deployed render map and `bw list folders`; do not guess if Bitwarden CLI lookup fails.
-
-Required items/fields:
+Required secret/config fields are represented by placeholders in Git only:
 
 ```text
-item: graphiti/openrouter
-  api_key or login password -> OPENROUTER_API_KEY
-  base_url                  -> https://openrouter.ai/api/v1
-  completion_model          -> openai/gpt-4o-mini
-  embedding_model           -> openai/text-embedding-3-small
-  embedding_dim             -> 1536
+graphiti/openrouter:
+  OPENROUTER_API_KEY
+  base_url=https://openrouter.ai/api/v1
+  completion_model=openai/gpt-4o-mini
+  embedding_model=openai/text-embedding-3-small
+  embedding_dim=1536
 
-item: graphiti/neo4j
+graphiti/neo4j:
   username
   password
   uri
   browser_url
-
-item: graphiti/service-auth
-  api_token                 # only for a later reviewed wrapper, not raw public exposure
 ```
 
 Secret handling rules:
 
 - Never commit rendered `.env` files.
-- Never paste API keys, Neo4j passwords, `BW_SESSION`, `BW_PASSWORD`, dumps, raw graph data, raw transcripts, or token-bearing logs into Git, comments, dashboard JSON, or handoffs.
-- Use `bw unlock --raw` or the repo's reviewed secret-rendering helper; do not pass master passwords on command lines.
-- Render runtime files on tori with restrictive permissions (`0600`).
+- Never paste API keys, Neo4j passwords, `BW_SESSION`, `BW_PASSWORD`, dumps, raw graph data, raw transcripts, or token-bearing logs into Git, Kanban comments, dashboard JSON, or docs.
+- Use the reviewed repo secret-rendering helpers and Bitwarden session handling; do not pass master passwords on command lines.
+- Runtime secret files on tori must remain mode `0600`.
 
-## 6. Deploy/update procedure
+## 6. Model/config shape
 
-Run all commands from `/root/work/home-lab` or from a reviewed deployed copy of this repository. Do not run the apply path until the preflight-only path passes.
+Verified OpenRouter/Graphiti model posture:
 
-### 6.1 Preflight only, no live mutation
-
-Unlock Vaultwarden for the operator/worker first:
-
-```bash
-bw config server http://192.168.0.50:8084
-export BW_SESSION="$(bw unlock --raw)"
+```text
+OpenRouter base URL:       https://openrouter.ai/api/v1
+completion/reranker model: openai/gpt-4o-mini
+embedding model:           openai/text-embedding-3-small
+embedding dimension:       1536
 ```
 
-Then run the deployment preflight:
+Deployment helper and wrapper files:
+
+- `services/graphiti/scripts/deploy-tori-local.sh`
+- `services/graphiti/scripts/openrouter-guardrail-preflight.py`
+- `services/graphiti/graphiti.env.map.example`
+- `services/graphiti/config/vaultwarden-map.example.yml`
+- `services/graphiti/agent_graphiti/client.py`
+
+## 7. Health checks
+
+Run health checks from tori or through SSH to tori. Do not expose raw ports to make these easier.
 
 ```bash
-cd /root/work/home-lab
-services/graphiti/scripts/deploy-tori-local.sh --preflight-only
+ssh root@192.168.0.20 'cd /opt/graphiti && docker compose ps'
+ssh root@192.168.0.20 'curl -fsS http://127.0.0.1:8000/healthcheck'
+ssh root@192.168.0.20 'docker exec graphiti-neo4j /var/lib/neo4j/bin/cypher-shell -a bolt://127.0.0.1:7687 -u "$NEO4J_USER" -p "$NEO4J_PASSWORD" "RETURN 1 AS ok;"'
+ssh root@192.168.0.20 'findmnt -T /var/lib/graphiti/neo4j/data'
+ssh root@192.168.0.20 "ss -ltnp | grep -E ':(7474|7687|8000)\\b' || true"
 ```
 
-The preflight must verify the exact OpenRouter model posture:
+Expected state:
 
-- base URL: `https://openrouter.ai/api/v1`
-- completion/reranker/small model: `openai/gpt-4o-mini`
-- embedding model: `openai/text-embedding-3-small`
-- embedding dimension observed: `1536`
-- no secret appears in output or logs
+- `graphiti-api` healthy.
+- `graphiti-neo4j` healthy.
+- `/healthcheck` returns `{"status":"healthy"}`.
+- Cypher readiness returns `ok=1`.
+- `8000`, `7474`, and `7687` are loopback-only.
+- live data is local ext4, not NAS/NFS/CIFS/FUSE.
 
-If preflight fails, stop and record the failing gate. Do not start services optimistically. That is how YAML becomes folklore.
-
-### 6.2 Apply deployment
-
-Only after preflight passes and the deploy card is approved:
-
-```bash
-cd /root/work/home-lab
-GRAPHITI_IMAGE=zepai/graphiti@sha256:<reviewed_64_hex_digest> \
-GRAPHITI_ENABLE_LIVE_MUTATION=reviewed-approved \
-  services/graphiti/scripts/deploy-tori-local.sh --apply
-```
-
-Expected effects of apply, per the committed helper/template:
-
-- require `GRAPHITI_IMAGE` to be an explicit reviewed `@sha256:<64-hex>` image digest;
-- render/copy reviewed runtime material to tori;
-- keep secrets out of Git;
-- start Neo4j only from the tori-local compose shape;
-- bind raw service ports to loopback;
-- keep live Neo4j data on `/var/lib/graphiti/neo4j/data`.
-
-The Graphiti API start is a reviewed second stage after Neo4j health/log receipts are captured:
-
-```bash
-ssh root@192.168.0.20 \
-  "cd /opt/graphiti && docker compose up -d graphiti-api && docker compose ps"
-```
-
-Before running that command, confirm `/opt/graphiti/.env` still contains the reviewed immutable `GRAPHITI_IMAGE` digest and the Neo4j readiness/exposure receipts are acceptable. Do not use the second-stage command to bypass the preflight/apply gates.
-
-After any update, repeat the health and exposure verification below and update receipts.
-
-## 7. Health verification
-
-### 7.1 Loopback exposure receipt
-
-After deployment or update:
+A convenience exposure check exists:
 
 ```bash
 cd /root/work/home-lab
@@ -216,60 +175,39 @@ GRAPHITI_VERIFY_HOST=root@192.168.0.20 \
   /tmp/graphiti-listen-scope-after-deploy.txt
 ```
 
-Required result:
+Record sanitized results under `services/graphiti/receipts/`; do not commit secrets or raw graph dumps.
 
-- Graphiti API, Neo4j HTTP, and Neo4j Bolt are not bound to `0.0.0.0` or `::`.
-- No public route exists.
-- No dashboard response exposes internal probe URLs, credentials, raw query text, or logs.
+## 8. Safe ingest/query smoke
 
-### 7.2 Service readiness checks
+Use sanitized, synthetic operational facts and a unique smoke-test group. Do not ingest credentials, raw Hermes transcripts, sensitive incident logs, or personally sensitive data.
 
-From tori, verify:
+Production smoke evidence from `t_8a57f068`:
 
-```bash
-findmnt -T /var/lib/graphiti/neo4j/data
-ss -ltnp | grep -E ':(7474|7687|8000)\b' || true
-docker ps --format '{{.Names}} {{.Image}} {{.Status}}'
+```text
+group_id:       services_graphiti_prod_smoke_20261002_102356
+source_ref:     kanban:t_8a57f068:20261002T102356Z
+ingest:         POST /episodes -> HTTP 201, success=true
+query:          POST /search -> HTTP 200, result_count=1
+sample fact:    Graphiti production smoke t_8a57f068 confirms curated operational provenance ingest on tori-local.
+provenance:     created_at and valid_at timestamps returned
 ```
 
-Expected state after full two-stage deployment:
+Wrapper degradation was also verified by pointing the local wrapper at an unavailable base URL. It returned `graph_unavailable` with an explicit caveat directing agents back to mem0, session history, source-of-truth documents, and live inspection.
 
-- `/var/lib/graphiti/neo4j/data` is on local disk, not NAS/NFS/CIFS/FUSE.
-- `neo4j` is healthy/ready.
-- `graphiti-api` is reachable only through the reviewed bind posture.
-- no raw destructive endpoint is agent-facing.
-
-Record sanitized output as a receipt under `services/graphiti/receipts/`; do not include secrets or raw graph dumps.
-
-## 8. Ingest/query/provenance smoke test
-
-Do this only after deploy health passes. Use sanitized data and a unique smoke-test group so the test can be identified and cleaned/reviewed later.
-
-Procedure:
-
-1. Create a small synthetic operational episode such as: `Graphiti production smoke test at <timestamp>; source=operator smoke test; no secrets; safe to delete/review`.
-2. Ingest it into a dedicated group, for example `ops-smoke-<YYYYMMDDHHMMSS>`.
-3. Query for the synthetic fact through the reviewed API path.
-4. Verify the response contains provenance/source metadata and the smoke-test group identifier.
-5. Verify the response does not expose raw credentials, raw transcripts, API keys, internal logs, or unrestricted Cypher.
-6. Record the sanitized request shape, response status, group name, and provenance fields in a receipt.
-
-Do not use production secrets, real incident logs containing credentials, raw Hermes transcripts, or customer/personally sensitive data for this smoke test.
+For future smokes, prefer the reviewed wrapper/curated ingest path in `services/graphiti/scripts/graphiti-agent-wrapper.py` and `services/graphiti/agent_graphiti/`. Keep groups scoped and source references explicit.
 
 ## 9. Backup and restore-test procedure
 
-Backup and restore-test automation is present and dry-run/syntax validated, but no live backup or restore-test has run because the service is not deployed.
+Neo4j Community dumps are offline dumps. The approved method may stop/restart Graphiti/Neo4j through Docker Compose, so run it in an approved maintenance window.
 
-### 9.1 Dry-run backup plan
+Dry-run backup plan:
 
 ```bash
 cd /root/work/home-lab
 services/graphiti/scripts/backup-neo4j-dump.sh --dry-run
 ```
 
-### 9.2 Approved backup
-
-Neo4j Community dumps are treated as offline dumps. This backup may stop/restart Graphiti/Neo4j through Docker Compose, so run it in an approved window:
+Approved backup:
 
 ```bash
 cd /root/work/home-lab
@@ -278,16 +216,22 @@ GRAPHITI_BACKUP_ALLOW_SERVICE_STOP=approved \
   services/graphiti/scripts/backup-neo4j-dump.sh --apply
 ```
 
-Expected outputs:
+Verified production backup evidence:
 
-- `/mnt/pve/NAS/services/graphiti/backups/neo4j-dumps/<stamp>/neo4j-<stamp>.dump`
-- dump checksum sidecar
-- `/mnt/pve/NAS/services/graphiti/config-snapshots/<stamp>/`
-- `/mnt/pve/NAS/services/graphiti/manifests/neo4j-backup-<stamp>.manifest.json`
+```text
+timestamp:          2026-10-02T10:36:58Z
+method:             offline Neo4j dump to tori local staging, host-side copy to NAS
+NAS dump:           /mnt/pve/NAS/services/graphiti/backups/neo4j-dumps/20261002T103658Z/neo4j-20261002T103658Z.dump
+sha256:             c279fed0b2973d83debf068b31b7dbefc248c8fc0788f6f4a61be60beebdaddc
+size:               74127 bytes
+manifest:           /mnt/pve/NAS/services/graphiti/manifests/neo4j-backup-20261002T103658Z.manifest.json
+config snapshot:    /mnt/pve/NAS/services/graphiti/config-snapshots/20261002T103658Z
+restore evidence:   /mnt/pve/NAS/services/graphiti/restore-tests/20261002T103658Z/restore-test-result.json
+```
 
-The backup is not production-complete until the corresponding restore test passes.
+The host-side NAS copy is intentional. It avoids the known stale-NFS bind-mount failure class seen when Docker containers bind-mount the NAS path directly.
 
-### 9.3 Dry-run restore test
+Dry-run restore test:
 
 ```bash
 cd /root/work/home-lab
@@ -295,7 +239,7 @@ services/graphiti/scripts/restore-test-neo4j.sh --dry-run \
   /mnt/pve/NAS/services/graphiti/backups/neo4j-dumps/<stamp>/neo4j-<stamp>.dump
 ```
 
-### 9.4 Approved restore test
+Approved restore test:
 
 ```bash
 cd /root/work/home-lab
@@ -304,14 +248,18 @@ GRAPHITI_ENABLE_LIVE_MUTATION=reviewed-approved \
   /mnt/pve/NAS/services/graphiti/backups/neo4j-dumps/<stamp>/neo4j-<stamp>.dump
 ```
 
-Expected behavior:
+Verified restore-test result:
 
-- uses a disposable container and temporary local data path;
-- does not call the production compose file;
-- does not mount `/var/lib/graphiti`;
-- captures node/relationship/constraint/index counts;
-- writes sanitized evidence to `/mnt/pve/NAS/services/graphiti/restore-tests/<stamp>/restore-test-result.json`;
-- records `production_data_touched: false`.
+```text
+status:                         passed
+target:                         disposable Neo4j container
+production data path mounted:   false
+nodes:                          3
+relationships:                  3
+constraints:                    0
+indexes:                        33
+NAS copy validated by sha256:   true
+```
 
 ## 10. Live restore procedure and boundary
 
@@ -333,43 +281,42 @@ Before live restore, record:
 4. planned service disruption window;
 5. explicit approval for the destructive restore.
 
-Never run `restore-neo4j-dump.sh --apply` merely to prove that backups work. That is the restore-test script's job.
+Never run `restore-neo4j-dump.sh --apply` merely to prove backups work. Use the restore-test script for verification.
 
 ## 11. Dashboard interpretation
 
-The Home Dashboard has a Graphiti/Neo4j shared operational/provenance graph surface wired in a blocked/not-deployed state.
+The Home Dashboard Overview now distinguishes Graphiti/Neo4j shared operational/provenance memory from mem0 personal/preference memory.
 
-Current dashboard receipt:
+Dashboard handoff evidence:
 
-- card id: `knowledge-graph`
-- status check type: `graphitiNeo4jHealth`
-- Graphiti state: `not_deployed`
-- Neo4j state: `not_deployed`
-- blocked narrative: live service is blocked on Vaultwarden/OpenRouter preflight
-- public config hides internal probe URLs and credentials
-- no public route was created
+- Graphiti card: healthy from latest sanitized production smoke/backup snapshot; includes healthcheck, ingest, query, source reference, result count, and freshness.
+- Neo4j card: healthy from latest sanitized production smoke/backup snapshot; includes readiness, backup, restore-test, size, local-disk filesystem, and freshness.
+- Stale policy: `86400000` ms.
+- Runtime snapshots:
+  - `/mnt/nas/services/graphiti/status/latest-smoke-backup.json`
+  - `/mnt/pve/NAS/services/graphiti/status/latest-smoke-backup.json`
 
-Verified dashboard test evidence from the dashboard handoff:
+Verified dashboard safety:
 
-- config tests: `25/25 pass`
-- status tests: `25/25 pass`
-- full suite: `280/281 pass`, with one unrelated pre-existing investment-screener fixture failure
-- bounded local server run on `PORT=4455` confirmed `/api/config/public` and `/api/status` did not leak credentials, unsafe URLs, or probe URLs
+- no raw artifact paths in public config;
+- no credentials or API keys;
+- no internal probe URLs exposed through public config;
+- no destructive Graphiti/Neo4j links exposed;
+- live authenticated `/api/status` showed fresh Graphiti and Neo4j evidence with `stale=false`.
 
 Interpretation:
 
-- `not_deployed`: expected current state until the Vaultwarden/OpenRouter preflight, deploy, backup, and restore-test gates pass.
-- `not_configured`: dashboard has no usable probe configuration.
+- `healthy`: service, Neo4j, ingest/query, backup evidence, restore-test evidence, and safety posture are all within policy.
+- `stale`: evidence is too old; inspect service and backup freshness before trusting the graph.
 - `degraded`: at least one component/probe is failing but the service is partially reachable.
 - `down`: service probes are failing.
-- `stale`: service may be reachable but freshness/backup/restore-test evidence is too old.
-- `healthy`: service, Neo4j, backup evidence, restore-test evidence, and safety posture are all within policy.
+- `not_configured`: dashboard has no usable Graphiti/Neo4j status snapshot.
 
-Do not treat a container-running check alone as `healthy`.
+Do not treat a container-running check alone as healthy. Container theater remains theater, even when Docker gives it a nice table.
 
 ## 12. Rollback and stop steps
 
-For a routine stop of the deployed stack on tori:
+Routine stop:
 
 ```bash
 ssh root@192.168.0.20
@@ -377,37 +324,36 @@ cd /opt/graphiti
 docker compose down
 ```
 
-For rollback after a failed deploy/update:
+Rollback after a failed Graphiti API update:
 
-1. Stop the new stack with `docker compose down` from `/opt/graphiti`.
-2. Preserve `/opt/graphiti/.env`, compose files, and logs locally for operator review, but do not commit secrets or sensitive logs.
-3. Restore the previous reviewed compose/config snapshot if one exists.
-4. Start only after confirming the restored `.env` still comes from Vaultwarden and the live data path is local disk.
-5. Re-run loopback exposure and readiness checks.
-6. Update receipts with the rollback reason and final state.
+1. Stop only the API first where practical: `cd /opt/graphiti && docker compose stop graphiti-api`.
+2. Restore the previous `/opt/graphiti/docker-compose.yml` from `/opt/graphiti/backups/docker-compose.yml.<stamp>` or remove the ingest patch bind mount.
+3. Remove or ignore `/opt/graphiti/patches/ingest.py` after compose rollback; it contains no secrets.
+4. Start the API again: `cd /opt/graphiti && docker compose up -d graphiti-api`.
+5. Verify `/healthcheck`, loopback listeners, and wrapper degraded/query behavior.
+6. Preserve `/var/lib/graphiti/neo4j/data` unless a separately approved restore is underway.
 
-For data rollback after a bad graph write/import, prefer reviewed graph-level cleanup or restoring from a tested dump. Do not delete live Neo4j data directories manually. Do not run destructive restore without the live restore gates in section 10.
+Rollback after a bad graph write/import:
 
-## 13. Known blocked prerequisites
+- Prefer reviewed graph-level cleanup for scoped disposable groups.
+- For broader corruption, restore from a tested dump only under the live restore gates in section 10.
+- Do not manually delete live Neo4j data directories.
 
-Current blockers before production-ready:
+## 13. Known limitations and residual risks
 
-1. Vaultwarden/BW access is locked for the worker/operator path used by this lane.
-2. `deploy-tori-local.sh --preflight-only` has not been rerun with the current Vaultwarden-backed OpenRouter secret.
-3. The live service has not been deployed on tori.
-4. Neo4j readiness on tori has not been captured after deployment.
-5. Graphiti ingest/query/provenance smoke evidence has not been captured.
-6. No live backup has been taken.
-7. No restore test has passed against a live dump.
-8. Dashboard remains correctly `not_deployed` until those receipts exist.
-9. The dashboard branch was committed locally by the worker but push was blocked by host Git credential state; do not assume remote GitHub has that dashboard receipt until push is confirmed.
+- The deployed service uses a tori-local bind-mounted patch over the pinned upstream Graphiti image. It is reviewed and bounded, but it is still a local operational patch until upstream behavior is corrected or a later reviewed image replaces it.
+- The raw upstream Graphiti API still contains destructive endpoints internally. Safety currently depends on loopback-only binding and agents using the wrapper path instead of raw endpoints.
+- Backup/restore evidence is verified on demand. Recurring backup scheduling and alerting must remain visible through dashboard/status/reporting work; if freshness goes stale, treat it as an operator action item.
+- NAS/NFS stale-handle history remains a platform risk. The current backup path avoids Docker bind-mounting NAS into backup/restore containers and uses host-side copy instead.
+- Graphiti is advisory operational memory, not live state. Before remediation, inspect the actual host/service/source-of-truth.
+- mem0 remains active for personal/preference memory; do not assume Graphiti contains Ben's preferences or replaces persistent assistant memory.
 
 ## 14. Safety boundaries
 
 Do not do any of the following without a separate reviewed task and explicit approval:
 
 - expose raw Graphiti or Neo4j publicly;
-- add a Cloudflare Tunnel route or public Traefik route;
+- add a Cloudflare Tunnel route or public Traefik route for raw Graphiti/Neo4j;
 - bind raw Graphiti/Neo4j ports to all interfaces;
 - point agents directly at Graphiti write/delete/clear endpoints;
 - allow arbitrary Cypher from agent/user input;
@@ -418,17 +364,18 @@ Do not do any of the following without a separate reviewed task and explicit app
 - run destructive live restore without a successful restore test and all restore gates;
 - delete old backup sets until a reviewed retention policy exists.
 
-## 15. Receipt checklist before declaring production ready
+## 15. Production receipt checklist
 
-Production-ready requires all of these current receipts:
+Current production receipts are satisfied by the 2026-10-02 handoffs:
 
-- OpenRouter/Vaultwarden preflight passed from the deployment credential path.
+- OpenRouter/Vaultwarden path and model shape verified during deploy/remediation.
 - tori deployment applied from reviewed config.
-- Neo4j live data confirmed on local disk.
-- Graphiti API, Neo4j HTTP, and Neo4j Bolt confirmed loopback-only or otherwise reviewed.
-- Graphiti/Neo4j readiness captured.
-- sanitized ingest/query/provenance smoke test captured.
-- backup manifest created under NAS Graphiti path.
-- restore-test result created under NAS Graphiti path with `production_data_touched: false`.
-- dashboard state updated from `not_deployed` to the correct live status without leaking secrets or internal probe URLs.
-- non-secret receipts committed to Git.
+- Graphiti API and Neo4j are healthy.
+- Neo4j live data confirmed on local ext4 disk.
+- Graphiti API, Neo4j HTTP, and Neo4j Bolt confirmed loopback-only.
+- Sanitized ingest/query/provenance smoke passed.
+- Wrapper degraded behavior passed.
+- NAS backup manifest/dump/config snapshot created.
+- Disposable restore-test passed with `production_data_touched=false` behavior.
+- Dashboard status surface shows fresh sanitized evidence and keeps mem0 distinct.
+- Non-secret receipts committed to Git.
