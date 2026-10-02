@@ -65,6 +65,11 @@ services:
       RERANK_MODEL_NAME: "${GRAPHITI_RERANK_MODEL:-openai/gpt-4o-mini}"
       EMBEDDING_MODEL_NAME: "${GRAPHITI_EMBEDDING_MODEL:-openai/text-embedding-3-small}"
       EMBEDDING_DIM: "${GRAPHITI_EMBEDDING_DIM:-1536}"
+    volumes:
+      - type: bind
+        source: ${GRAPHITI_PATCH_INGEST_PATH:-/opt/graphiti/patches/ingest.py}
+        target: /app/graph_service/routers/ingest.py
+        read_only: true
     ports:
       - "127.0.0.1:${GRAPHITI_API_PORT:-8000}:8000"
     healthcheck:

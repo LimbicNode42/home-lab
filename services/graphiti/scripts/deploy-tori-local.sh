@@ -35,6 +35,7 @@ render_env="$repo_root/scripts/secrets/render-env-from-vaultwarden.sh"
 map_file="$graphiti_dir/graphiti.env.map.example"
 compose_template="$graphiti_dir/docker-compose.tori.yml"
 preflight_py="$graphiti_dir/scripts/openrouter-guardrail-preflight.py"
+ingest_patch="$graphiti_dir/patches/ingest.py"
 
 target_host="${GRAPHITI_TORI_HOST:-root@192.168.0.20}"
 runtime_dir="${GRAPHITI_RUNTIME_DIR:-/opt/graphiti}"
@@ -42,7 +43,7 @@ local_data_dir="${GRAPHITI_NEO4J_DATA_DIR:-/var/lib/graphiti/neo4j/data}"
 local_log_dir="${GRAPHITI_NEO4J_LOG_DIR:-/var/log/graphiti/neo4j}"
 nas_root="${GRAPHITI_NAS_ROOT:-/mnt/pve/NAS/services/graphiti}"
 
-for required in "$secret_runner" "$render_env" "$map_file" "$compose_template" "$preflight_py"; do
+for required in "$secret_runner" "$render_env" "$map_file" "$compose_template" "$preflight_py" "$ingest_patch"; do
   if [[ ! -e "$required" ]]; then
     echo "ERROR: required file missing: $required" >&2
     exit 1
@@ -121,6 +122,7 @@ GRAPHITI_EMBEDDING_MODEL=openai/text-embedding-3-small
 GRAPHITI_EMBEDDING_DIM=1536
 GRAPHITI_NEO4J_DATA_DIR=$local_data_dir
 GRAPHITI_NEO4J_LOG_DIR=$local_log_dir
+GRAPHITI_PATCH_INGEST_PATH=$runtime_dir/patches/ingest.py
 GRAPHITI_NAS_BACKUP_DIR=$nas_root/backups/neo4j-dumps
 GRAPHITI_NAS_SNAPSHOT_DIR=$nas_root/config-snapshots
 GRAPHITI_NAS_RESTORE_TEST_DIR=$nas_root/restore-tests
@@ -134,11 +136,14 @@ NEO4J_PAGECACHE=512m
 EOF
 chmod 0600 "$tmpdir/.env"
 cp "$compose_template" "$tmpdir/docker-compose.yml"
+install -d -m 0755 "$tmpdir/patches"
+cp "$ingest_patch" "$tmpdir/patches/ingest.py"
 
-ssh "$target_host" "set -e; install -d -m 0750 '$runtime_dir' '$local_data_dir' '$local_log_dir' '$nas_root/backups/neo4j-dumps' '$nas_root/config-snapshots' '$nas_root/restore-tests' '$nas_root/manifests'"
+ssh "$target_host" "set -e; install -d -m 0750 '$runtime_dir' '$runtime_dir/patches' '$local_data_dir' '$local_log_dir' '$nas_root/backups/neo4j-dumps' '$nas_root/config-snapshots' '$nas_root/restore-tests' '$nas_root/manifests'"
 scp -q "$tmpdir/docker-compose.yml" "$target_host:$runtime_dir/docker-compose.yml"
+scp -q "$tmpdir/patches/ingest.py" "$target_host:$runtime_dir/patches/ingest.py"
 scp -q "$tmpdir/.env" "$target_host:$runtime_dir/.env"
-ssh "$target_host" "set -e; chmod 0600 '$runtime_dir/.env'; cd '$runtime_dir'; docker compose config >/tmp/graphiti-compose.rendered.yml; docker compose up -d neo4j; docker compose ps"
+ssh "$target_host" "set -e; chmod 0600 '$runtime_dir/.env'; chmod 0644 '$runtime_dir/patches/ingest.py'; cd '$runtime_dir'; docker compose config >/tmp/graphiti-compose.rendered.yml; docker compose up -d neo4j; docker compose ps"
 
 echo "Neo4j start requested. After Neo4j health/log receipts are reviewed, start Graphiti with:"
 echo "  ssh $target_host \"cd $runtime_dir && docker compose up -d graphiti-api && docker compose ps\""

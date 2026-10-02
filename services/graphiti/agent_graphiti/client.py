@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -10,6 +11,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Callable
 
 MUTATION_WORDS = ("clear", "delete", "drop", "write", "cypher", "admin", "truncate", "remove")
+SAFE_GROUP_CHARS = re.compile(r"[^A-Za-z0-9_-]")
 
 
 class GraphitiUnavailable(RuntimeError):
@@ -115,9 +117,9 @@ class GraphitiReadOnlyClient:
             raise ValueError("mutation-shaped query text is not accepted by the agent wrapper")
         if limit < 1 or limit > 25:
             raise ValueError("limit must be between 1 and 25")
-        body: dict[str, Any] = {"query": query, "limit": limit}
+        body: dict[str, Any] = {"query": query, "max_facts": limit}
         if group_id:
-            body["group_id"] = group_id
+            body["group_ids"] = [_wire_group_id(group_id)]
         try:
             payload = self._request("POST", self.search_path, body)
         except GraphitiUnavailable:
@@ -131,7 +133,21 @@ class GraphitiReadOnlyClient:
         by the agent-facing search CLI unless the operator invokes ``ingest``.
         """
 
-        return _strip_raw(self._request("POST", self.ingest_path, graphiti_payload))
+        payload = dict(graphiti_payload)
+        if isinstance(payload.get("group_id"), str):
+            payload["group_id"] = _wire_group_id(payload["group_id"])
+        return _strip_raw(self._request("POST", self.ingest_path, payload))
+
+
+def _wire_group_id(group_id: str) -> str:
+    """Map policy group ids to Graphiti's restricted upstream charset.
+
+    The curated policy uses dotted domain groups such as ``services.graphiti``;
+    graphiti-core accepts only alphanumerics, dashes, and underscores.  Keep the
+    human-facing contract dotted, but send a deterministic upstream-safe group.
+    """
+
+    return SAFE_GROUP_CHARS.sub("_", group_id)
 
 
 def _strip_raw(payload: dict[str, Any]) -> dict[str, Any]:

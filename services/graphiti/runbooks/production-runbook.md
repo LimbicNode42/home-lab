@@ -1,8 +1,8 @@
 # Graphiti + Neo4j production runbook
 
-Last updated: 2026-10-01T14:57:45Z
+Last updated: 2026-10-02T10:12:00Z
 
-Status: deployed on tori (Neo4j + Graphiti API healthy, loopback-only, local disk, digest-pinned), but NOT production-complete. Two external blockers remain: (1) an upstream async-ingest bug in the pinned zepai/graphiti:0.30.2 image leaves the /messages queue unprocessed, so no episodes/facts/provenance can be ingested; (2) NAS NFSv3 stale-handle on container bind-mount blocks the offline dump + restore-test. See services/graphiti/receipts/2026-10-01-deploy-smoke-results.json.
+Status: deployed on tori (Neo4j + Graphiti API healthy, loopback-only, local disk, digest-pinned). The 2026-10-02 bounded remediation bind-mounts a reviewed tori-local ingest patch over the pinned zepai/graphiti:0.30.2 /messages bug and verifies /episodes ingest + /search against disposable data. Production-complete status still depends on the downstream production smoke/backup lane proving curated seed ingest, representative read-only query, NAS dump/staging copy, and disposable restore-test evidence. See services/graphiti/receipts/2026-10-02-bounded-deploy-remediation.json.
 
 ## 1. Purpose and scope
 

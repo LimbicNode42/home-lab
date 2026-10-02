@@ -41,7 +41,8 @@ class AgentGraphitiTests(unittest.TestCase):
             self.assertIn("total", report)
 
     def test_secret_redaction_blocks_remaining_credential_material(self):
-        text, report = sanitize_text("OPENROUTER_API_KEY=sk-or-v1-abcdefghijklmnopqrstuvwxyz1234567890")
+        fake_key = "OPENROUTER_API_KEY=" + "sk-" + "or-v1-" + ("x" * 32)
+        text, report = sanitize_text(fake_key)
         self.assertIn("[REDACTED_SECRET]", text)
         self.assertGreater(report.total, 0)
         credentialed_url = "postgres://" + "user" + ":" + "not-a-real-secret" + "@example.invalid/db"
@@ -87,13 +88,14 @@ class AgentGraphitiTests(unittest.TestCase):
             seen["method"] = req.get_method()
             self.assertIsInstance(req.data, bytes)
             body = json.loads(req.data.decode("utf-8"))
-            self.assertEqual(body["group_id"], "services.graphiti")
+            self.assertEqual(body["group_ids"], ["services_graphiti"])
+            self.assertEqual(body["max_facts"], 5)
             return FakeResponse({
-                "results": [{
-                    "text": "Graphiti raw endpoints are not agent-facing.",
+                "facts": [{
+                    "fact": "Graphiti raw endpoints are not agent-facing.",
                     "episode": "Wrapper contract",
                     "reference_time": "2026-10-01T00:00:00Z",
-                    "group": "services.graphiti",
+                    "group_id": "services.graphiti",
                     "confidence": "high",
                     "nodes": ["raw graph data should not be surfaced"],
                 }]
@@ -106,6 +108,23 @@ class AgentGraphitiTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertNotIn("nodes", json.dumps(result))
         self.assertEqual(result["results"][0]["domain"], "services")
+
+    def test_ingest_maps_policy_group_id_to_graphiti_safe_wire_id(self):
+        seen = {}
+
+        def opener(req: Request, timeout: float):
+            seen["url"] = req.full_url
+            seen["method"] = req.get_method()
+            body = json.loads(req.data.decode("utf-8"))
+            self.assertEqual(body["group_id"], "services_graphiti")
+            return FakeResponse({"success": True, "message": "Episode ingested"})
+
+        client = GraphitiReadOnlyClient("http://127.0.0.1:8000", opener=opener)
+        payload = {"name": "episode", "episode_body": "body", "source": "text", "source_description": "test", "group_id": "services.graphiti", "reference_time": "2026-10-01T00:00:00Z"}
+        result = client.ingest_episode(payload)
+        self.assertEqual(seen["method"], "POST")
+        self.assertTrue(seen["url"].endswith("/episodes"))
+        self.assertEqual(result["success"], True)
 
     def test_unsafe_paths_and_mutation_queries_rejected(self):
         with self.assertRaises(ValueError):
