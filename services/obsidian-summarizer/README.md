@@ -14,6 +14,6 @@ On-demand trigger:
 obsidian-summarizer --once
 ```
 
-Scheduled trigger uses the same code path through `systemd/obsidian-summarizer.service` and `systemd/obsidian-summarizer.timer` (daily 21:30 local). The dashboard reads `summaries/meta/last-run.json` for status/freshness and serves summary previews through authenticated `/api/obsidian/summary`.
+Scheduled trigger uses the same code path. The generic Linux units are in `systemd/` (`obsidian-summarizer.service` + `.timer`, daily 21:30 local); the live `critical` host is Alpine/OpenRC, so its deployable service/cron pair lives in `openrc/`. The dashboard reads `summaries/meta/last-run.json` for status/freshness and serves summary previews through authenticated `/api/obsidian/summary`.
 
 No secrets are committed. Runtime paths are configured by environment variables only.

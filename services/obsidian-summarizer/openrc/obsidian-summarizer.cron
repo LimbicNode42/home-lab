@@ -1,0 +1,3 @@
+# Daily Obsidian diary/goals summarizer for critical (Alpine/OpenRC).
+# Installed as /etc/cron.d/obsidian-summarizer; crond runs it at 21:30 local.
+30 21 * * * root cd /mnt/nas/services/obsidian-summarizer && OBSIDIAN_VAULT_DIR=/mnt/nas/obsidian/vault OBSIDIAN_SUMMARY_OUTPUT_DIR=/mnt/nas/services/obsidian-livesync/summaries OBSIDIAN_SUMMARIZER_MODEL=local-extractive-v1 /usr/bin/python3 -m obsidian_summarizer.cli --once >> /var/log/obsidian-summarizer.log 2>&1

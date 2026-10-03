@@ -1,0 +1,32 @@
+#!/sbin/openrc-run
+name="Obsidian summarizer"
+description="Generate dashboard-readable summaries from the Obsidian vault"
+
+: ${OBSIDIAN_VAULT_DIR:=/mnt/nas/obsidian/vault}
+: ${OBSIDIAN_SUMMARY_OUTPUT_DIR:=/mnt/nas/services/obsidian-livesync/summaries}
+: ${OBSIDIAN_SUMMARIZER_MODEL:=local-extractive-v1}
+: ${OBSIDIAN_SUMMARIZER_DIR:=/mnt/nas/services/obsidian-summarizer}
+
+depend() {
+  need localmount
+  after net
+}
+
+start() {
+  ebegin "Running Obsidian summarizer"
+  cd "$OBSIDIAN_SUMMARIZER_DIR" || return 1
+  OBSIDIAN_VAULT_DIR="$OBSIDIAN_VAULT_DIR" \
+    OBSIDIAN_SUMMARY_OUTPUT_DIR="$OBSIDIAN_SUMMARY_OUTPUT_DIR" \
+    OBSIDIAN_SUMMARIZER_MODEL="$OBSIDIAN_SUMMARIZER_MODEL" \
+    /usr/bin/python3 -m obsidian_summarizer.cli --once >> /var/log/obsidian-summarizer.log 2>&1
+  eend $?
+}
+
+status() {
+  if [ -f "$OBSIDIAN_SUMMARY_OUTPUT_DIR/meta/last-run.json" ]; then
+    einfo "last-run metadata exists at $OBSIDIAN_SUMMARY_OUTPUT_DIR/meta/last-run.json"
+    return 0
+  fi
+  eerror "last-run metadata is missing at $OBSIDIAN_SUMMARY_OUTPUT_DIR/meta/last-run.json"
+  return 1
+}

@@ -20,6 +20,7 @@ MOBILE_WORKFLOW_STATUS_HOST_DIR=${MOBILE_WORKFLOW_STATUS_HOST_DIR:-/mnt/nas/serv
 METAMCP_STATUS_HOST_DIR=${METAMCP_STATUS_HOST_DIR:-/mnt/nas/services/personal-dashboard/metamcp}
 MEM0_STATUS_HOST_DIR=${MEM0_STATUS_HOST_DIR:-/mnt/nas/services/personal-dashboard/mem0}
 GRAPHITI_STATUS_HOST_FILE=${GRAPHITI_STATUS_HOST_FILE:-/mnt/nas/services/graphiti/status/latest-smoke-backup.json}
+OBSIDIAN_SUMMARY_HOST_DIR=${OBSIDIAN_SUMMARY_HOST_DIR:-/mnt/nas/services/obsidian-livesync/summaries}
 WRITING_POSTS_HOST_DIR=${WRITING_POSTS_HOST_DIR:-/var/lib/personal-dashboard/writing}
 FINNICK_REPORT_HOST_PATH=$FINNICK_REPORT_HOST_DIR/latest_report.txt
 INVESTMENT_SCREENER_REPORT_HOST_PATH=$INVESTMENT_SCREENER_HOST_DIR/latest_report.txt
@@ -88,6 +89,16 @@ if [ ! -f "$HOMELAB_HEALTH_HOST_PATH" ]; then
   printf '%s\n' "Refusing to recreate $CONTAINER; the directory bind must contain this expected file." >&2
   exit 1
 fi
+if [ ! -d "$OBSIDIAN_SUMMARY_HOST_DIR" ]; then
+  printf '%s\n' "Obsidian summary output directory is missing: $OBSIDIAN_SUMMARY_HOST_DIR" >&2
+  printf '%s\n' "Refusing to recreate $CONTAINER; run obsidian-summarizer --once first so the authenticated mirror has real files." >&2
+  exit 1
+fi
+if [ ! -f "$OBSIDIAN_SUMMARY_HOST_DIR/meta/last-run.json" ]; then
+  printf '%s\n' "Obsidian summary metadata is missing: $OBSIDIAN_SUMMARY_HOST_DIR/meta/last-run.json" >&2
+  printf '%s\n' "Refusing to recreate $CONTAINER; run obsidian-summarizer --once first so freshness/status are real." >&2
+  exit 1
+fi
 if [ ! -s "$MOBILE_VIEWER_NOVNC_TOKEN_FILE_HOST" ]; then
   printf '%s\n' "Mobile viewer noVNC token file is missing or empty: $MOBILE_VIEWER_NOVNC_TOKEN_FILE_HOST" >&2
   printf '%s\n' "Refusing to recreate $CONTAINER; the dashboard proxy needs a server-side token file and must not expose the token in config." >&2
@@ -127,6 +138,7 @@ HOMELAB_HEALTH_HOST_DIR="$HOMELAB_HEALTH_HOST_DIR" \
 MOBILE_WORKFLOW_STATUS_HOST_DIR="$MOBILE_WORKFLOW_STATUS_HOST_DIR" \
 METAMCP_STATUS_HOST_DIR="$METAMCP_STATUS_HOST_DIR" \
 GRAPHITI_STATUS_HOST_FILE="$GRAPHITI_STATUS_HOST_FILE" \
+OBSIDIAN_SUMMARY_HOST_DIR="$OBSIDIAN_SUMMARY_HOST_DIR" \
 APP_DIR="$APP_DIR" \
   "$APP_DIR/scripts/sync-runtime-snapshots.sh"
 
@@ -180,6 +192,7 @@ docker run -d \
   -e PERSONAL_DASHBOARD_DATABASE_URL \
   -e PGSSLMODE=${PGSSLMODE:-require} \
   -e REPO_DOCS_ROOT=/app/repo-docs \
+  -e OBSIDIAN_SUMMARY_ROOT=/app/obsidian-summaries \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/config,target=/app/config,readonly" \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/finnick,target=/app/finnick,readonly" \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/investment-screener,target=/app/investment-screener,readonly" \
@@ -190,6 +203,7 @@ docker run -d \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/metamcp,target=/app/metamcp,readonly" \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/mem0,target=/app/mem0,readonly" \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/graphiti,target=/app/graphiti,readonly" \
+  --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/obsidian-summaries,target=/app/obsidian-summaries,readonly" \
   --mount "type=bind,source=$WRITING_POSTS_HOST_DIR,target=/app/writing" \
   "$IMAGE"
 

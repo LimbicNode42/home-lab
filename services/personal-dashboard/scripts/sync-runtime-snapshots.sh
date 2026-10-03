@@ -76,11 +76,28 @@ copy_tree_snapshot() {
   cp -R "$source_dir/." "$tmp_dir/"
   find "$tmp_dir" -type d -exec chmod 0755 {} +
   find "$tmp_dir" -type f -exec chmod 0644 {} +
-  if [ -e "$dest_dir" ]; then
-    mv "$dest_dir" "$previous_dir"
+  mkdir -p "$dest_dir"
+  # Preserve the destination directory inode so running Docker bind mounts keep
+  # seeing refreshed files after this sync. Replacing the directory itself can
+  # leave the container mounted to an unlinked stale directory. Tiny footgun;
+  # naturally it waits until verification to announce itself.
+  find "$dest_dir" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+  cp -R "$tmp_dir/." "$dest_dir/"
+  rm -rf "$tmp_dir" "$previous_dir"
+}
+
+copy_optional_tree_snapshot() {
+  source_dir=$1
+  dest_dir=$2
+  label=$3
+
+  if [ ! -d "$source_dir" ]; then
+    rm -rf "$dest_dir"
+    printf '%s\n' "$label source is missing; skipping optional tree snapshot: $source_dir" >&2
+    return 0
   fi
-  mv "$tmp_dir" "$dest_dir"
-  rm -rf "$previous_dir"
+
+  copy_tree_snapshot "$source_dir" "$dest_dir" "$label"
 }
 
 cleanup() {
@@ -138,7 +155,7 @@ copy_optional_snapshot "$GRAPHITI_STATUS_HOST_FILE" \
 copy_optional_snapshot "$GRAPHITI_MCP_STATUS_HOST_FILE" \
   "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/graphiti/latest-mcp-status.json" \
   "Graphiti MCP publisher snapshot"
-copy_tree_snapshot "$OBSIDIAN_SUMMARY_HOST_DIR" \
+copy_optional_tree_snapshot "$OBSIDIAN_SUMMARY_HOST_DIR" \
   "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/obsidian-summaries" \
   "Obsidian summary output"
 

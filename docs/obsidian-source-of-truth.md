@@ -126,7 +126,7 @@ Environment is rendered from Vaultwarden (B.4); `/opt/couchdb/etc/local.d/*.ini`
 
 ### B.4 Vaultwarden items and fields (create these — exact names)
 
-Folder for all items: `homelab`.
+Folder for all items: `Homelab` (capital H). The live Vaultwarden folder is case-sensitive; do not use the earlier lowercase `homelab` spelling for this lane.
 
 | Purpose | Item | Field(s) | Notes |
 |---|---|---|---|
@@ -136,10 +136,10 @@ Folder for all items: `homelab`.
 Git references these by **name only**, e.g. in the env map:
 
 ```
-COUCHDB_ADMIN_USER     | homelab | obsidian-livesync/couchdb   | username
-COUCHDB_ADMIN_PASSWORD | homelab | obsidian-livesync/couchdb   | password
-LIVESYNC_USER          | homelab | obsidian-livesync/livesync  | username
-LIVESYNC_PASSWORD      | homelab | obsidian-livesync/livesync  | password
+COUCHDB_ADMIN_USER     | Homelab | obsidian-livesync/couchdb   | username
+COUCHDB_ADMIN_PASSWORD | Homelab | obsidian-livesync/couchdb   | password
+LIVESYNC_USER          | Homelab | obsidian-livesync/livesync  | username
+LIVESYNC_PASSWORD      | Homelab | obsidian-livesync/livesync  | password
 ```
 
 Values render to `services/obsidian-livesync/.env` (mode 0600, untracked) via the existing `scripts/secrets/render-env-from-vaultwarden.sh` flow, mirroring how `services/vaultwarden` and `services/memory-reconciler` already work.
