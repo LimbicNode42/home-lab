@@ -1860,8 +1860,11 @@ test('GET /api/investment-screener/ranked accepts real CLI sanitized export shap
   const dir = await mkdtemp(join(tmpdir(), 'investment-cli-shape-'));
   const rankedPath = join(dir, 'ranked.json');
   const reportPath = join(dir, 'report.txt');
+  const screenerConfigPath = join(dir, 'screener-config.yaml');
   const screenerDir = '/root/.hermes/kanban/artifacts/investment-screener-t_6d63d69b';
-  execFileSync('python3', ['investment_screener.py', '--fixture', '--output', rankedPath, '--report', reportPath], { cwd: screenerDir, stdio: 'pipe' });
+  const screenerConfig = (await readFile(join(screenerDir, 'config.yaml'), 'utf8')).replace('require_recent_financials_days: 730', 'require_recent_financials_days: 5000');
+  await writeFile(screenerConfigPath, screenerConfig, 'utf8');
+  execFileSync('python3', ['investment_screener.py', '--config', screenerConfigPath, '--fixture', '--output', rankedPath, '--report', reportPath], { cwd: screenerDir, stdio: 'pipe' });
 
   const configPath = await writeConfig(basicConfig);
   const app = await createApp({ configPath, authMode: 'disabled', nodeEnv: 'test', allowDisabledAuth: true, investmentScreenerRankedFile: rankedPath });

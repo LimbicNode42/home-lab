@@ -661,6 +661,39 @@ async function refreshMobileWorkflowStatus() {
   }
 }
 
+function statusCheckBadgeClass(status) {
+  return status === 'up' || status === 'healthy' ? 'up' : 'down';
+}
+
+function statusBadgeText(status) {
+  return status === 'up' || status === 'healthy' ? 'OK' : 'Needs attention';
+}
+
+function shortStatusText(value, maxLength = 140) {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function statusFreshnessText(check) {
+  const snapshotCreatedAt = check.freshness && typeof check.freshness === 'object' ? check.freshness.snapshotCreatedAt : null;
+  const timestamp = snapshotCreatedAt || check.checkedAt;
+  if (!timestamp) return null;
+  const label = snapshotCreatedAt ? 'snapshot' : 'checked';
+  return `${label} ${new Date(timestamp).toLocaleString()}`;
+}
+
+function conciseStatusProbe(check) {
+  const parts = [];
+  const state = check.status || 'unknown';
+  const primarySignal = check.message ?? check.httpStatus ?? check.error ?? 'no response';
+  parts.push(`${state}: ${shortStatusText(primarySignal)}`);
+  if (check.latencyMs !== undefined) parts.push(`${check.latencyMs}ms`);
+  const freshness = statusFreshnessText(check);
+  if (freshness) parts.push(freshness);
+  return parts.join(' · ');
+}
+
 function renderStatus(payload) {
   statusList.replaceChildren();
   if (payload.checks.length === 0) {
@@ -669,26 +702,12 @@ function renderStatus(payload) {
   }
 
   for (const check of payload.checks) {
-    const badge = el('span', { className: `badge ${check.status}`, text: check.status });
-    const probeParts = [check.httpStatus ?? check.error ?? 'no response', `${check.latencyMs}ms`];
-    if (check.checkedAt) probeParts.push(`checked ${new Date(check.checkedAt).toLocaleString()}`);
+    const badge = el('span', { className: `badge ${statusCheckBadgeClass(check.status)}`, text: statusBadgeText(check.status) });
     const body = [
       el('div', { className: 'status-title', text: check.label }),
       badge,
-      el('p', { className: 'muted', text: probeParts.join(' · ') })
+      el('p', { className: 'muted status-probe', text: conciseStatusProbe(check) })
     ];
-    if (check.detail) {
-      body.push(el('p', { className: 'muted', text: check.detail }));
-    }
-    if (check.unresolvedFollowUp) {
-      body.push(el('p', { className: 'warning', text: `Unresolved: ${check.unresolvedFollowUp}` }));
-    }
-    if (check.evidence && typeof check.evidence === 'object') {
-      const evidenceItems = Object.entries(check.evidence)
-        .filter(([, value]) => value !== undefined && value !== null && value !== '')
-        .map(([key, value]) => el('li', { text: `${key.replace(/([A-Z])/g, ' $1').toLowerCase()}: ${value}` }));
-      if (evidenceItems.length > 0) body.push(el('ul', { className: 'status-evidence' }, evidenceItems));
-    }
     if (check.displayUrl) {
       body.push(el('a', { href: check.displayUrl, text: 'Open', rel: 'noreferrer noopener' }));
     }

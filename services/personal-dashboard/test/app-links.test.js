@@ -10,6 +10,15 @@ test('dashboard generated links keep noreferrer and noopener protections', () =>
   assert.match(appSource, /body\.push\(el\('a', \{ href: check\.displayUrl, text: 'Open', rel: 'noreferrer noopener' \}\)\)/);
 });
 
+test('overview status cards render concise green/red state and link without prose dumps', () => {
+  assert.match(appSource, /function statusBadgeText\(/);
+  assert.match(appSource, /function conciseStatusProbe\(/);
+  assert.match(appSource, /status-probe/);
+  assert.doesNotMatch(appSource, /body\.push\(el\('p', \{ className: 'muted', text: check\.detail \}\)\)/);
+  assert.doesNotMatch(appSource, /body\.push\(el\('p', \{ className: 'warning', text: `Unresolved:/);
+  assert.doesNotMatch(appSource, /className: 'status-evidence'/);
+});
+
 test('dashboard docs viewer uses manifest ids, not browser-supplied file paths', () => {
   assert.match(appSource, /getJson\('\/api\/docs'\)/);
   assert.match(appSource, /getJson\(`\/api\/docs\/\$\{encodeURIComponent\(doc\.id\)\}`\)/);

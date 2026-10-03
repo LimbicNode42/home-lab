@@ -108,11 +108,12 @@ test('loadConfig accepts mem0Health checks but public config hides internals and
   assert.equal(config.statusChecks[0].logSinceSeconds, 180);
   assert.match(config.statusChecks[0].logErrorPattern, /pgvector/);
   assert.deepEqual(publicConfig.statusChecks, [
-    { id: 'mem0-health', label: 'Mem0 memory provider', displayUrl: 'http://192.168.0.20:8888', statusDetail: 'Mem0 API liveness, container health, and recent datastore log checks are passing.' }
+    { id: 'mem0-health', label: 'Mem0 memory provider', displayUrl: 'http://192.168.0.20:8888' }
   ]);
   assert.equal(serialized.includes('127.0.0.1:8888'), false);
   assert.equal(serialized.includes('MEM0_API_KEY'), false);
   assert.equal(serialized.includes('mem0-postgres-1'), false);
+  assert.equal(serialized.includes('statusDetail'), false);
 });
 
 test('loadConfig rejects invalid mem0Health API key environment variable names', async () => {
@@ -145,6 +146,21 @@ test('repository dashboard config surfaces the Graphiti/Neo4j live snapshot stat
   assert.equal(knowledgeGraph[0].statusFile, '/app/graphiti/latest-smoke-backup.json');
   assert.equal(knowledgeGraph[0].statusFileStaleAfterMs, 86400000);
   assert.ok(config.statusChecks.some((check) => check.id === 'mem0-health' && check.statusWhenHealthy === 'healthy' && check.logSinceSeconds === 180));
+});
+
+test('repository overview status config stays concise and link-oriented', async () => {
+  const configPath = new URL('../config/dashboard.public.json', import.meta.url).pathname;
+  const config = await loadConfig({ configPath });
+  const publicConfig = toPublicConfig(config);
+  const serializedPublic = JSON.stringify(publicConfig);
+
+  assert.equal(config.statusChecks.some((check) => check.statusDetail || check.unresolvedFollowUp), false);
+  assert.equal(serializedPublic.includes('statusDetail'), false);
+  assert.equal(serializedPublic.includes('unresolvedFollowUp'), false);
+  for (const check of publicConfig.statusChecks) {
+    if (check.id === 'knowledge-graph') continue;
+    assert.ok(check.displayUrl, `${check.id} should expose a concise Open link`);
+  }
 });
 
 test('loadConfig accepts graphitiNeo4jHealth checks and hides internal probe config publicly', async () => {

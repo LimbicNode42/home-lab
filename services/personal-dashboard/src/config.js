@@ -32,7 +32,6 @@ const DEFAULT_CONFIG = {
       sshHost: '192.168.0.20',
       sshUser: 'root',
       statusWhenHealthy: 'healthy',
-      statusDetail: 'Mem0 API liveness, container health, and recent datastore log checks are passing; dashboard exposes coarse health only.',
       statusFile: '/app/mem0/status.json',
       statusFileStaleAfterMs: 600000,
       dockerContainers: ['mem0-mem0-1', 'mem0-postgres-1'],
@@ -45,7 +44,7 @@ const DEFAULT_CONFIG = {
       id: 'graphiti-mcp',
       label: 'Graphiti MCP access',
       type: 'graphitiMcpHealth',
-      statusDetail: 'Read-only MCP tool surface for agent access to Graphiti provenance/search. This is separate from the raw Graphiti/Neo4j backend and must not expose clear/delete/Cypher/admin tools.',
+      displayUrl: 'http://metamcp.local:12008',
       statusFile: '/app/graphiti/latest-mcp-status.json',
       statusFileStaleAfterMs: 900000
     },
@@ -55,8 +54,7 @@ const DEFAULT_CONFIG = {
       targetUrl: 'http://192.168.0.20:12008/health',
       displayUrl: 'http://metamcp.local:12008',
       acceptableStatuses: [200],
-      timeoutMs: 6000,
-      statusDetail: 'MetaMCP /health is live but may take ~1.5-2s to answer through the tori LAN relay; dashboard uses a 6s per-check timeout to avoid false-down flapping while preserving API-key auth and LAN-only exposure.'
+      timeoutMs: 6000
     },
     {
       id: 'unified-inbox',
@@ -73,9 +71,7 @@ const DEFAULT_CONFIG = {
       displayUrl: 'http://192.168.0.8:8096',
       acceptableStatuses: [200],
       timeoutMs: 1500,
-      statusWhenUp: 'degraded',
-      statusDetail: 'Jellyfin is reachable, but in-app subtitle downloads are blocked: the stored OpenSubtitles.com username/password are rejected as invalid (HTTP 401), and the account is currently soft-locked by rate limiting.',
-      unresolvedFollowUp: 'Reconcile the OpenSubtitles.com account credentials in Vaultwarden item OPENSUBS_CREDENTIALS (confirm it is an opensubtitles.com account, not .org, and the password is current), then clear the CredentialsInvalid flag and verify search/download inside Jellyfin.'
+      statusWhenUp: 'degraded'
     }
   ],
   unifiedInbox: {
@@ -752,9 +748,7 @@ export function toPublicConfig(config) {
       id: check.id,
       label: check.label,
       ...(check.displayUrl ? { displayUrl: check.displayUrl } : {}),
-      ...(check.statusWhenUp ? { statusWhenUp: check.statusWhenUp } : {}),
-      ...(check.statusDetail ? { statusDetail: check.statusDetail } : {}),
-      ...(check.unresolvedFollowUp ? { unresolvedFollowUp: check.unresolvedFollowUp } : {})
+      ...(check.statusWhenUp ? { statusWhenUp: check.statusWhenUp } : {})
     })),
     ...(config.unifiedInbox ? { unifiedInbox: {
       enabled: config.unifiedInbox.enabled,

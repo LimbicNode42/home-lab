@@ -114,7 +114,7 @@ test('repository config keeps MetaMCP Overview links friendly-name only while st
   assert.deepEqual(coreLinks.map((link) => link.href), ['http://metamcp.local:12008']);
   assert.equal(metamcpStatus.displayUrl, 'http://metamcp.local:12008');
   assert.equal(internalMetamcpStatus.timeoutMs, 6000);
-  assert.match(internalMetamcpStatus.statusDetail, /false-down flapping/);
+  assert.equal(internalMetamcpStatus.statusDetail, undefined);
   assert.deepEqual(accessUrls, ['http://metamcp.local:12008', 'http://metamcp.local:12008', 'http://metamcp.local:12008/mcp']);
   assert.equal(JSON.stringify({ coreLinks, metamcpStatus, accessUrls }).includes('http://192.168.0.20:12008'), false);
 });

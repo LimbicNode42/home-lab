@@ -40,8 +40,7 @@
       "id": "vaultwarden",
       "label": "Vaultwarden",
       "targetUrl": "http://192.168.0.50:8084/alive",
-      "displayUrl": "https://vault.wheeler-network.com",
-      "statusDetail": "Live Vaultwarden /alive probe is passing; shared Postgres is currently mounted from critical local storage (/srv/postgres), avoiding the prior NAS/NFS stale file-handle failure mode."
+      "displayUrl": "https://vault.wheeler-network.com"
     },
     {
       "id": "hermes-kanban",
@@ -61,8 +60,6 @@
         "label": "Neo4j graph store",
         "deployed": true
       },
-      "statusDetail": "Graphiti/Neo4j is the shared operational/provenance graph for agent/homelab facts. mem0 remains the separate personal/preference memory provider; this card does not imply Graphiti replaced mem0.",
-      "unresolvedFollowUp": "Dashboard reads the sanitized Graphiti publisher snapshot and marks it stale exactly 24h after generation. Recurring publisher cadence is configured on tori; treat any degraded state as a live signal from the latest publisher run, not a hand-edited dashboard value.",
       "statusFile": "/app/graphiti/latest-smoke-backup.json",
       "statusFileStaleAfterMs": 86400000
     },
@@ -70,9 +67,9 @@
       "id": "graphiti-mcp",
       "label": "Graphiti MCP access",
       "type": "graphitiMcpHealth",
-      "statusDetail": "Read-only MCP tool surface for agent access to Graphiti provenance/search. This is separate from the raw Graphiti/Neo4j backend and must not expose clear/delete/Cypher/admin tools.",
       "statusFile": "/app/graphiti/latest-mcp-status.json",
-      "statusFileStaleAfterMs": 900000
+      "statusFileStaleAfterMs": 900000,
+      "displayUrl": "http://metamcp.local:12008"
     },
     {
       "id": "mem0-health",
@@ -83,7 +80,6 @@
       "sshHost": "192.168.0.20",
       "sshUser": "root",
       "statusWhenHealthy": "healthy",
-      "statusDetail": "Mem0 API liveness, container health, and recent datastore log checks are passing; dashboard exposes coarse health only.",
       "statusFile": "/app/mem0/status.json",
       "statusFileStaleAfterMs": 600000,
       "dockerContainers": [
@@ -105,8 +101,7 @@
       "acceptableStatuses": [
         200
       ],
-      "timeoutMs": 6000,
-      "statusDetail": "MetaMCP /health is live but may take ~1.5-2s to answer through the tori LAN relay; dashboard uses a 6s per-check timeout to avoid false-down flapping while preserving API-key auth and LAN-only exposure."
+      "timeoutMs": 6000
     },
     {
       "id": "unified-inbox",
