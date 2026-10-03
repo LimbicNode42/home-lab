@@ -33,8 +33,11 @@ MAX_WORDS_PER_EPISODE = 1500
 MAX_EXTRACTION_ATTEMPTS = 2  # then move to a "review" bucket, no retry storm
 
 # --- mem0 write-shape defaults -------------------------------------------
+# Canonical principal user_id="ben" (see plans/mem0-namespace-decision.md).
+# Every Hermes profile converges on user_id="ben"; agent_id stays for
+# attribution. Do not change back to a per-profile "ben-<profile>" value.
 DEFAULT_MEM0_HOST = os.environ.get("MEMORY_RECONCILER_MEM0_HOST", "http://127.0.0.1:8888")
-DEFAULT_MEM0_USER_ID = os.environ.get("MEMORY_RECONCILER_MEM0_USER_ID", "ben-gremlin")
+DEFAULT_MEM0_USER_ID = os.environ.get("MEMORY_RECONCILER_MEM0_USER_ID", "ben")
 DEFAULT_MEM0_AGENT_ID = os.environ.get("MEMORY_RECONCILER_MEM0_AGENT_ID", "memory-reconciler")
 
 # --- Graphiti API (loopback-only target, no public route) -----------------

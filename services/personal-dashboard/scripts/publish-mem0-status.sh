@@ -108,7 +108,8 @@ def profile_provider(profile):
 
 containers = [docker_state(mem0_container), docker_state(postgres_container)]
 container_passed = all(c['passed'] for c in containers)
-profile_states = {name: profile_provider(name) for name in ('default', 'kobold')}
+ALL_PROFILES = ('default', 'domovoi', 'kobold', 'gremlin', 'sentinel', 'scribe')
+profile_states = {name: profile_provider(name) for name in ALL_PROFILES}
 profiles_passed = all(v['configured'] and v['enabled'] for v in profile_states.values())
 
 payload = {

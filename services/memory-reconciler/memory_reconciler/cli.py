@@ -156,7 +156,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--kanban-db", default="/root/.hermes/kanban.db")
     parser.add_argument("--state-db", default="/var/lib/memory-reconciler/state.db")
     parser.add_argument("--mem0-host", default="http://127.0.0.1:8888")
-    parser.add_argument("--mem0-user-id", default="ben-gremlin")
+    parser.add_argument("--mem0-user-id", default="ben")
     parser.add_argument("--mem0-agent-id", default="memory-reconciler")
     parser.add_argument("--graphiti-url", default="http://127.0.0.1:8000")
     parser.add_argument("--completion-model", default="openai/gpt-4o-mini")

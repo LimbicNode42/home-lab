@@ -36,6 +36,17 @@ If you ever see it moving toward "remember everything," it is misconfigured.
 The pipeline is allowed to be useful; it is not allowed to become a transcript
 swamp (see curated-ingest-policy §1).
 
+### Canonical mem0 namespace
+
+Durable facts are written to a single canonical principal **`user_id="ben"`**
+with `agent_id="memory-reconciler"` (the reconciler is a distinct writer; the
+`agent_id` stays for attribution). This is the convergence model recorded in
+`plans/mem0-namespace-decision.md`. Do not reintroduce a per-profile
+`ben-<profile>` `user_id` here: the whole point is that every Hermes profile's
+`mem0_search` reads the same `user_id="ben"` principal and surfaces the same
+durable facts. Any `user_id` other than `ben` in the reconciler's config/env is
+a regression (rollback reversion excepted — see §5).
+
 ## 2. Cadence and trigger
 
 - **Runtime host:** `tori` (`192.168.0.20`).
