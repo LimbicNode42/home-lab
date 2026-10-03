@@ -1,0 +1,1326 @@
+{
+  "payload_id": "graphiti-catchup-2026-10-03",
+  "parent_task_id": "t_40ad8ae6",
+  "parent_epic_id": "t_1b099c67",
+  "curated_by": "gremlin",
+  "curated_at": "2026-10-03T10:18:10Z",
+  "policy_refs": [
+    "/root/work/home-lab/services/graphiti/runbooks/curated-ingest-policy.md",
+    "/root/work/home-lab/services/graphiti/runbooks/production-runbook.md"
+  ],
+  "source_query": {
+    "database": "/root/.hermes/kanban.db",
+    "tables_read": [
+      "tasks:id,title,assignee,status,completed_at",
+      "task_runs:latest successful summary,metadata"
+    ],
+    "tasks_body_read": false,
+    "allowed_source_class": "Kanban completion summaries"
+  },
+  "constraints": {
+    "max_episodes": 25,
+    "max_words_per_episode": 1500,
+    "live_graphiti_writes_performed": false,
+    "raw_transcripts_included": false,
+    "raw_private_memories_included": false,
+    "secrets_included": false
+  },
+  "episode_count": 19,
+  "groups": [
+    "decisions.memory-reconciler",
+    "incidents.memory-health.2026-10",
+    "incidents.memory-reconciler.2026-10",
+    "incidents.obsidian.2026-10",
+    "services.graphiti",
+    "services.mem0",
+    "services.memory-reconciler",
+    "services.metamcp",
+    "services.obsidian-livesync"
+  ],
+  "source_refs": [
+    "t_a153b094",
+    "t_83724179",
+    "t_f41559d5",
+    "t_febc5e27",
+    "t_1989aa24",
+    "t_330b3a6c",
+    "t_95faf051",
+    "t_055f2613",
+    "t_0dea3e36",
+    "t_6c585aed",
+    "t_2aab8bb0",
+    "t_3f77442c",
+    "t_1bdadf8f",
+    "t_e044df92",
+    "t_1b099c67",
+    "t_1cfb1565",
+    "t_1d8377d3",
+    "t_2b820eb2",
+    "t_cdf07d11"
+  ],
+  "source_task_ids": [
+    "t_a153b094",
+    "t_83724179",
+    "t_f41559d5",
+    "t_febc5e27",
+    "t_1989aa24",
+    "t_330b3a6c",
+    "t_95faf051",
+    "t_055f2613",
+    "t_0dea3e36",
+    "t_6c585aed",
+    "t_2aab8bb0",
+    "t_3f77442c",
+    "t_1bdadf8f",
+    "t_e044df92",
+    "t_1b099c67",
+    "t_1cfb1565",
+    "t_1d8377d3",
+    "t_2b820eb2",
+    "t_cdf07d11"
+  ],
+  "skipped_recent_done": {
+    "t_d8ca857f": "Earlier Graphiti/Neo4j Overview warning fix superseded by t_febc5e27 and the later memory-health remediation chain.",
+    "t_1a990d78": "Obsidian orchestration graph details are represented by concrete spec/deploy/implementation/review episodes.",
+    "t_61abaf27": "Production runbook/usage guide belongs to the 2026-10-02 seed/deploy lane already represented elsewhere.",
+    "t_b54ea235": "Superseded/no-op reconciliation; no new durable operational fact beyond reviewed Graphiti dashboard lane."
+  },
+  "redaction_review": {
+    "reviewed": true,
+    "section_4_2_checklist_applied": true,
+    "validation_reports": {
+      "t_a153b094": {
+        "total": 0
+      },
+      "t_83724179": {
+        "total": 0
+      },
+      "t_f41559d5": {
+        "total": 0
+      },
+      "t_febc5e27": {
+        "total": 0
+      },
+      "t_1989aa24": {
+        "total": 0
+      },
+      "t_330b3a6c": {
+        "total": 0
+      },
+      "t_95faf051": {
+        "total": 0
+      },
+      "t_055f2613": {
+        "total": 0
+      },
+      "t_0dea3e36": {
+        "total": 0
+      },
+      "t_6c585aed": {
+        "total": 0
+      },
+      "t_2aab8bb0": {
+        "total": 0
+      },
+      "t_3f77442c": {
+        "total": 0
+      },
+      "t_1bdadf8f": {
+        "total": 0
+      },
+      "t_e044df92": {
+        "total": 0
+      },
+      "t_1b099c67": {
+        "total": 0
+      },
+      "t_1cfb1565": {
+        "total": 0
+      },
+      "t_1d8377d3": {
+        "total": 0
+      },
+      "t_2b820eb2": {
+        "total": 0
+      },
+      "t_cdf07d11": {
+        "total": 0
+      }
+    }
+  },
+  "episodes": [
+    {
+      "episode_id": "kanban:t_a153b094:completion",
+      "title": "fix: mem0 Overview shows down despite expected provider availability",
+      "domain": "services",
+      "group_id": "services.mem0",
+      "source_type": "kanban_completion_summary",
+      "source_ref": "t_a153b094",
+      "source_path": null,
+      "source_timestamp": "2026-10-03T02:45:53Z",
+      "curated_by": "gremlin",
+      "curated_at": "2026-10-03T10:18:10Z",
+      "status": "current",
+      "summary": "The mem0 Overview down state was corrected as a dashboard false-negative: mem0 was live and usable while the dashboard reported down because it handled the docs/OpenAPI fallback shape too narrowly.",
+      "facts": [
+        {
+          "text": "mem0 was verified live and usable while the Home Dashboard false-reported it as down.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T02:45:53Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "The dashboard status code now treats documented mem0 availability evidence as a valid healthy/degraded signal instead of requiring only one narrow response shape.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T02:45:53Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "The fix preserved mem0 as the active personal/preference memory provider and did not migrate or delete memory data.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T02:45:53Z",
+          "invalid_at": null,
+          "supersedes": []
+        }
+      ],
+      "tags": [
+        "kanban",
+        "mem0",
+        "personal-dashboard",
+        "overview",
+        "false-down"
+      ],
+      "redaction": {
+        "reviewed": true,
+        "secret_values_removed": true,
+        "private_memory_excluded": true,
+        "source_reduced_to_summary": true,
+        "raw_transcripts_excluded": true,
+        "raw_task_body_read": false,
+        "operational_ips_required_for_topology": true,
+        "checklist_policy_section": "curated-ingest-policy.md section 4.2"
+      },
+      "scope_marker": {
+        "source_task_id": "t_a153b094",
+        "source_run_id": 2207,
+        "dedup_key": "kanban:t_a153b094:run:2207:graphiti-catchup-2026-10-03"
+      }
+    },
+    {
+      "episode_id": "kanban:t_83724179:completion",
+      "title": "fix: MetaMCP gateway flapping or false-down Overview status",
+      "domain": "services",
+      "group_id": "services.metamcp",
+      "source_type": "kanban_completion_summary",
+      "source_ref": "t_83724179",
+      "source_path": null,
+      "source_timestamp": "2026-10-03T02:58:36Z",
+      "curated_by": "gremlin",
+      "curated_at": "2026-10-03T10:18:10Z",
+      "status": "current",
+      "summary": "The MetaMCP Overview flapping/false-down state was corrected: MetaMCP and its database were stable, while the dashboard container had probe timeouts and stale status interpretation.",
+      "facts": [
+        {
+          "text": "MetaMCP service health was stable during the incident; the observed problem was dashboard-side freshness/probe handling, not MetaMCP service failure.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T02:58:36Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "The dashboard configuration and tests were updated so Overview status tracks authenticated health and registry evidence without falsely degrading a stable gateway.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T02:58:36Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "The change did not broaden public access or expose raw MetaMCP internals beyond the existing authenticated dashboard path.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T02:58:36Z",
+          "invalid_at": null,
+          "supersedes": []
+        }
+      ],
+      "tags": [
+        "kanban",
+        "metamcp",
+        "personal-dashboard",
+        "overview",
+        "false-down"
+      ],
+      "redaction": {
+        "reviewed": true,
+        "secret_values_removed": true,
+        "private_memory_excluded": true,
+        "source_reduced_to_summary": true,
+        "raw_transcripts_excluded": true,
+        "raw_task_body_read": false,
+        "operational_ips_required_for_topology": true,
+        "checklist_policy_section": "curated-ingest-policy.md section 4.2"
+      },
+      "scope_marker": {
+        "source_task_id": "t_83724179",
+        "source_run_id": 2208,
+        "dedup_key": "kanban:t_83724179:run:2208:graphiti-catchup-2026-10-03"
+      }
+    },
+    {
+      "episode_id": "kanban:t_f41559d5:completion",
+      "title": "implement: Graphiti MCP server for consistent agent access",
+      "domain": "services",
+      "group_id": "services.graphiti",
+      "source_type": "kanban_completion_summary",
+      "source_ref": "t_f41559d5",
+      "source_path": null,
+      "source_timestamp": "2026-10-03T03:46:00Z",
+      "curated_by": "gremlin",
+      "curated_at": "2026-10-03T10:18:10Z",
+      "status": "current",
+      "summary": "A safe read-only Graphiti MCP access path was implemented, exposing status, search, provenance lookup, and curated-episode validation while keeping raw Graphiti write/delete/clear endpoints out of the agent tool surface.",
+      "facts": [
+        {
+          "text": "Graphiti MCP agent access is intentionally read-only and provenance-safe: status, search, provenance lookup, and curated-episode validation are exposed, while destructive raw endpoints are not.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T03:46:00Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "The implementation added a sanitized MCP status publisher so the Home Dashboard can report Graphiti MCP access without leaking raw URLs, credentials, or graph dumps.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T03:46:00Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "Graphiti remains advisory operational/provenance memory; agents must still verify live state before remediation.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T03:46:00Z",
+          "invalid_at": null,
+          "supersedes": []
+        }
+      ],
+      "tags": [
+        "kanban",
+        "graphiti",
+        "mcp",
+        "read-only-wrapper",
+        "provenance"
+      ],
+      "redaction": {
+        "reviewed": true,
+        "secret_values_removed": true,
+        "private_memory_excluded": true,
+        "source_reduced_to_summary": true,
+        "raw_transcripts_excluded": true,
+        "raw_task_body_read": false,
+        "operational_ips_required_for_topology": true,
+        "checklist_policy_section": "curated-ingest-policy.md section 4.2"
+      },
+      "scope_marker": {
+        "source_task_id": "t_f41559d5",
+        "source_run_id": 2210,
+        "dedup_key": "kanban:t_f41559d5:run:2210:graphiti-catchup-2026-10-03"
+      }
+    },
+    {
+      "episode_id": "kanban:t_febc5e27:completion",
+      "title": "fix: Graphiti backend publisher live-query evidence expiry flips Overview to degraded",
+      "domain": "services",
+      "group_id": "services.graphiti",
+      "source_type": "kanban_completion_summary",
+      "source_ref": "t_febc5e27",
+      "source_path": null,
+      "source_timestamp": "2026-10-03T05:59:16Z",
+      "curated_by": "gremlin",
+      "curated_at": "2026-10-03T10:18:10Z",
+      "status": "current",
+      "summary": "The Graphiti backend publisher evidence-expiry defect was fixed by replacing a disposable timestamped smoke re-query with an unexpiring reviewed deployment-posture seed fact in services.graphiti.",
+      "facts": [
+        {
+          "text": "The Graphiti backend publisher must query an unexpiring operational fact, not a timestamped disposable smoke fact, for recurring Overview health evidence.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T05:59:16Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "Per-poll Graphiti health checks must not re-ingest fresh smoke episodes; recurring ingest would violate the curated ingest policy and couple liveness to LLM/embedding availability.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T05:59:16Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "If the deployment-posture seed fact is superseded, the publisher query target should be updated to a new unexpiring operational fact in services.graphiti.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T05:59:16Z",
+          "invalid_at": null,
+          "supersedes": []
+        }
+      ],
+      "tags": [
+        "kanban",
+        "graphiti",
+        "publisher",
+        "overview",
+        "evidence-expiry"
+      ],
+      "redaction": {
+        "reviewed": true,
+        "secret_values_removed": true,
+        "private_memory_excluded": true,
+        "source_reduced_to_summary": true,
+        "raw_transcripts_excluded": true,
+        "raw_task_body_read": false,
+        "operational_ips_required_for_topology": true,
+        "checklist_policy_section": "curated-ingest-policy.md section 4.2"
+      },
+      "scope_marker": {
+        "source_task_id": "t_febc5e27",
+        "source_run_id": 2221,
+        "dedup_key": "kanban:t_febc5e27:run:2221:graphiti-catchup-2026-10-03"
+      }
+    },
+    {
+      "episode_id": "kanban:t_1989aa24:completion",
+      "title": "remediate live memory/MCP Overview freshness and Graphiti MCP status",
+      "domain": "incidents",
+      "group_id": "incidents.memory-health.2026-10",
+      "source_type": "incident_summary",
+      "source_ref": "t_1989aa24",
+      "source_path": null,
+      "source_timestamp": "2026-10-03T04:35:26Z",
+      "curated_by": "gremlin",
+      "curated_at": "2026-10-03T10:18:10Z",
+      "status": "historical",
+      "summary": "Live memory/MCP Overview remediation deployed reviewed dashboard source/config to critical, fixed/scheduled tori publishers, refreshed runtime cache, and verified that /api/status reported Graphiti, Neo4j, Graphiti MCP, mem0, and MetaMCP evidence.",
+      "facts": [
+        {
+          "text": "The memory/MCP Overview incident involved stale or missing publisher/runtime-cache evidence rather than replacement of mem0 or broad exposure of Graphiti/Neo4j.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T04:35:26Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "Remediation updated the personal-dashboard source/config and publisher scripts, then refreshed the runtime cache for operator-visible status.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T04:35:26Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "The live dashboard API was verified after remediation for memory and MCP health signals.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T04:35:26Z",
+          "invalid_at": null,
+          "supersedes": []
+        }
+      ],
+      "tags": [
+        "kanban",
+        "incident",
+        "memory-health",
+        "overview",
+        "dashboard"
+      ],
+      "redaction": {
+        "reviewed": true,
+        "secret_values_removed": true,
+        "private_memory_excluded": true,
+        "source_reduced_to_summary": true,
+        "raw_transcripts_excluded": true,
+        "raw_task_body_read": false,
+        "operational_ips_required_for_topology": true,
+        "checklist_policy_section": "curated-ingest-policy.md section 4.2"
+      },
+      "scope_marker": {
+        "source_task_id": "t_1989aa24",
+        "source_run_id": 2214,
+        "dedup_key": "kanban:t_1989aa24:run:2214:graphiti-catchup-2026-10-03"
+      }
+    },
+    {
+      "episode_id": "kanban:t_330b3a6c:completion",
+      "title": "remediate: memory/MCP Overview freshness plumbing (cron PATH + critical-side sync)",
+      "domain": "incidents",
+      "group_id": "incidents.memory-health.2026-10",
+      "source_type": "incident_summary",
+      "source_ref": "t_330b3a6c",
+      "source_path": null,
+      "source_timestamp": "2026-10-03T04:52:07Z",
+      "curated_by": "gremlin",
+      "curated_at": "2026-10-03T10:18:10Z",
+      "status": "current",
+      "summary": "A second remediation fixed memory/MCP Overview freshness plumbing by adding cron PATH on tori and a critical-side runtime-cache sync cadence so status snapshots advance continuously.",
+      "facts": [
+        {
+          "text": "The tori publisher cron requires an explicit PATH including /usr/bin, /bin, and /root/.local/bin for the Graphiti MCP publisher command shape to run under cron.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T04:52:07Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "The critical dashboard host needs a recurring runtime-cache sync, not only source/config updates, for Overview freshness to stay current.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T04:52:07Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "Post-remediation evidence showed tori publisher output and critical runtime-cache timestamps advancing on cadence.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T04:52:07Z",
+          "invalid_at": null,
+          "supersedes": []
+        }
+      ],
+      "tags": [
+        "kanban",
+        "incident",
+        "memory-health",
+        "cron",
+        "freshness"
+      ],
+      "redaction": {
+        "reviewed": true,
+        "secret_values_removed": true,
+        "private_memory_excluded": true,
+        "source_reduced_to_summary": true,
+        "raw_transcripts_excluded": true,
+        "raw_task_body_read": false,
+        "operational_ips_required_for_topology": true,
+        "checklist_policy_section": "curated-ingest-policy.md section 4.2"
+      },
+      "scope_marker": {
+        "source_task_id": "t_330b3a6c",
+        "source_run_id": 2216,
+        "dedup_key": "kanban:t_330b3a6c:run:2216:graphiti-catchup-2026-10-03"
+      }
+    },
+    {
+      "episode_id": "kanban:t_95faf051:completion",
+      "title": "review: memory and MCP Overview remediation safety gate",
+      "domain": "incidents",
+      "group_id": "incidents.memory-health.2026-10",
+      "source_type": "incident_summary",
+      "source_ref": "t_95faf051",
+      "source_path": null,
+      "source_timestamp": "2026-10-03T05:15:07Z",
+      "curated_by": "gremlin",
+      "curated_at": "2026-10-03T10:18:10Z",
+      "status": "current",
+      "summary": "The memory/MCP Overview remediation review passed after prior freshness defects were resolved: tori Graphiti-MCP/mem0 snapshots and critical-side runtime-cache sync advanced on cadence, while safety boundaries remained intact.",
+      "facts": [
+        {
+          "text": "The final memory/MCP Overview review passed with mem0 not replaced and Graphiti/Neo4j still loopback-only.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T05:15:07Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "The Graphiti MCP tool surface remained restricted to safe read-only/provenance operations.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T05:15:07Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "Overview freshness for memory and MCP cards was verified as self-refreshing rather than manually carried forward.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T05:15:07Z",
+          "invalid_at": null,
+          "supersedes": []
+        }
+      ],
+      "tags": [
+        "kanban",
+        "review",
+        "memory-health",
+        "overview",
+        "pass"
+      ],
+      "redaction": {
+        "reviewed": true,
+        "secret_values_removed": true,
+        "private_memory_excluded": true,
+        "source_reduced_to_summary": true,
+        "raw_transcripts_excluded": true,
+        "raw_task_body_read": false,
+        "operational_ips_required_for_topology": true,
+        "checklist_policy_section": "curated-ingest-policy.md section 4.2"
+      },
+      "scope_marker": {
+        "source_task_id": "t_95faf051",
+        "source_run_id": 2218,
+        "dedup_key": "kanban:t_95faf051:run:2218:graphiti-catchup-2026-10-03"
+      }
+    },
+    {
+      "episode_id": "kanban:t_055f2613:completion",
+      "title": "epic: repair memory and MCP Overview health signals",
+      "domain": "incidents",
+      "group_id": "incidents.memory-health.2026-10",
+      "source_type": "incident_summary",
+      "source_ref": "t_055f2613",
+      "source_path": null,
+      "source_timestamp": "2026-10-03T05:24:11Z",
+      "curated_by": "gremlin",
+      "curated_at": "2026-10-03T10:18:10Z",
+      "status": "current",
+      "summary": "The repair memory and MCP Overview health signals epic closed after both remediation tasks and the sentinel review gate passed, with live Overview showing healthy non-stale mem0, Graphiti, Neo4j, Graphiti MCP, and MetaMCP status evidence.",
+      "facts": [
+        {
+          "text": "The memory/MCP Overview health epic is closed with remediation children and sentinel review complete.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T05:24:11Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "Live Overview verification showed memory and MCP cards healthy and fresh after the remediation chain.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T05:24:11Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "This closure is provenance for the dashboard signal state at the time; future agents must still inspect current live status before remediation.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T05:24:11Z",
+          "invalid_at": null,
+          "supersedes": []
+        }
+      ],
+      "tags": [
+        "kanban",
+        "epic-close",
+        "memory-health",
+        "overview"
+      ],
+      "redaction": {
+        "reviewed": true,
+        "secret_values_removed": true,
+        "private_memory_excluded": true,
+        "source_reduced_to_summary": true,
+        "raw_transcripts_excluded": true,
+        "raw_task_body_read": false,
+        "operational_ips_required_for_topology": true,
+        "checklist_policy_section": "curated-ingest-policy.md section 4.2"
+      },
+      "scope_marker": {
+        "source_task_id": "t_055f2613",
+        "source_run_id": 2220,
+        "dedup_key": "kanban:t_055f2613:run:2220:graphiti-catchup-2026-10-03"
+      }
+    },
+    {
+      "episode_id": "kanban:t_0dea3e36:completion",
+      "title": "epic: continuous update pipeline for mem0 and Graphiti from ongoing work",
+      "domain": "decisions",
+      "group_id": "decisions.memory-reconciler",
+      "source_type": "decision_supersession",
+      "source_ref": "t_0dea3e36",
+      "source_path": null,
+      "source_timestamp": "2026-10-03T06:37:07Z",
+      "curated_by": "gremlin",
+      "curated_at": "2026-10-03T10:18:10Z",
+      "status": "current",
+      "summary": "The continuous update pipeline was decomposed as a gated memory-reconciler lane: completed Kanban summaries feed durable-fact classification for mem0 and curated Graphiti episodes, deployed tori-local with a SQLite state ledger.",
+      "facts": [
+        {
+          "text": "The continuous memory-reconciler v1 source is completed Kanban tasks only; sessions/transcripts are explicitly out of scope.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T06:37:07Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "Runtime state for the reconciler belongs on tori-local ext4 at /var/lib/memory-reconciler/state.db, not NAS/NFS.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T06:37:07Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "The pipeline boundary keeps mem0 for durable personal/preferences facts and Graphiti for curated operational/provenance episodes.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T06:37:07Z",
+          "invalid_at": null,
+          "supersedes": []
+        }
+      ],
+      "tags": [
+        "kanban",
+        "decision",
+        "memory-reconciler",
+        "continuous-pipeline"
+      ],
+      "redaction": {
+        "reviewed": true,
+        "secret_values_removed": true,
+        "private_memory_excluded": true,
+        "source_reduced_to_summary": true,
+        "raw_transcripts_excluded": true,
+        "raw_task_body_read": false,
+        "operational_ips_required_for_topology": true,
+        "checklist_policy_section": "curated-ingest-policy.md section 4.2"
+      },
+      "scope_marker": {
+        "source_task_id": "t_0dea3e36",
+        "source_run_id": 2223,
+        "dedup_key": "kanban:t_0dea3e36:run:2223:graphiti-catchup-2026-10-03"
+      }
+    },
+    {
+      "episode_id": "kanban:t_6c585aed:completion",
+      "title": "implement memory-reconciler: extract kanban completions \u2192 curate \u2192 dedup \u2192 dual-write mem0 + Graphiti",
+      "domain": "services",
+      "group_id": "services.memory-reconciler",
+      "source_type": "kanban_completion_summary",
+      "source_ref": "t_6c585aed",
+      "source_path": null,
+      "source_timestamp": "2026-10-03T07:07:11Z",
+      "curated_by": "gremlin",
+      "curated_at": "2026-10-03T10:18:10Z",
+      "status": "current",
+      "summary": "The memory-reconciler v1 code layer was implemented under services/memory-reconciler with read-only Kanban extraction, durable-fact classification, curated Graphiti episode building, deduplication, guardrails, CLI, tests, and runbook/config scaffolding.",
+      "facts": [
+        {
+          "text": "memory-reconciler extracts only done Kanban task summaries plus selected non-secret metadata; tasks.body is never read.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T07:07:11Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "The v1 code gates mem0 writes through a durable-fact classifier and builds Graphiti episodes through the reviewed agent_graphiti validation/redaction path.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T07:07:11Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "The dedup ledger is keyed by source, task_id, run_id, and target so mem0 and Graphiti can recover independently after partial failures.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T07:07:11Z",
+          "invalid_at": null,
+          "supersedes": []
+        }
+      ],
+      "tags": [
+        "kanban",
+        "memory-reconciler",
+        "implementation",
+        "dedup",
+        "guardrails"
+      ],
+      "redaction": {
+        "reviewed": true,
+        "secret_values_removed": true,
+        "private_memory_excluded": true,
+        "source_reduced_to_summary": true,
+        "raw_transcripts_excluded": true,
+        "raw_task_body_read": false,
+        "operational_ips_required_for_topology": true,
+        "checklist_policy_section": "curated-ingest-policy.md section 4.2"
+      },
+      "scope_marker": {
+        "source_task_id": "t_6c585aed",
+        "source_run_id": 2224,
+        "dedup_key": "kanban:t_6c585aed:run:2224:graphiti-catchup-2026-10-03"
+      }
+    },
+    {
+      "episode_id": "kanban:t_2aab8bb0:completion",
+      "title": "draft memory-reconciler runbook: pause / tune / rollback / operate",
+      "domain": "services",
+      "group_id": "services.memory-reconciler",
+      "source_type": "dependency_ownership_note",
+      "source_ref": "t_2aab8bb0",
+      "source_path": null,
+      "source_timestamp": "2026-10-03T07:17:28Z",
+      "curated_by": "gremlin",
+      "curated_at": "2026-10-03T10:18:10Z",
+      "status": "current",
+      "summary": "The memory-reconciler operator runbook was drafted, covering pause, tune, rollback, daily systemd timer cadence, dry-run-by-default manual operation, advisory/provenance safety stance, and operational boundaries.",
+      "facts": [
+        {
+          "text": "memory-reconciler operations are governed by an operator runbook at services/memory-reconciler/runbooks/operate.md.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T07:17:28Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "Manual reconciler operation is dry-run by default; writes require explicit apply mode and guardrails.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T07:17:28Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "The runbook references Graphiti curated-ingest and backup/restore policy instead of duplicating or weakening those safety boundaries.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T07:17:28Z",
+          "invalid_at": null,
+          "supersedes": []
+        }
+      ],
+      "tags": [
+        "kanban",
+        "memory-reconciler",
+        "runbook",
+        "operations"
+      ],
+      "redaction": {
+        "reviewed": true,
+        "secret_values_removed": true,
+        "private_memory_excluded": true,
+        "source_reduced_to_summary": true,
+        "raw_transcripts_excluded": true,
+        "raw_task_body_read": false,
+        "operational_ips_required_for_topology": true,
+        "checklist_policy_section": "curated-ingest-policy.md section 4.2"
+      },
+      "scope_marker": {
+        "source_task_id": "t_2aab8bb0",
+        "source_run_id": 2226,
+        "dedup_key": "kanban:t_2aab8bb0:run:2226:graphiti-catchup-2026-10-03"
+      }
+    },
+    {
+      "episode_id": "kanban:t_3f77442c:completion",
+      "title": "audit mem0 store + draft curated backfill plan (add/update only, no deletes)",
+      "domain": "services",
+      "group_id": "services.mem0",
+      "source_type": "kanban_completion_summary",
+      "source_ref": "t_3f77442c",
+      "source_path": null,
+      "source_timestamp": "2026-10-03T08:09:41Z",
+      "curated_by": "gremlin",
+      "curated_at": "2026-10-03T10:18:10Z",
+      "status": "current",
+      "summary": "A read-only mem0 audit found the live store dominated by task-progress pollution while durable personal/environment facts were largely absent, and produced an add-only curated backfill plan with zero deletes.",
+      "facts": [
+        {
+          "text": "The mem0 backfill plan is add-only: delete_count remains zero, and task-progress pollution is handled going forward by classification rather than retrospective deletion.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T08:09:41Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "Durable personal preferences and environment facts belong in mem0; operational task-progress records belong in Graphiti/session provenance instead.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T08:09:41Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "The plan was produced from read-only mem0_search and ground-truth sources without fetching or exposing the mem0 server API key.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T08:09:41Z",
+          "invalid_at": null,
+          "supersedes": []
+        }
+      ],
+      "tags": [
+        "kanban",
+        "mem0",
+        "backfill",
+        "audit",
+        "no-delete"
+      ],
+      "redaction": {
+        "reviewed": true,
+        "secret_values_removed": true,
+        "private_memory_excluded": true,
+        "source_reduced_to_summary": true,
+        "raw_transcripts_excluded": true,
+        "raw_task_body_read": false,
+        "operational_ips_required_for_topology": true,
+        "checklist_policy_section": "curated-ingest-policy.md section 4.2"
+      },
+      "scope_marker": {
+        "source_task_id": "t_3f77442c",
+        "source_run_id": 2234,
+        "dedup_key": "kanban:t_3f77442c:run:2234:graphiti-catchup-2026-10-03"
+      }
+    },
+    {
+      "episode_id": "kanban:t_1bdadf8f:completion",
+      "title": "deploy memory-reconciler to tori: env from Vaultwarden, systemd timer, first gated ingest",
+      "domain": "services",
+      "group_id": "services.memory-reconciler",
+      "source_type": "deployment_summary",
+      "source_ref": "t_1bdadf8f",
+      "source_path": null,
+      "source_timestamp": "2026-10-03T09:19:13Z",
+      "curated_by": "gremlin",
+      "curated_at": "2026-10-03T10:18:10Z",
+      "status": "uncertain",
+      "summary": "memory-reconciler was deployed to tori with systemd service/timer and a rendered environment file, but later review found unattended operation was not approved because service hardening and dashboard evidence needed remediation.",
+      "facts": [
+        {
+          "text": "memory-reconciler deployment placed service and timer units on tori with a daily scheduled cadence and a mode-0600 environment file under /opt/memory-reconciler.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T09:19:13Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "The deployment state should be treated as not approved for unattended operation until the later review findings are remediated.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T09:19:13Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "No secret values are represented in this episode; Vaultwarden remains the secret reference model for runtime configuration.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T09:19:13Z",
+          "invalid_at": null,
+          "supersedes": []
+        }
+      ],
+      "tags": [
+        "kanban",
+        "memory-reconciler",
+        "deployment",
+        "review-pending"
+      ],
+      "redaction": {
+        "reviewed": true,
+        "secret_values_removed": true,
+        "private_memory_excluded": true,
+        "source_reduced_to_summary": true,
+        "raw_transcripts_excluded": true,
+        "raw_task_body_read": false,
+        "operational_ips_required_for_topology": true,
+        "checklist_policy_section": "curated-ingest-policy.md section 4.2"
+      },
+      "scope_marker": {
+        "source_task_id": "t_1bdadf8f",
+        "source_run_id": 2235,
+        "dedup_key": "kanban:t_1bdadf8f:run:2235:graphiti-catchup-2026-10-03"
+      }
+    },
+    {
+      "episode_id": "kanban:t_e044df92:completion",
+      "title": "sentinel review: memory-reconciler secrets/redaction/dedup/cost/destructive safety",
+      "domain": "incidents",
+      "group_id": "incidents.memory-reconciler.2026-10",
+      "source_type": "incident_summary",
+      "source_ref": "t_e044df92",
+      "source_path": null,
+      "source_timestamp": "2026-10-03T09:26:38Z",
+      "curated_by": "gremlin",
+      "curated_at": "2026-10-03T10:18:10Z",
+      "status": "current",
+      "summary": "The memory-reconciler safety review failed for unattended operation: redaction/dedup/cost/destructive checks mostly passed, but the deployed/apply systemd unit ran as root without hardening and the claimed dashboard evidence was insufficient.",
+      "facts": [
+        {
+          "text": "memory-reconciler is not approved for unattended operation until the root-running systemd hardening issue and dashboard evidence gap are fixed and re-reviewed.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T09:26:38Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "The review did not reject the redaction/dedup/cost/destructive safety model wholesale; it identified deployment hardening and evidence blockers.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T09:26:38Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "Future deployment work should treat this as a blocking review finding, not as a live service health success.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T09:26:38Z",
+          "invalid_at": null,
+          "supersedes": []
+        }
+      ],
+      "tags": [
+        "kanban",
+        "review-fail",
+        "memory-reconciler",
+        "systemd-hardening"
+      ],
+      "redaction": {
+        "reviewed": true,
+        "secret_values_removed": true,
+        "private_memory_excluded": true,
+        "source_reduced_to_summary": true,
+        "raw_transcripts_excluded": true,
+        "raw_task_body_read": false,
+        "operational_ips_required_for_topology": true,
+        "checklist_policy_section": "curated-ingest-policy.md section 4.2"
+      },
+      "scope_marker": {
+        "source_task_id": "t_e044df92",
+        "source_run_id": 2239,
+        "dedup_key": "kanban:t_e044df92:run:2239:graphiti-catchup-2026-10-03"
+      }
+    },
+    {
+      "episode_id": "kanban:t_1b099c67:completion",
+      "title": "epic: backfill/catch up mem0 and Graphiti to current state",
+      "domain": "decisions",
+      "group_id": "decisions.memory-reconciler",
+      "source_type": "decision_supersession",
+      "source_ref": "t_1b099c67",
+      "source_path": null,
+      "source_timestamp": "2026-10-03T07:51:31Z",
+      "curated_by": "gremlin",
+      "curated_at": "2026-10-03T10:18:10Z",
+      "status": "current",
+      "summary": "The catch-up/backfill epic separated one-time curated backfill from the ongoing continuous memory-reconciler pipeline, with parallel lanes for mem0 audit/backfill and redacted Graphiti catch-up episodes.",
+      "facts": [
+        {
+          "text": "One-time memory catch-up/backfill is a separate epic from the ongoing continuous memory-reconciler pipeline.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T07:51:31Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "The mem0 lane is add/update-only with no deletes; the Graphiti lane curates redacted operational episodes for a separate ingest card.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T07:51:31Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "This separation lets the continuous reconciler deduplicate against reviewed catch-up scope rather than blindly replaying old work.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T07:51:31Z",
+          "invalid_at": null,
+          "supersedes": []
+        }
+      ],
+      "tags": [
+        "kanban",
+        "decision",
+        "catch-up",
+        "backfill",
+        "dedup"
+      ],
+      "redaction": {
+        "reviewed": true,
+        "secret_values_removed": true,
+        "private_memory_excluded": true,
+        "source_reduced_to_summary": true,
+        "raw_transcripts_excluded": true,
+        "raw_task_body_read": false,
+        "operational_ips_required_for_topology": true,
+        "checklist_policy_section": "curated-ingest-policy.md section 4.2"
+      },
+      "scope_marker": {
+        "source_task_id": "t_1b099c67",
+        "source_run_id": 2229,
+        "dedup_key": "kanban:t_1b099c67:run:2229:graphiti-catchup-2026-10-03"
+      }
+    },
+    {
+      "episode_id": "kanban:t_1cfb1565:completion",
+      "title": "spec: Obsidian source-of-truth architecture (LiveSync + vault + diary-summary ingestion)",
+      "domain": "services",
+      "group_id": "services.obsidian-livesync",
+      "source_type": "dependency_ownership_note",
+      "source_ref": "t_1cfb1565",
+      "source_path": null,
+      "source_timestamp": "2026-10-03T08:01:32Z",
+      "curated_by": "gremlin",
+      "curated_at": "2026-10-03T10:18:10Z",
+      "status": "current",
+      "summary": "The Obsidian source-of-truth architecture spec was written, choosing self-hosted LiveSync/CouchDB plus a NAS-backed vault and a read-only diary/goals summarizer feeding dashboard status.",
+      "facts": [
+        {
+          "text": "The Obsidian source-of-truth architecture is documented at docs/obsidian-source-of-truth.md.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T08:01:32Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "The selected shape is self-hosted LiveSync/CouchDB, LAN-only, with NAS-backed vault storage and a separate read-only summary pipeline.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T08:01:32Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "Diary/goals summarization is intended to mirror source-of-truth notes into dashboard summaries, not replace the vault as source of truth.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T08:01:32Z",
+          "invalid_at": null,
+          "supersedes": []
+        }
+      ],
+      "tags": [
+        "kanban",
+        "obsidian",
+        "livesync",
+        "architecture",
+        "source-of-truth"
+      ],
+      "redaction": {
+        "reviewed": true,
+        "secret_values_removed": true,
+        "private_memory_excluded": true,
+        "source_reduced_to_summary": true,
+        "raw_transcripts_excluded": true,
+        "raw_task_body_read": false,
+        "operational_ips_required_for_topology": true,
+        "checklist_policy_section": "curated-ingest-policy.md section 4.2"
+      },
+      "scope_marker": {
+        "source_task_id": "t_1cfb1565",
+        "source_run_id": 2231,
+        "dedup_key": "kanban:t_1cfb1565:run:2231:graphiti-catchup-2026-10-03"
+      }
+    },
+    {
+      "episode_id": "kanban:t_1d8377d3:completion",
+      "title": "deploy: self-hosted LiveSync/CouchDB + NAS vault (LAN-only)",
+      "domain": "services",
+      "group_id": "services.obsidian-livesync",
+      "source_type": "deployment_summary",
+      "source_ref": "t_1d8377d3",
+      "source_path": null,
+      "source_timestamp": "2026-10-03T09:13:55Z",
+      "curated_by": "gremlin",
+      "curated_at": "2026-10-03T10:18:10Z",
+      "status": "current",
+      "summary": "Self-hosted Obsidian LiveSync/CouchDB was deployed on critical LAN-only, with digest-pinned CouchDB, Vaultwarden-referenced credentials, an Obsidian database, and NAS vault sync artifacts.",
+      "facts": [
+        {
+          "text": "Obsidian LiveSync/CouchDB runs on critical at LAN-only 192.168.0.50:5984.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T09:13:55Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "The CouchDB deployment is single-node and digest-pinned; credentials are represented through Vaultwarden references rather than committed values.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T09:13:55Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "The deployment is operational provenance for Obsidian source-of-truth work, not a Graphiti or mem0 provider change.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T09:13:55Z",
+          "invalid_at": null,
+          "supersedes": []
+        }
+      ],
+      "tags": [
+        "kanban",
+        "obsidian",
+        "livesync",
+        "couchdb",
+        "deployment"
+      ],
+      "redaction": {
+        "reviewed": true,
+        "secret_values_removed": true,
+        "private_memory_excluded": true,
+        "source_reduced_to_summary": true,
+        "raw_transcripts_excluded": true,
+        "raw_task_body_read": false,
+        "operational_ips_required_for_topology": true,
+        "checklist_policy_section": "curated-ingest-policy.md section 4.2"
+      },
+      "scope_marker": {
+        "source_task_id": "t_1d8377d3",
+        "source_run_id": 2238,
+        "dedup_key": "kanban:t_1d8377d3:run:2238:graphiti-catchup-2026-10-03"
+      }
+    },
+    {
+      "episode_id": "kanban:t_2b820eb2:completion",
+      "title": "implement: diary-summary pipeline + dashboard source-of-truth reconciliation",
+      "domain": "services",
+      "group_id": "services.obsidian-livesync",
+      "source_type": "kanban_completion_summary",
+      "source_ref": "t_2b820eb2",
+      "source_path": null,
+      "source_timestamp": "2026-10-03T09:44:40Z",
+      "curated_by": "gremlin",
+      "curated_at": "2026-10-03T10:18:10Z",
+      "status": "uncertain",
+      "summary": "The Obsidian diary/goals summary pipeline and dashboard mirror were implemented in source, but later review found the live summarizer/dashboard deployment was not actually in place.",
+      "facts": [
+        {
+          "text": "The source implementation scans Diary/Goals Markdown and writes summaries for dashboard consumption.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T09:44:40Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "This task is implementation provenance only; live deployment evidence was later rejected by review and should not be treated as current production availability.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T09:44:40Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "Future workers should verify the live dashboard endpoint and deployed summarizer service before relying on this pipeline operationally.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T09:44:40Z",
+          "invalid_at": null,
+          "supersedes": []
+        }
+      ],
+      "tags": [
+        "kanban",
+        "obsidian",
+        "diary-summary",
+        "implementation",
+        "review-pending"
+      ],
+      "redaction": {
+        "reviewed": true,
+        "secret_values_removed": true,
+        "private_memory_excluded": true,
+        "source_reduced_to_summary": true,
+        "raw_transcripts_excluded": true,
+        "raw_task_body_read": false,
+        "operational_ips_required_for_topology": true,
+        "checklist_policy_section": "curated-ingest-policy.md section 4.2"
+      },
+      "scope_marker": {
+        "source_task_id": "t_2b820eb2",
+        "source_run_id": 2240,
+        "dedup_key": "kanban:t_2b820eb2:run:2240:graphiti-catchup-2026-10-03"
+      }
+    },
+    {
+      "episode_id": "kanban:t_cdf07d11:completion",
+      "title": "review: Obsidian source-of-truth deploy verification (security + correctness + dashboard)",
+      "domain": "incidents",
+      "group_id": "incidents.obsidian.2026-10",
+      "source_type": "incident_summary",
+      "source_ref": "t_cdf07d11",
+      "source_path": null,
+      "source_timestamp": "2026-10-03T09:55:13Z",
+      "curated_by": "gremlin",
+      "curated_at": "2026-10-03T10:18:10Z",
+      "status": "current",
+      "summary": "The Obsidian deploy verification review failed: CouchDB security/storage boundaries were mostly sound, but the live dashboard /api/obsidian/summary route returned 404 and the summarizer/runtime integration was not deployed.",
+      "facts": [
+        {
+          "text": "The Obsidian source-of-truth live verification failed because dashboard /api/obsidian/summary returned 404 on critical.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T09:55:13Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "CouchDB security/storage boundaries were mostly sound, but summarizer/dashboard runtime deployment evidence was insufficient.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T09:55:13Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "Treat Obsidian diary/goals dashboard summaries as not live until a remediation task deploys and verifies the endpoint.",
+          "confidence": "high",
+          "caveat": "Curated from Kanban completion summary and selected non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T09:55:13Z",
+          "invalid_at": null,
+          "supersedes": []
+        }
+      ],
+      "tags": [
+        "kanban",
+        "obsidian",
+        "review-fail",
+        "dashboard",
+        "deployment-gap"
+      ],
+      "redaction": {
+        "reviewed": true,
+        "secret_values_removed": true,
+        "private_memory_excluded": true,
+        "source_reduced_to_summary": true,
+        "raw_transcripts_excluded": true,
+        "raw_task_body_read": false,
+        "operational_ips_required_for_topology": true,
+        "checklist_policy_section": "curated-ingest-policy.md section 4.2"
+      },
+      "scope_marker": {
+        "source_task_id": "t_cdf07d11",
+        "source_run_id": 2241,
+        "dedup_key": "kanban:t_cdf07d11:run:2241:graphiti-catchup-2026-10-03"
+      }
+    }
+  ]
+}
