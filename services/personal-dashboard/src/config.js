@@ -33,6 +33,8 @@ const DEFAULT_CONFIG = {
       sshUser: 'root',
       statusWhenHealthy: 'healthy',
       statusDetail: 'Mem0 API liveness, container health, and recent datastore log checks are passing; dashboard exposes coarse health only.',
+      statusFile: '/app/mem0/status.json',
+      statusFileStaleAfterMs: 600000,
       dockerContainers: ['mem0-mem0-1', 'mem0-postgres-1'],
       logContainers: ['mem0-mem0-1'],
       logErrorPattern: '(datastore|pgvector|connection\\s+(?:closed|refused)|(?:closed|refused)\\s+connection|database\\s+(?:unavailable|error|failed|failure)|psycopg.*(?:error|closed)|5(?:02|03))',
@@ -548,7 +550,7 @@ function validateStatusChecks(statusChecks) {
       }
       result.type = type;
       result.baseUrl = baseUrl;
-      for (const field of ['docsPath', 'openapiPath', 'searchPath', 'apiKeyEnv', 'searchUserId', 'logErrorPattern', 'sshHost', 'sshUser']) {
+      for (const field of ['docsPath', 'openapiPath', 'searchPath', 'apiKeyEnv', 'searchUserId', 'logErrorPattern', 'sshHost', 'sshUser', 'statusFile']) {
         if (check[field] !== undefined) {
           result[field] = requireText(check[field], `statusChecks[${index}].${field}`);
         }
@@ -570,11 +572,12 @@ function validateStatusChecks(statusChecks) {
           result[field] = check[field].map((value, containerIndex) => requireText(value, `statusChecks[${index}].${field}[${containerIndex}]`));
         }
       }
-      for (const field of ['logSinceSeconds', 'logTail', 'sshPort', 'sshConnectTimeoutSeconds']) {
+      for (const field of ['logSinceSeconds', 'logTail', 'sshPort', 'sshConnectTimeoutSeconds', 'statusFileStaleAfterMs']) {
         if (check[field] !== undefined) {
           const value = Number(check[field]);
-          if (!Number.isFinite(value) || value <= 0 || value > 86_400) {
-            throw new Error(`Invalid ${field} for ${label}: expected a positive number up to 86400`);
+          const max = field === 'statusFileStaleAfterMs' ? 7 * 24 * 60 * 60 * 1000 : 86_400;
+          if (!Number.isFinite(value) || value <= 0 || value > max) {
+            throw new Error(`Invalid ${field} for ${label}: expected a positive number up to ${max}`);
           }
           result[field] = value;
         }

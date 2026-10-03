@@ -18,6 +18,7 @@ KANBAN_DB_HOST_DIR=${KANBAN_DB_HOST_DIR:-/mnt/nas/services/personal-dashboard/ka
 HOMELAB_HEALTH_HOST_DIR=${HOMELAB_HEALTH_HOST_DIR:-/mnt/nas/services/personal-dashboard/homelab-health}
 MOBILE_WORKFLOW_STATUS_HOST_DIR=${MOBILE_WORKFLOW_STATUS_HOST_DIR:-/mnt/nas/services/personal-dashboard/mobile-workflow}
 METAMCP_STATUS_HOST_DIR=${METAMCP_STATUS_HOST_DIR:-/mnt/nas/services/personal-dashboard/metamcp}
+MEM0_STATUS_HOST_DIR=${MEM0_STATUS_HOST_DIR:-/mnt/nas/services/personal-dashboard/mem0}
 GRAPHITI_STATUS_HOST_FILE=${GRAPHITI_STATUS_HOST_FILE:-/mnt/nas/services/graphiti/status/latest-smoke-backup.json}
 WRITING_POSTS_HOST_DIR=${WRITING_POSTS_HOST_DIR:-/var/lib/personal-dashboard/writing}
 FINNICK_REPORT_HOST_PATH=$FINNICK_REPORT_HOST_DIR/latest_report.txt
@@ -168,6 +169,7 @@ docker run -d \
   -e MOBILE_CONTROL_UPSTREAM_URL=${MOBILE_CONTROL_UPSTREAM_URL:-http://192.168.0.20:6081} \
   -e MOBILE_CONTROL_DEVICE_ID=${MOBILE_CONTROL_DEVICE_ID:-emulator-5554} \
   -e METAMCP_STATUS_FILE=/app/metamcp/status.json \
+  -e MEM0_STATUS_FILE=/app/mem0/status.json \
   -e GRAPHITI_STATUS_FILE=/app/graphiti/latest-smoke-backup.json \
   -e DASHBOARD_AUTH_MODE=${DASHBOARD_AUTH_MODE:-reverse-proxy} \
   -e DASHBOARD_PROXY_USER_HEADER=${DASHBOARD_PROXY_USER_HEADER:-cf-access-authenticated-user-email} \
@@ -186,6 +188,7 @@ docker run -d \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/mobile-workflow,target=/app/mobile-workflow,readonly" \
   --mount "type=bind,source=$MOBILE_VIEWER_NOVNC_TOKEN_FILE_HOST,target=/run/secrets/mobile-viewer-novnc-token,readonly" \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/metamcp,target=/app/metamcp,readonly" \
+  --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/mem0,target=/app/mem0,readonly" \
   --mount "type=bind,source=$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/graphiti,target=/app/graphiti,readonly" \
   --mount "type=bind,source=$WRITING_POSTS_HOST_DIR,target=/app/writing" \
   "$IMAGE"

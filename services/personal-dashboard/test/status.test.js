@@ -235,6 +235,56 @@ test('mem0Health can probe localhost-only mem0 over SSH without exposing remote 
   assert.equal(JSON.stringify(calls).includes('super-secret-test-key'), false);
 });
 
+test('mem0Health reports healthy from a sanitized publisher snapshot with freshness', async () => {
+  const snapshot = {
+    generated_at_utc: '2026-10-03T12:00:00Z',
+    checks: {
+      docs: { passed: true, http_status: 200 },
+      openapi: { passed: true, http_status: 200 },
+      containers: { passed: true, total: 2, healthy: 2 },
+      logs: { passed: true, checked: true, error_count: 0 },
+      hermes_profiles: { passed: true, profiles: { default: { provider: 'mem0', configured: true, enabled: true } } }
+    }
+  };
+  const service = new StatusService({
+    checks: [{ ...mem0Check, statusFile: '/app/mem0/status.json', statusFileStaleAfterMs: 600000 }],
+    readFileImpl: async () => JSON.stringify(snapshot),
+    fetchImpl: async () => { throw new Error('snapshot-backed mem0 should not fetch from the dashboard container'); },
+    execFileImpl: async () => { throw new Error('snapshot-backed mem0 should not shell out from the dashboard container'); }
+  });
+
+  const check = await service.probe({ ...mem0Check, statusFile: '/app/mem0/status.json', statusFileStaleAfterMs: 600000 }, '2026-10-03T12:03:00Z');
+
+  assert.equal(check.status, 'healthy');
+  assert.equal(check.freshness.snapshotCreatedAt, '2026-10-03T12:00:00.000Z');
+  assert.equal(check.freshness.stale, false);
+  assert.equal(check.evidence.source.includes('memory contents'), true);
+  assert.equal(JSON.stringify(check).includes('/app/mem0/status.json'), false);
+});
+
+test('mem0Health reports stale when the sanitized publisher snapshot is old', async () => {
+  const snapshot = {
+    generated_at_utc: '2026-10-03T12:00:00Z',
+    checks: {
+      docs: { passed: true },
+      openapi: { passed: true },
+      containers: { passed: true, total: 2, healthy: 2 },
+      logs: { passed: true, error_count: 0 },
+      hermes_profiles: { passed: true }
+    }
+  };
+  const service = new StatusService({
+    checks: [{ ...mem0Check, statusFile: '/app/mem0/status.json', statusFileStaleAfterMs: 600000 }],
+    readFileImpl: async () => JSON.stringify(snapshot)
+  });
+
+  const check = await service.probe({ ...mem0Check, statusFile: '/app/mem0/status.json', statusFileStaleAfterMs: 600000 }, '2026-10-03T12:30:00Z');
+
+  assert.equal(check.status, 'stale');
+  assert.equal(check.error, 'mem0_status_stale');
+  assert.equal(check.freshness.stale, true);
+});
+
 
 test('graphitiNeo4jHealth reports not deployed cards without exposing internal endpoints', async () => {
   const service = new StatusService({

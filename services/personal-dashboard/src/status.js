@@ -14,6 +14,7 @@ const DEFAULT_MEM0_SEARCH_PATH = '/search';
 const DEFAULT_MEM0_LOG_SINCE_SECONDS = 180;
 const DEFAULT_MEM0_LOG_TAIL = 200;
 const DEFAULT_MEM0_ERROR_PATTERN = '(datastore|pgvector|connection\\s+(?:closed|refused)|(?:closed|refused)\\s+connection|database\\s+(?:unavailable|error|failed|failure)|psycopg.*(?:error|closed)|5(?:02|03))';
+const DEFAULT_MEM0_STATUS_STALE_AFTER_MS = 10 * 60 * 1000;
 const execFile = promisify(execFileCallback);
 
 function safeStatus(value, fallback = 'unknown') {
@@ -408,6 +409,10 @@ export class StatusService {
   }
 
   async probeMem0Health(check, checkedAt = new Date().toISOString()) {
+    if (check.statusFile) {
+      return this.probeMem0StatusSnapshot(check, checkedAt);
+    }
+
     const started = Date.now();
     const baseUrl = check.baseUrl;
     const details = [];
@@ -481,6 +486,87 @@ export class StatusService {
       checkedAt,
       freshness: { checkedAt, cacheTtlMs: this.ttlMs },
       ...publicCheckMetadata(check)
+    };
+  }
+
+  async probeMem0StatusSnapshot(check, checkedAt = new Date().toISOString()) {
+    const started = Date.now();
+    let parsed;
+    try {
+      parsed = JSON.parse(await this.readFileImpl(check.statusFile, 'utf8'));
+    } catch (error) {
+      return {
+        ...checkIdentity(check),
+        status: error?.code === 'ENOENT' ? 'not_configured' : 'down',
+        error: error?.code === 'ENOENT' ? 'mem0_status_snapshot_missing' : 'mem0_status_snapshot_unreadable',
+        message: error?.code === 'ENOENT'
+          ? 'Mem0 status snapshot has not been published yet'
+          : 'Mem0 status snapshot could not be read',
+        latencyMs: Date.now() - started,
+        checkedAt,
+        freshness: { checkedAt, cacheTtlMs: this.ttlMs },
+        ...publicCheckMetadata(check)
+      };
+    }
+
+    const receipt = this.summarizeMem0StatusSnapshot(parsed, check, checkedAt);
+    const status = receipt.passed ? (receipt.isStale ? 'stale' : safeStatus(check.statusWhenHealthy, 'healthy')) : 'down';
+    const message = receipt.passed
+      ? `Latest mem0 publisher snapshot passed at ${receipt.createdAt ?? 'unknown time'}; ${receipt.summary}`
+      : `Latest mem0 publisher snapshot failed or is incomplete at ${receipt.createdAt ?? 'unknown time'}; ${receipt.summary}`;
+    return {
+      ...checkIdentity(check),
+      status,
+      ...(status === 'healthy' ? {} : { error: receipt.isStale && receipt.passed ? 'mem0_status_stale' : 'mem0_status_failed' }),
+      message,
+      latencyMs: Date.now() - started,
+      checkedAt,
+      freshness: {
+        checkedAt,
+        cacheTtlMs: this.ttlMs,
+        snapshotCreatedAt: receipt.createdAt,
+        stale: receipt.isStale,
+        staleAfterMs: receipt.staleAfterMs
+      },
+      evidence: receipt.evidence,
+      ...publicCheckMetadata(check)
+    };
+  }
+
+  summarizeMem0StatusSnapshot(snapshot, check, checkedAt) {
+    const createdAt = safeIsoTimestamp(snapshot.generated_at_utc) ?? safeIsoTimestamp(snapshot.generatedAt) ?? null;
+    const staleAfterMs = Number(check.statusFileStaleAfterMs ?? DEFAULT_MEM0_STATUS_STALE_AFTER_MS);
+    const ageMs = createdAt ? Date.parse(checkedAt) - Date.parse(createdAt) : Number.POSITIVE_INFINITY;
+    const isStale = Number.isFinite(staleAfterMs) && staleAfterMs > 0 ? ageMs > staleAfterMs : false;
+    const checks = snapshot.checks ?? {};
+    const docsPassed = checks.docs?.passed === true;
+    const openapiPassed = checks.openapi?.passed === true;
+    const containersPassed = checks.containers?.passed === true;
+    const logsPassed = checks.logs?.passed === true;
+    const profilesPassed = checks.hermes_profiles?.passed !== false;
+    const passed = docsPassed && openapiPassed && containersPassed && logsPassed && profilesPassed;
+    const containerText = Number.isFinite(Number(checks.containers?.healthy)) && Number.isFinite(Number(checks.containers?.total))
+      ? `${Number(checks.containers.healthy)}/${Number(checks.containers.total)} containers healthy`
+      : 'container health recorded';
+    const logText = Number.isFinite(Number(checks.logs?.error_count))
+      ? `${Number(checks.logs.error_count)} recent datastore/log error signals`
+      : 'recent datastore/log scan recorded';
+    return {
+      createdAt,
+      staleAfterMs,
+      isStale,
+      passed,
+      summary: `docs ${docsPassed ? 'reachable' : 'failed'}, openapi ${openapiPassed ? 'reachable' : 'failed'}, ${containerText}, ${logText}`,
+      evidence: {
+        source: 'sanitized mem0 status publisher snapshot; memory contents and secrets are not exposed',
+        snapshotCreatedAt: createdAt,
+        docsPassed,
+        openapiPassed,
+        containersPassed,
+        logsPassed,
+        profilesPassed,
+        stale: isStale
+      }
     };
   }
 

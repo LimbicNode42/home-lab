@@ -76,6 +76,8 @@
       "sshUser": "root",
       "statusWhenHealthy": "healthy",
       "statusDetail": "Mem0 API liveness, container health, and recent datastore log checks are passing; dashboard exposes coarse health only.",
+      "statusFile": "/app/mem0/status.json",
+      "statusFileStaleAfterMs": 600000,
       "dockerContainers": [
         "mem0-mem0-1",
         "mem0-postgres-1"
