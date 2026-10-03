@@ -41,14 +41,6 @@ const DEFAULT_CONFIG = {
       timeoutMs: 2500
     },
     {
-      id: 'graphiti-mcp',
-      label: 'Graphiti MCP access',
-      type: 'graphitiMcpHealth',
-      displayUrl: 'http://metamcp.local:12008',
-      statusFile: '/app/graphiti/latest-mcp-status.json',
-      statusFileStaleAfterMs: 900000
-    },
-    {
       id: 'metamcp-gateway',
       label: 'MetaMCP gateway',
       targetUrl: 'http://192.168.0.20:12008/health',
@@ -97,7 +89,9 @@ const DEFAULT_CONFIG = {
     version: '2.4.22',
     services: [
       { id: 'metamcp', label: 'MetaMCP app', state: 'live_probe_configured', detail: 'Live gateway health is probed server-side at /health; browser links use the metamcp.local friendly name because critical cannot resolve mDNS .local names.' },
-      { id: 'metamcp-pg', label: 'MetaMCP Postgres', state: 'last_known_healthy', detail: 'Internal database for the MetaMCP control plane.' }
+      { id: 'metamcp-pg', label: 'MetaMCP Postgres', state: 'last_known_healthy', detail: 'Internal database for the MetaMCP control plane.' },
+      { id: 'graphiti-mcp', label: 'Graphiti MCP server', state: 'not_registered', detail: 'Graphiti MCP remains a read-only server template awaiting native-MCP registration in MetaMCP; no live health is claimed here.' },
+      { id: 'graphiti-mcp-safety', label: 'Graphiti MCP safety', state: 'read_only_surface', detail: 'Safety signal: read-only tool surface expected; destructive tool exposure must remain absent.' }
     ],
     tools: {
       total: 36,

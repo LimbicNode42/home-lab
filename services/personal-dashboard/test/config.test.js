@@ -155,6 +155,9 @@ test('repository overview status config stays concise and link-oriented', async 
   const serializedPublic = JSON.stringify(publicConfig);
 
   assert.equal(config.statusChecks.some((check) => check.statusDetail || check.unresolvedFollowUp), false);
+  assert.equal(config.statusChecks.some((check) => check.id === 'graphiti-mcp' || check.type === 'graphitiMcpHealth'), false);
+  assert.equal(publicConfig.metaMcp.services.some((service) => service.id === 'graphiti-mcp' && service.state === 'not_registered'), true);
+  assert.equal(publicConfig.metaMcp.services.some((service) => service.id === 'graphiti-mcp-safety' && service.state === 'read_only_surface'), true);
   assert.equal(serializedPublic.includes('statusDetail'), false);
   assert.equal(serializedPublic.includes('unresolvedFollowUp'), false);
   for (const check of publicConfig.statusChecks) {

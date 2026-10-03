@@ -64,14 +64,6 @@
       "statusFileStaleAfterMs": 86400000
     },
     {
-      "id": "graphiti-mcp",
-      "label": "Graphiti MCP access",
-      "type": "graphitiMcpHealth",
-      "statusFile": "/app/graphiti/latest-mcp-status.json",
-      "statusFileStaleAfterMs": 900000,
-      "displayUrl": "http://metamcp.local:12008"
-    },
-    {
       "id": "mem0-health",
       "label": "Mem0 memory provider",
       "type": "mem0Health",
@@ -150,6 +142,18 @@
         "label": "MetaMCP Postgres",
         "state": "last_known_healthy",
         "detail": "Container metamcp-pg was previously verified healthy as the internal MetaMCP database."
+      },
+      {
+        "id": "graphiti-mcp",
+        "label": "Graphiti MCP server",
+        "state": "not_registered",
+        "detail": "Graphiti MCP remains a read-only server template awaiting native-MCP registration in MetaMCP; no live health is claimed here."
+      },
+      {
+        "id": "graphiti-mcp-safety",
+        "label": "Graphiti MCP safety",
+        "state": "read_only_surface",
+        "detail": "Safety signal: read-only tool surface expected; destructive tool exposure must remain absent."
       }
     ],
     "tools": {

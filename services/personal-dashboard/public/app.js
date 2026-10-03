@@ -233,14 +233,17 @@ function renderMetaMcpOverview(metaMcp, statusPayload = null) {
 
   const registry = live?.registry || {};
   const counts = registry.counts || {};
-  const services = Array.isArray(registry.servers) && registry.servers.length > 0
+  const configuredServices = Array.isArray(base.services) ? base.services : [];
+  const liveServices = Array.isArray(registry.servers) && registry.servers.length > 0
     ? registry.servers.map((server) => ({
       id: server.name,
       label: server.namespace ? `${server.namespace}/${server.name}` : server.name,
       state: server.errorStatus || 'unknown',
       detail: [server.transport ? `Transport ${server.transport}` : null, server.namespace ? `Namespace ${server.namespace}` : null].filter(Boolean).join(' · ') || 'Published by live MetaMCP registry snapshot.'
     }))
-    : (Array.isArray(base.services) ? base.services : []);
+    : [];
+  const liveServiceIds = new Set(liveServices.map((service) => service.id));
+  const services = [...liveServices, ...configuredServices.filter((service) => !liveServiceIds.has(service.id))];
   const namespaces = Array.isArray(registry.namespaces) ? registry.namespaces : [];
   const domains = Array.isArray(base.tools?.domains) ? base.tools.domains : [];
   const gateway = live?.gateway || (Array.isArray(statusPayload?.checks) ? statusPayload.checks.find((check) => check.id === 'metamcp-gateway') : null);

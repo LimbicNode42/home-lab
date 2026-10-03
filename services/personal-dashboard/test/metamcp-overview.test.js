@@ -39,7 +39,9 @@ const metamcpConfig = {
     version: '2.4.22',
     services: [
       { id: 'metamcp', label: 'MetaMCP app', state: 'last_known_healthy', detail: 'Loopback-only on tori.' },
-      { id: 'metamcp-pg', label: 'MetaMCP Postgres', state: 'last_known_healthy', detail: 'Internal database for MetaMCP.' }
+      { id: 'metamcp-pg', label: 'MetaMCP Postgres', state: 'last_known_healthy', detail: 'Internal database for MetaMCP.' },
+      { id: 'graphiti-mcp', label: 'Graphiti MCP server', state: 'not_registered', detail: 'Read-only server template awaiting native-MCP registration; no live health is claimed.' },
+      { id: 'graphiti-mcp-safety', label: 'Graphiti MCP safety', state: 'read_only_surface', detail: 'Safety signal: destructive tool exposure must remain absent.' }
     ],
     tools: {
       total: 36,
@@ -67,7 +69,9 @@ test('normalizes MetaMCP overview metadata for public display', () => {
 
   assert.equal(publicConfig.metaMcp.enabled, true);
   assert.equal(publicConfig.metaMcp.version, '2.4.22');
-  assert.deepEqual(publicConfig.metaMcp.services.map((service) => service.id), ['metamcp', 'metamcp-pg']);
+  assert.deepEqual(publicConfig.metaMcp.services.map((service) => service.id), ['metamcp', 'metamcp-pg', 'graphiti-mcp', 'graphiti-mcp-safety']);
+  assert.equal(publicConfig.metaMcp.services.find((service) => service.id === 'graphiti-mcp').state, 'not_registered');
+  assert.equal(publicConfig.metaMcp.services.find((service) => service.id === 'graphiti-mcp-safety').state, 'read_only_surface');
   assert.equal(publicConfig.metaMcp.tools.total, 36);
   assert.deepEqual(publicConfig.metaMcp.tools.domains.map((domain) => domain.id), ['filesystem', 'git', 'memory', 'fetch']);
   assert.equal(publicConfig.metaMcp.access.mode, 'lan_gateway');
@@ -132,6 +136,8 @@ test('GET /api/config/public returns the MetaMCP overview without target URLs or
     assert.equal(response.status, 200);
     assert.equal(body.metaMcp.tools.total, 36);
     assert.equal(body.metaMcp.services[1].label, 'MetaMCP Postgres');
+    assert.equal(body.metaMcp.services.some((service) => service.id === 'graphiti-mcp' && service.state === 'not_registered'), true);
+    assert.equal(body.metaMcp.services.some((service) => service.id === 'graphiti-mcp-safety' && service.state === 'read_only_surface'), true);
     assert.equal(body.metaMcp.access.links[0].href, 'http://metamcp.local:12008');
     assert.equal(serialized.includes('http://192.168.0.20:12008'), false);
     assert.equal(body.metaMcp.access.command, undefined);
@@ -160,6 +166,8 @@ test('app.js renders MetaMCP services, live gateway status, domain tool counts, 
   assert.match(appSource, /metamcp-access-links/);
   assert.match(appSource, /domain\.count/);
   assert.match(appSource, /service\.state/);
+  assert.match(appSource, /configuredServices/);
+  assert.match(appSource, /liveServiceIds/);
   assert.match(appSource, /renderMetaMcpOverview\(dashboardConfig\.metaMcp, payload\)/);
 });
 
