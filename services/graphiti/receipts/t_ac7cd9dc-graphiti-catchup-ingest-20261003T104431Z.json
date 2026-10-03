@@ -1,0 +1,270 @@
+{
+  "bounded_policy": {
+    "max_episodes": 25,
+    "max_words_per_episode": 1500,
+    "raw_transcripts_included": false,
+    "sensitive_material_included": false
+  },
+  "episodes_ingested": 19,
+  "exposure": {
+    "listeners": [
+      "LISTEN 0      4096            127.0.0.1:7474       0.0.0.0:*    users:((\"docker-proxy\",pid=3278746,fd=4))                                                                                                        ",
+      "LISTEN 0      4096            127.0.0.1:7687       0.0.0.0:*    users:((\"docker-proxy\",pid=3278730,fd=4))                                                                                                        ",
+      "LISTEN 0      4096            127.0.0.1:8000       0.0.0.0:*    users:((\"docker-proxy\",pid=3282198,fd=4))"
+    ],
+    "loopback_only": true,
+    "loopback_only_checked": true
+  },
+  "gaps": [
+    {
+      "gap": "no_queryable_facts",
+      "group_id": "incidents.memory-reconciler.2026-10",
+      "query": "memory-reconciler not approved unattended operation systemd hardening"
+    }
+  ],
+  "groups": [
+    "decisions.memory-reconciler",
+    "incidents.memory-health.2026-10",
+    "incidents.memory-reconciler.2026-10",
+    "incidents.obsidian.2026-10",
+    "services.graphiti",
+    "services.mem0",
+    "services.memory-reconciler",
+    "services.metamcp",
+    "services.obsidian-livesync"
+  ],
+  "ingest_path": "reviewed agent_graphiti.cli ingest -> Graphiti /episodes on tori loopback",
+  "notes": [
+    "No credential values recorded; receipt uses task ids, group ids, counts, and sanitized wrapper/query summaries only.",
+    "Wrapper normalized search samples do not emit curated caveat text when Graphiti search does not return invalid_at; curated caveats remain in source payload."
+  ],
+  "payload_id": "graphiti-catchup-2026-10-03",
+  "payload_path": "/root/work/home-lab/services/memory-reconciler/curated/graphiti-catchup-2026-10-03.json",
+  "query_verification": [
+    {
+      "expected_episode_count": 2,
+      "group_id": "decisions.memory-reconciler",
+      "missing_expected_episode_ids": [],
+      "query": "continuous memory-reconciler v1 source completed Kanban tasks only",
+      "query_result_count": 7,
+      "query_status": "ok",
+      "retrieved_episode_count": 2,
+      "sample": {
+        "caveat": null,
+        "fact": "The one-time memory catch-up/backfill epic is a separate task from the ongoing continuous memory-reconciler pipeline which involves Graphiti.",
+        "group": "decisions.memory-reconciler",
+        "invalid_at": null,
+        "source_ref": "t_1b099c67",
+        "valid_at": "2026-10-03T07:51:31+00:00"
+      }
+    },
+    {
+      "expected_episode_count": 4,
+      "group_id": "incidents.memory-health.2026-10",
+      "missing_expected_episode_ids": [],
+      "query": "memory MCP Overview health epic is closed",
+      "query_result_count": 10,
+      "query_status": "ok",
+      "retrieved_episode_count": 4,
+      "sample": {
+        "caveat": null,
+        "fact": "The memory/MCP Overview health epic is closed with remediation children and sentinel review complete involving MetaMCP.",
+        "group": "incidents.memory-health.2026-10",
+        "invalid_at": null,
+        "source_ref": "t_055f2613",
+        "valid_at": "2026-10-03T05:24:11+00:00"
+      }
+    },
+    {
+      "expected_episode_count": 1,
+      "group_id": "incidents.memory-reconciler.2026-10",
+      "missing_expected_episode_ids": [],
+      "query": "memory-reconciler not approved unattended operation systemd hardening",
+      "query_result_count": 0,
+      "query_status": "ok",
+      "retrieved_episode_count": 1,
+      "sample": {
+        "caveat": null,
+        "fact": "",
+        "group": null,
+        "invalid_at": null,
+        "source_ref": null,
+        "valid_at": null
+      }
+    },
+    {
+      "expected_episode_count": 1,
+      "group_id": "incidents.obsidian.2026-10",
+      "missing_expected_episode_ids": [],
+      "query": "Obsidian source-of-truth live verification failed dashboard",
+      "query_result_count": 1,
+      "query_status": "ok",
+      "retrieved_episode_count": 1,
+      "sample": {
+        "caveat": null,
+        "fact": "The Obsidian source-of-truth live verification failed because dashboard /api/obsidian/summary returned 404 on critical.",
+        "group": "incidents.obsidian.2026-10",
+        "invalid_at": null,
+        "source_ref": "t_cdf07d11",
+        "valid_at": "2026-10-03T09:55:13+00:00"
+      }
+    },
+    {
+      "expected_episode_count": 2,
+      "group_id": "services.graphiti",
+      "missing_expected_episode_ids": [],
+      "query": "Graphiti MCP agent access is intentionally read-only",
+      "query_result_count": 6,
+      "query_status": "ok",
+      "retrieved_episode_count": 3,
+      "sample": {
+        "caveat": null,
+        "fact": "Graphiti MCP agent access is intentionally read-only and provenance-safe for the Home Dashboard, exposing status, search, provenance lookup, and curated-episode validation, while destructive raw endpoints are not.",
+        "group": "services.graphiti",
+        "invalid_at": null,
+        "source_ref": "t_f41559d5",
+        "valid_at": "2026-10-03T03:46:00+00:00"
+      }
+    },
+    {
+      "expected_episode_count": 2,
+      "group_id": "services.mem0",
+      "missing_expected_episode_ids": [],
+      "query": "mem0 Home Dashboard false-reported down",
+      "query_result_count": 3,
+      "query_status": "ok",
+      "retrieved_episode_count": 2,
+      "sample": {
+        "caveat": null,
+        "fact": "mem0 was verified live and usable while the Home Dashboard false-reported it as down.",
+        "group": "services.mem0",
+        "invalid_at": null,
+        "source_ref": "t_a153b094",
+        "valid_at": "2026-10-03T02:45:53+00:00"
+      }
+    },
+    {
+      "expected_episode_count": 3,
+      "group_id": "services.memory-reconciler",
+      "missing_expected_episode_ids": [],
+      "query": "memory-reconciler extracts only done Kanban task summaries",
+      "query_result_count": 10,
+      "query_status": "ok",
+      "retrieved_episode_count": 50,
+      "sample": {
+        "caveat": null,
+        "fact": "The memory-reconciler v1 code layer was implemented under services/memory-reconciler with read-only Kanban extraction, durable-fact classification, curated Graphiti episode building, deduplication, guardrails, CLI, tests, and runbook/config scaffolding.",
+        "group": "services.memory-reconciler",
+        "invalid_at": null,
+        "source_ref": "t_6c585aed",
+        "valid_at": "2026-10-03T07:07:11+00:00"
+      }
+    },
+    {
+      "expected_episode_count": 1,
+      "group_id": "services.metamcp",
+      "missing_expected_episode_ids": [],
+      "query": "MetaMCP service health was stable dashboard-side freshness",
+      "query_result_count": 2,
+      "query_status": "ok",
+      "retrieved_episode_count": 1,
+      "sample": {
+        "caveat": null,
+        "fact": "MetaMCP service health was stable during the incident; the observed problem was dashboard-side freshness/probe handling, not MetaMCP service failure.",
+        "group": "services.metamcp",
+        "invalid_at": null,
+        "source_ref": "t_83724179",
+        "valid_at": "2026-10-03T02:58:36+00:00"
+      }
+    },
+    {
+      "expected_episode_count": 3,
+      "group_id": "services.obsidian-livesync",
+      "missing_expected_episode_ids": [],
+      "query": "Obsidian LiveSync CouchDB runs on critical LAN-only",
+      "query_result_count": 8,
+      "query_status": "ok",
+      "retrieved_episode_count": 3,
+      "sample": {
+        "caveat": null,
+        "fact": "Obsidian LiveSync/CouchDB runs on critical at LAN-only 192.168.0.50:5984.",
+        "group": "services.obsidian-livesync",
+        "invalid_at": null,
+        "source_ref": "t_1d8377d3",
+        "valid_at": "2026-10-03T09:13:55+00:00"
+      }
+    }
+  ],
+  "redaction_counts": {
+    "t_055f2613": {
+      "total": 0
+    },
+    "t_0dea3e36": {
+      "total": 0
+    },
+    "t_1989aa24": {
+      "total": 0
+    },
+    "t_1b099c67": {
+      "total": 0
+    },
+    "t_1bdadf8f": {
+      "total": 0
+    },
+    "t_1cfb1565": {
+      "total": 0
+    },
+    "t_1d8377d3": {
+      "total": 0
+    },
+    "t_2aab8bb0": {
+      "total": 0
+    },
+    "t_2b820eb2": {
+      "total": 0
+    },
+    "t_330b3a6c": {
+      "total": 0
+    },
+    "t_3f77442c": {
+      "total": 0
+    },
+    "t_6c585aed": {
+      "total": 0
+    },
+    "t_83724179": {
+      "total": 0
+    },
+    "t_95faf051": {
+      "total": 0
+    },
+    "t_a153b094": {
+      "total": 0
+    },
+    "t_cdf07d11": {
+      "total": 0
+    },
+    "t_e044df92": {
+      "total": 0
+    },
+    "t_f41559d5": {
+      "total": 0
+    },
+    "t_febc5e27": {
+      "total": 0
+    }
+  },
+  "redaction_total_replacements": 0,
+  "run_id": 2245,
+  "task_id": "t_ac7cd9dc",
+  "temporal_invalidation_spot_check": {
+    "invalid_at_values_seen": [],
+    "over_aggressive_invalidation_observed": false
+  },
+  "timestamp": "2026-10-03T10:45:23Z",
+  "vector_index": {
+    "online": true,
+    "status_csv": "name, state, populationPercent, type, entityType, labelsOrTypes, properties\n\"fact_embedding_vector\", \"ONLINE\", 100.0, \"VECTOR\", \"RELATIONSHIP\", [\"RELATES_TO\"], [\"fact_embedding\"]"
+  },
+  "verified": false
+}
