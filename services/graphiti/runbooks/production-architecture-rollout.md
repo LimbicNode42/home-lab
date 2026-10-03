@@ -141,6 +141,20 @@ Do not create a Cloudflare Tunnel route, public Traefik route, or raw agent tool
 
 If cross-host agents need access, implement the wrapper first and gate it with a non-secret auth design using Vaultwarden-referenced service token material. Dashboard output must not include tokens, local filesystem paths, raw query text, logs, or graph dumps.
 
+### Neo4j browser operator access
+
+Recommendation: keep Neo4j HTTP and Bolt loopback-only on `tori` and use a short-lived SSH tunnel when Ben needs the Neo4j browser. This preserves the reviewed no-public/no-LAN raw Neo4j exposure posture while still giving an operator a browser UI.
+
+From the workstation where the browser will run:
+
+```bash
+ssh -N -L 7474:127.0.0.1:7474 root@192.168.0.20
+```
+
+Then open `http://127.0.0.1:7474`. The Home Dashboard Neo4j card may link to that loopback URL; it only works on a machine where the tunnel is already running. The dashboard/runbooks must not embed Neo4j usernames, passwords, Bolt credentials, query strings, fragments, or tokenized URLs. Neo4j's browser login prompt supplies credentials from the operator's approved secret source.
+
+Do not bind Neo4j HTTP or Bolt to `192.168.0.20`, the LAN, Traefik, or Cloudflare without a separate reviewed change and Ben's explicit approval for the exact bind/port/exposure scope.
+
 ## 5. Secrets and configuration
 
 Vaultwarden remains the secrets reference model:

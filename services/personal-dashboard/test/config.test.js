@@ -143,6 +143,7 @@ test('repository dashboard config surfaces the Graphiti/Neo4j live snapshot stat
   assert.equal(knowledgeGraph[0].id, 'knowledge-graph');
   assert.equal(knowledgeGraph[0].graphiti.deployed, true);
   assert.equal(knowledgeGraph[0].neo4j.deployed, true);
+  assert.equal(knowledgeGraph[0].neo4j.browserUrl, 'http://127.0.0.1:7474');
   assert.equal(knowledgeGraph[0].statusFile, '/app/graphiti/latest-smoke-backup.json');
   assert.equal(knowledgeGraph[0].statusFileStaleAfterMs, 86400000);
   assert.ok(config.statusChecks.some((check) => check.id === 'mem0-health' && check.statusWhenHealthy === 'healthy' && check.logSinceSeconds === 180));

@@ -447,7 +447,7 @@ test('graphitiNeo4jHealth degrades Graphiti when Neo4j readiness fails despite g
         statusFile,
         statusFileStaleAfterMs: 24 * 60 * 60 * 1000,
         graphiti: { label: 'Graphiti operational/provenance graph', deployed: true },
-        neo4j: { label: 'Neo4j graph store', deployed: true }
+        neo4j: { label: 'Neo4j graph store', deployed: true, browserUrl: 'http://127.0.0.1:7474' }
       }]
     });
 
@@ -461,6 +461,7 @@ test('graphitiNeo4jHealth degrades Graphiti when Neo4j readiness fails despite g
     assert.equal(graphiti.evidence.queryPassed, true);
     assert.equal(graphiti.evidence.lastQuerySmokeAt, '2026-10-03T00:00:00.000Z');
     assert.equal(neo4j.status, 'degraded');
+    assert.equal(neo4j.displayUrl, 'http://127.0.0.1:7474');
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

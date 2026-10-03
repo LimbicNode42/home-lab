@@ -58,7 +58,8 @@
       },
       "neo4j": {
         "label": "Neo4j graph store",
-        "deployed": true
+        "deployed": true,
+        "browserUrl": "http://127.0.0.1:7474"
       },
       "statusFile": "/app/graphiti/latest-smoke-backup.json",
       "statusFileStaleAfterMs": 86400000
