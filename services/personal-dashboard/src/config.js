@@ -46,7 +46,9 @@ const DEFAULT_CONFIG = {
       label: 'MetaMCP gateway',
       targetUrl: 'http://192.168.0.20:12008/health',
       displayUrl: 'http://metamcp.local:12008',
-      acceptableStatuses: [200]
+      acceptableStatuses: [200],
+      timeoutMs: 6000,
+      statusDetail: 'MetaMCP /health is live but may take ~1.5-2s to answer through the tori LAN relay; dashboard uses a 6s per-check timeout to avoid false-down flapping while preserving API-key auth and LAN-only exposure.'
     },
     {
       id: 'unified-inbox',

@@ -104,13 +104,17 @@ test('rejects MetaMCP LAN links with credential query parameters', () => {
 
 test('repository config keeps MetaMCP Overview links friendly-name only while status display uses metamcp.local', async () => {
   const source = JSON.parse(await readFile(new URL('../config/dashboard.public.json', import.meta.url), 'utf8'));
-  const publicConfig = toPublicConfig(normalizeConfig(source));
+  const normalizedConfig = normalizeConfig(source);
+  const publicConfig = toPublicConfig(normalizedConfig);
   const coreLinks = publicConfig.sections.flatMap((section) => section.links).filter((link) => /metamcp/i.test(`${link.label} ${link.href}`));
   const metamcpStatus = publicConfig.statusChecks.find((check) => check.id === 'metamcp-gateway');
+  const internalMetamcpStatus = normalizedConfig.statusChecks.find((check) => check.id === 'metamcp-gateway');
   const accessUrls = [publicConfig.metaMcp.access.localUrl, ...publicConfig.metaMcp.access.links.map((link) => link.href)];
 
   assert.deepEqual(coreLinks.map((link) => link.href), ['http://metamcp.local:12008']);
   assert.equal(metamcpStatus.displayUrl, 'http://metamcp.local:12008');
+  assert.equal(internalMetamcpStatus.timeoutMs, 6000);
+  assert.match(internalMetamcpStatus.statusDetail, /false-down flapping/);
   assert.deepEqual(accessUrls, ['http://metamcp.local:12008', 'http://metamcp.local:12008', 'http://metamcp.local:12008/mcp']);
   assert.equal(JSON.stringify({ coreLinks, metamcpStatus, accessUrls }).includes('http://192.168.0.20:12008'), false);
 });

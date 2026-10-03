@@ -5,6 +5,26 @@ Tasks: implementation `t_0bbbe4a8`; approval `t_5227cffc`; documentation `t_f1d3
 Host: `tori` (`192.168.0.20`), Debian trixie
 Service: MetaMCP 2.4.22, Docker container `metamcp`
 
+
+## 2026-10-03 update — dashboard false-down status timeout
+
+Task `t_83724179` investigated MetaMCP appearing to flap in the Home Dashboard Overview.
+The MetaMCP service itself was stable: container `metamcp` on `tori` had been up 8 days, Docker health was `healthy`, restart count was `0`, `metamcp-pg` was healthy, and repeated direct probes to `http://192.168.0.20:12008/health` from both the operator host and `critical` returned HTTP 200.
+
+Root cause: the dashboard's server-side Overview probe ran from inside the `personal-dashboard` container on `critical` with the generic 2500 ms status timeout. The tori LAN relay path to MetaMCP can legitimately take roughly 1.5-2.0 seconds to return `/health`, and Node/undici fetch occasionally crossed the 2500 ms cutoff. The dashboard therefore reported `metamcp-gateway` as `down` with `error: timeout` while the service and registry snapshot were healthy.
+
+Remediation: `metamcp-gateway` now has an explicit 6000 ms per-check timeout plus a public, non-secret status detail. This changes only dashboard reporting. It does not expose MetaMCP publicly, weaken API-key authentication, change `metamcp.local`, or touch the MetaMCP containers.
+
+Verification pattern:
+
+```bash
+# Direct service path should stay 200 from an operator/LAN host and from critical.
+curl -sS --max-time 6 -o /dev/null -w 'status=%{http_code} time=%{time_total}\n' http://192.168.0.20:12008/health
+
+# Dashboard path should report the gateway up after the config is synced and the dashboard restarted/reloaded.
+curl -sS -H 'cf-access-authenticated-user-email: <operator-email>'   http://172.17.0.1:4322/api/metamcp/status
+```
+
 ## 2026-09-05 update — friendly-name browser login delivered (Path B)
 
 Task `t_d822a9d0`, operator-approved path B (2026-09-05). The friendly-name **browser login** is now closed. A browser on a trusted LAN host can open `http://metamcp.local:12008`, complete login, and hit an authenticated MCP endpoint — no SSH tunnel.
