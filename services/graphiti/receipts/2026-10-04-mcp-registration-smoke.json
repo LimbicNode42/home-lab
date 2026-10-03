@@ -1,0 +1,31 @@
+{
+  "client": "Python mcp ClientSession over stdio via uv run --with mcp",
+  "created_at_utc": "2026-10-03T14:44:53Z",
+  "destructive_tools_exposed": false,
+  "expected_tool_count": 4,
+  "graphiti_api_url": "http://127.0.0.1:8000",
+  "missing_tools": [],
+  "safety": {
+    "config_mutated": false,
+    "gateway_or_worker_restarted": false,
+    "public_route_created": false,
+    "secrets_included": false
+  },
+  "schema": "graphiti-mcp-registration-smoke.v1",
+  "search_call_is_error": false,
+  "search_result_count": 0,
+  "search_returns_normalized_facts_or_safe_degradation": true,
+  "search_tool_status": "graph_unavailable",
+  "server_command_shape": "uv run --with mcp python services/graphiti/scripts/graphiti-mcp-server.py",
+  "status": "pass",
+  "status_call_is_error": false,
+  "status_tool_status": "ok",
+  "tool_count": 4,
+  "tool_names": [
+    "graphiti_lookup_provenance",
+    "graphiti_search_facts",
+    "graphiti_status",
+    "graphiti_validate_curated_episode"
+  ],
+  "unexpected_tools": []
+}
