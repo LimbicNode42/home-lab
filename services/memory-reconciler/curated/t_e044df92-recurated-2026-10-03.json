@@ -1,0 +1,86 @@
+{
+  "payload_id": "graphiti-catchup-2026-10-03-recurated",
+  "parent_task_id": "t_40ad8ae6",
+  "parent_epic_id": "t_1b099c67",
+  "recuration_authorized_by": "Ben decision 2026-10-03 (operator-mediated, comment #BenApproved)",
+  "recuration_scope": "single episode t_e044df92 only; original episode re-phrased into positive extractable durable facts; other 18 episodes untouched",
+  "constraints": {
+    "max_episodes": 25,
+    "max_words_per_episode": 1500,
+    "raw_transcripts_included": false,
+    "raw_private_memories_included": false,
+    "secrets_included": false
+  },
+  "episodes": [
+    {
+      "episode_id": "kanban:t_e044df92:completion:recurated",
+      "title": "sentinel review: memory-reconciler secrets/redaction/dedup/cost/destructive safety",
+      "domain": "incidents",
+      "group_id": "incidents.memory-reconciler.2026-10",
+      "source_type": "incident_summary",
+      "source_ref": "t_e044df92",
+      "source_path": null,
+      "source_timestamp": "2026-10-03T09:26:38Z",
+      "curated_by": "kobold",
+      "curated_at": "2026-10-03T12:36:00Z",
+      "status": "current",
+      "summary": "The memory-reconciler sentinel safety review examined secret redaction, deduplication, cost controls, and destructive-operation safety. The redaction, deduplication, cost, and destructive-safety guardrails passed, but the review still recorded a blocking result because the deployed/apply systemd unit runs as root without hardening and the Home Dashboard freshness signal for the reconciler pipeline is not yet wired.",
+      "facts": [
+        {
+          "text": "The memory-reconciler sentinel security review verifies secret redaction, deduplication, cost controls, and destructive-operation safety.",
+          "confidence": "high",
+          "caveat": "Curated from the sentinel review task summary and non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T09:26:38Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "memory-reconciler implements redaction, deduplication, cost-control, and destructive-operation guardrails, and those guardrails passed the sentinel security review.",
+          "confidence": "high",
+          "caveat": "Curated from the sentinel review task summary and non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T09:26:38Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "The memory-reconciler systemd unit runs as the root user and requires non-root hardening before unattended operation is approved.",
+          "confidence": "high",
+          "caveat": "Curated from the sentinel review task summary and non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T09:26:38Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "The memory-reconciler pipeline requires a direct Home Dashboard freshness signal before unattended operation is approved.",
+          "confidence": "high",
+          "caveat": "Curated from the sentinel review task summary and non-secret metadata; advisory provenance, not a substitute for live-state inspection.",
+          "valid_at": "2026-10-03T09:26:38Z",
+          "invalid_at": null,
+          "supersedes": []
+        }
+      ],
+      "tags": [
+        "kanban",
+        "review-fail",
+        "memory-reconciler",
+        "systemd-hardening",
+        "dashboard-freshness"
+      ],
+      "redaction": {
+        "reviewed": true,
+        "secret_values_removed": true,
+        "private_memory_excluded": true,
+        "source_reduced_to_summary": true,
+        "raw_transcripts_excluded": true,
+        "raw_task_body_read": false,
+        "operational_ips_required_for_topology": false,
+        "checklist_policy_section": "curated-ingest-policy.md section 4.2"
+      },
+      "scope_marker": {
+        "source_task_id": "t_e044df92",
+        "source_run_id": 2239,
+        "dedup_key": "kanban:t_e044df92:completion:recurated:2026-10-03"
+      }
+    }
+  ]
+}
