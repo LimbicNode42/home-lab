@@ -6,6 +6,8 @@ description="Generate dashboard-readable summaries from the Obsidian vault"
 : ${OBSIDIAN_SUMMARY_OUTPUT_DIR:=/mnt/nas/services/obsidian-livesync/summaries}
 : ${OBSIDIAN_SUMMARIZER_MODEL:=local-extractive-v1}
 : ${OBSIDIAN_SUMMARIZER_DIR:=/mnt/nas/services/obsidian-summarizer}
+: ${PERSONAL_DASHBOARD_DIR:=/mnt/nas/services/personal-dashboard}
+: ${PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR:=/var/lib/personal-dashboard/runtime-cache}
 
 depend() {
   need localmount
@@ -19,7 +21,15 @@ start() {
     OBSIDIAN_SUMMARY_OUTPUT_DIR="$OBSIDIAN_SUMMARY_OUTPUT_DIR" \
     OBSIDIAN_SUMMARIZER_MODEL="$OBSIDIAN_SUMMARIZER_MODEL" \
     /usr/bin/python3 -m obsidian_summarizer.cli --once >> /var/log/obsidian-summarizer.log 2>&1
-  eend $?
+  result=$?
+  if [ "$result" -eq 0 ] && [ -x "$PERSONAL_DASHBOARD_DIR/scripts/sync-runtime-snapshots.sh" ]; then
+    APP_DIR="$PERSONAL_DASHBOARD_DIR" \
+      PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR="$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR" \
+      OBSIDIAN_SUMMARY_HOST_DIR="$OBSIDIAN_SUMMARY_OUTPUT_DIR" \
+      "$PERSONAL_DASHBOARD_DIR/scripts/sync-runtime-snapshots.sh" >> /var/log/obsidian-summarizer.log 2>&1
+    result=$?
+  fi
+  eend "$result"
 }
 
 status() {

@@ -1,3 +1,5 @@
 # Daily Obsidian diary/goals summarizer for critical (Alpine/OpenRC).
-# Installed as /etc/cron.d/obsidian-summarizer; crond runs it at 21:30 local.
-30 21 * * * root cd /mnt/nas/services/obsidian-summarizer && OBSIDIAN_VAULT_DIR=/mnt/nas/obsidian/vault OBSIDIAN_SUMMARY_OUTPUT_DIR=/mnt/nas/services/obsidian-livesync/summaries OBSIDIAN_SUMMARIZER_MODEL=local-extractive-v1 /usr/bin/python3 -m obsidian_summarizer.cli --once >> /var/log/obsidian-summarizer.log 2>&1
+# Install these lines into root's BusyBox crontab (/etc/crontabs/root);
+# no user column is used there. The dashboard sync keeps the mounted runtime
+# cache fresh after each scheduled summary run.
+30 21 * * * cd /mnt/nas/services/obsidian-summarizer && OBSIDIAN_VAULT_DIR=/mnt/nas/obsidian/vault OBSIDIAN_SUMMARY_OUTPUT_DIR=/mnt/nas/services/obsidian-livesync/summaries OBSIDIAN_SUMMARIZER_MODEL=local-extractive-v1 /usr/bin/python3 -m obsidian_summarizer.cli --once >> /var/log/obsidian-summarizer.log 2>&1 && APP_DIR=/mnt/nas/services/personal-dashboard OBSIDIAN_SUMMARY_HOST_DIR=/mnt/nas/services/obsidian-livesync/summaries /mnt/nas/services/personal-dashboard/scripts/sync-runtime-snapshots.sh >> /var/log/obsidian-summarizer.log 2>&1
