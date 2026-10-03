@@ -204,8 +204,11 @@ export class StatusService {
 
     const receipt = this.summarizeGraphitiStatusSnapshot(parsed, check, checkedAt);
     const stale = receipt.isStale;
-    const graphitiPassed = receipt.healthcheckPassed && receipt.ingestPassed && receipt.queryPassed;
     const neo4jPassed = receipt.neo4jReadinessPassed && receipt.backupPassed && receipt.restoreTestPassed;
+    // Graphiti /healthcheck can remain green while the actual search path hangs
+    // behind a stuck Neo4j readiness path. Do not let carried-forward ingest/query
+    // evidence re-green Graphiti when the latest live Neo4j probe failed.
+    const graphitiPassed = receipt.healthcheckPassed && receipt.neo4jReadinessPassed && receipt.ingestPassed && receipt.queryPassed;
     const graphitiStatus = graphitiPassed ? (stale ? 'stale' : 'healthy') : 'degraded';
     const neo4jStatus = neo4jPassed ? (stale ? 'stale' : 'healthy') : 'degraded';
     const graphitiMessage = graphitiPassed
@@ -234,17 +237,19 @@ export class StatusService {
     const backup = snapshot.backup_and_restore ?? {};
     const live = snapshot.live_state_after_checks ?? {};
     const ingestAt = safeIsoTimestamp(ingest.timestamp_utc) ?? createdAt;
+    const queryAt = safeIsoTimestamp(ingest.query_checked_at_utc) ?? safeIsoTimestamp(ingest.query_actual?.checked_at_utc) ?? ingestAt;
     const backupAt = safeIsoTimestamp(backup.timestamp_utc) ?? createdAt;
     const staleAfterMs = Number(check.statusFileStaleAfterMs ?? DEFAULT_GRAPHITI_STATUS_STALE_AFTER_MS);
     const newestSignalMs = Math.max(
       Date.parse(createdAt ?? '') || 0,
       Date.parse(ingestAt ?? '') || 0,
+      Date.parse(queryAt ?? '') || 0,
       Date.parse(backupAt ?? '') || 0
     );
     const ageMs = newestSignalMs ? Date.parse(checkedAt) - newestSignalMs : Number.POSITIVE_INFINITY;
     const isStale = !Number.isFinite(staleAfterMs) || staleAfterMs <= 0 ? false : ageMs > staleAfterMs;
     const ingestPassed = ingest.passed === true && ingest.ingest_actual?.status === 201;
-    const queryPassed = ingest.passed === true && (ingest.query_actual?.status === 200) && Number(ingest.query_actual?.result_count ?? 0) > 0;
+    const queryPassed = ingest.passed === true && ingest.query_actual?.passed !== false && (ingest.query_actual?.status === 200) && Number(ingest.query_actual?.result_count ?? 0) > 0;
     const healthcheckPassed = live.healthcheck?.passed === true;
     const neo4jReadinessPassed = live.neo4j_readiness?.passed === true;
     const backupPassed = backup.passed === true && typeof backup.backup_size_bytes === 'number' && backup.backup_size_bytes > 0;
@@ -263,7 +268,7 @@ export class StatusService {
         service: 'Graphiti shared operational/provenance graph; mem0 remains separate personal/preference memory',
         snapshotCreatedAt: createdAt,
         lastIngestSmokeAt: ingestAt,
-        lastQuerySmokeAt: ingestAt,
+        lastQuerySmokeAt: queryAt,
         healthcheckPassed,
         ingestPassed,
         queryPassed,

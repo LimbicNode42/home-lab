@@ -13,8 +13,10 @@ set -euo pipefail
 # backup_size_bytes, restore_test.passed}. This publisher re-probes the two LIVE
 # signals (Graphiti /healthcheck, Neo4j readiness) on every run and carries
 # forward the latest VERIFIED ingest/query/backup evidence from the prior
-# snapshot so a fresh run still reports a failed live signal as degraded rather
-# than re-greening from stale evidence.
+# snapshot so a fresh run still reports a failed live signal as degraded
+# rather than re-greening from stale evidence. The query half of the
+# smoke is re-run live against the prior smoke group because /healthcheck
+# can stay green while the real Graphiti search path is hung behind Neo4j.
 
 GRAPHITI_API_URL=${GRAPHITI_API_URL:-http://127.0.0.1:8000}
 NEO4J_HTTP_URL=${NEO4J_HTTP_URL:-http://127.0.0.1:7474}
@@ -63,6 +65,44 @@ def http_json_post(url, payload):
         return {'passed': False, 'error': type(exc).__name__}
 
 
+def response_count(body):
+    try:
+        decoded = json.loads(body or '{}')
+    except json.JSONDecodeError:
+        return 0
+    for key in ('facts', 'results', 'edges'):
+        value = decoded.get(key) if isinstance(decoded, dict) else None
+        if isinstance(value, list):
+            return len(value)
+        if isinstance(value, dict):
+            return 1
+    return 0
+
+
+def live_query_smoke(api_url, prior_ingest):
+    if not isinstance(prior_ingest, dict) or prior_ingest.get('passed') is not True:
+        return {'passed': False, 'error': 'prior_ingest_smoke_unavailable'}
+    query = prior_ingest.get('source_ref')
+    if not isinstance(query, str) or not query.strip():
+        query = 'Graphiti production smoke provenance'
+    payload = {'query': query, 'max_facts': 1}
+    group_id = prior_ingest.get('group_id')
+    if isinstance(group_id, str) and group_id.strip():
+        payload['group_ids'] = [group_id]
+    result = http_json_post(api_url.rstrip('/') + '/search', payload)
+    count = response_count(result.get('body')) if result.get('passed') else 0
+    out = {
+        'status': result.get('http_status'),
+        'result_count': count,
+        'checked_at_utc': now,
+        'passed': result.get('passed') is True and count > 0,
+        'method': 'POST /search with prior smoke group/source_ref and max_facts=1',
+    }
+    if 'error' in result:
+        out['error'] = result['error']
+    return out
+
+
 def read_prior(out_path):
     """Carry forward last verified ingest/query/backup evidence if present."""
     try:
@@ -84,10 +124,19 @@ readiness = http_json_post(
 
 # Only carry forward prior evidence if it was itself a verified pass, otherwise
 # drop it so a subsequent failure cannot leave a dash of stale green.
-ingest = prior_ingest if (isinstance(prior_ingest, dict) and prior_ingest.get('passed') is True) else None
+ingest = None
+if isinstance(prior_ingest, dict) and prior_ingest.get('passed') is True:
+    live_query = live_query_smoke(api_url, prior_ingest)
+    ingest = dict(prior_ingest)
+    ingest['query_actual'] = live_query
+    ingest['query_checked_at_utc'] = now
+    ingest['passed'] = (
+        ingest.get('ingest_actual', {}).get('status') == 201
+        and live_query.get('passed') is True
+    )
 backup = prior_backup if (isinstance(prior_backup, dict) and prior_backup.get('passed') is True) else None
 
-live_ok = health.get('passed') is True and readiness.get('passed') is True
+live_ok = health.get('passed') is True and readiness.get('passed') is True and (ingest or {}).get('passed') is True
 payload = {
     'schema': 'personal-dashboard.graphiti-status.v1',
     'created_at_utc': now,

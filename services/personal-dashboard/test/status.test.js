@@ -414,6 +414,109 @@ test('graphitiNeo4jHealth surfaces blocked/degraded narrative on both component 
 });
 
 
+test('graphitiNeo4jHealth degrades Graphiti when Neo4j readiness fails despite green health and query evidence', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'graphiti-status-'));
+  try {
+    const statusFile = join(dir, 'latest-smoke-backup.json');
+    await writeFile(statusFile, JSON.stringify({
+      created_at_utc: '2026-10-03T00:00:00Z',
+      live_state_after_checks: {
+        healthcheck: { passed: true },
+        neo4j_readiness: { passed: false, error: 'TimeoutError' }
+      },
+      curated_ingest_and_query_smoke: {
+        timestamp_utc: '2026-10-02T10:23:56Z',
+        query_checked_at_utc: '2026-10-03T00:00:00Z',
+        ingest_actual: { status: 201, body: { success: true } },
+        query_actual: { status: 200, result_count: 1, passed: true },
+        passed: true
+      },
+      backup_and_restore: {
+        timestamp_utc: '2026-10-02T10:36:58Z',
+        backup_size_bytes: 74127,
+        restore_test: { passed: true },
+        live_data_storage: { fstype: 'ext4' },
+        passed: true
+      }
+    }));
+    const service = new StatusService({
+      checks: [{
+        id: 'knowledge-graph',
+        label: 'Knowledge graph',
+        type: 'graphitiNeo4jHealth',
+        statusFile,
+        statusFileStaleAfterMs: 24 * 60 * 60 * 1000,
+        graphiti: { label: 'Graphiti operational/provenance graph', deployed: true },
+        neo4j: { label: 'Neo4j graph store', deployed: true }
+      }]
+    });
+
+    const payload = await service.probeGraphitiNeo4jHealth(service.checks[0], '2026-10-03T00:05:00Z');
+    const graphiti = payload.find((check) => check.component === 'graphiti');
+    const neo4j = payload.find((check) => check.component === 'neo4j');
+
+    assert.equal(graphiti.status, 'degraded');
+    assert.equal(graphiti.error, 'graphiti_smoke_failed');
+    assert.equal(graphiti.evidence.healthcheckPassed, true);
+    assert.equal(graphiti.evidence.queryPassed, true);
+    assert.equal(graphiti.evidence.lastQuerySmokeAt, '2026-10-03T00:00:00.000Z');
+    assert.equal(neo4j.status, 'degraded');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('graphitiNeo4jHealth degrades Graphiti when Neo4j readiness fails despite carried-forward passing query evidence', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'graphiti-status-'));
+  try {
+    const statusFile = join(dir, 'latest-smoke-backup.json');
+    await writeFile(statusFile, JSON.stringify({
+      created_at_utc: '2026-10-03T00:00:00Z',
+      live_state_after_checks: {
+        healthcheck: { passed: true },
+        neo4j_readiness: { passed: false, error: 'TimeoutError' }
+      },
+      curated_ingest_and_query_smoke: {
+        timestamp_utc: '2026-10-02T10:23:56Z',
+        query_checked_at_utc: '2026-10-03T00:00:00Z',
+        ingest_actual: { status: 201, body: { success: true } },
+        query_actual: { status: 200, result_count: 1, passed: true },
+        passed: true
+      },
+      backup_and_restore: {
+        timestamp_utc: '2026-10-02T10:36:58Z',
+        backup_size_bytes: 74127,
+        restore_test: { passed: true },
+        live_data_storage: { fstype: 'ext4' },
+        passed: true
+      }
+    }));
+    const service = new StatusService({
+      checks: [{
+        id: 'knowledge-graph',
+        label: 'Knowledge graph',
+        type: 'graphitiNeo4jHealth',
+        statusFile,
+        statusFileStaleAfterMs: 24 * 60 * 60 * 1000,
+        graphiti: { label: 'Graphiti operational/provenance graph', deployed: true },
+        neo4j: { label: 'Neo4j graph store', deployed: true }
+      }]
+    });
+
+    const payload = await service.probeGraphitiNeo4jHealth(service.checks[0], '2026-10-03T00:05:00Z');
+    const graphiti = payload.find((check) => check.component === 'graphiti');
+    const neo4j = payload.find((check) => check.component === 'neo4j');
+
+    assert.equal(graphiti.status, 'degraded');
+    assert.equal(graphiti.error, 'graphiti_smoke_failed');
+    assert.equal(graphiti.evidence.healthcheckPassed, true);
+    assert.equal(graphiti.evidence.queryPassed, true);
+    assert.equal(neo4j.status, 'degraded');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('graphitiNeo4jHealth summarizes smoke and backup snapshot without leaking artifact paths', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'graphiti-status-'));
   try {
