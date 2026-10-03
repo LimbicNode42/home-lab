@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "obsidian-summarizer"
+version = "0.1.0"
+description = "Read-only Obsidian vault diary/goals summarizer for the Home Dashboard mirror."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+
+[project.scripts]
+obsidian-summarizer = "obsidian_summarizer.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["obsidian_summarizer*"]

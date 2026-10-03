@@ -1255,6 +1255,77 @@ function sanitizeRuntimeDocContent(content) {
 }
 
 
+
+const OBSIDIAN_SUMMARY_STALE_AFTER_MS = 26 * 60 * 60 * 1000;
+const OBSIDIAN_SUMMARY_MAX_BYTES = 96 * 1024;
+
+function defaultObsidianSummaryRoot() {
+  return process.env.OBSIDIAN_SUMMARY_ROOT ?? '/app/obsidian-summaries';
+}
+
+function parseObsidianLastRun(raw) {
+  const parsed = JSON.parse(raw);
+  const generatedAt = safeIsoDate(parsed.generated_at);
+  const ageMs = generatedAt ? Date.now() - new Date(generatedAt).getTime() : null;
+  const stale = typeof ageMs === 'number' ? ageMs > OBSIDIAN_SUMMARY_STALE_AFTER_MS : true;
+  return {
+    kind: safeText(parsed.kind, 'obsidian-summary', 80),
+    status: stale ? 'stale' : safeText(parsed.status, 'ok', 40),
+    generated_at: generatedAt,
+    stale,
+    file_count: parsed.file_count && typeof parsed.file_count === 'object' && !Array.isArray(parsed.file_count)
+      ? {
+          diary: safeInteger(parsed.file_count.diary) ?? 0,
+          goals: safeInteger(parsed.file_count.goals) ?? 0
+        }
+      : { diary: 0, goals: 0 },
+    model: safeText(parsed.model, 'unknown', 80),
+    source: {
+      vault_label: safeText(parsed.source?.vault_label, 'obsidian NAS share', 80),
+      livesync_url: safeText(parsed.source?.livesync_url, 'http://192.168.0.50:5984', 120)
+    }
+  };
+}
+
+async function readObsidianSummary({ summaryRoot }) {
+  if (!summaryRoot) return { statusCode: 503, payload: { error: 'obsidian_summary_not_configured', message: 'OBSIDIAN_SUMMARY_ROOT is not set' } };
+  const root = resolve(summaryRoot);
+  try {
+    const metaPath = resolve(root, 'meta', 'last-run.json');
+    const metaRel = relative(root, metaPath);
+    if (metaRel.startsWith('..') || metaRel.startsWith('/') || metaRel === '') throw new Error('invalid summary path');
+    const metaInfo = await stat(metaPath);
+    if (!metaInfo.isFile() || metaInfo.size > 64 * 1024) throw new Error('invalid last-run metadata');
+    const metadata = parseObsidianLastRun(await readFile(metaPath, 'utf8'));
+    const diaryDir = resolve(root, 'diary');
+    let diary = [];
+    try {
+      const entries = await readdir(diaryDir, { withFileTypes: true });
+      const files = entries.filter((entry) => entry.isFile() && /^\d{4}-\d{2}-\d{2}\.md$/.test(entry.name)).map((entry) => entry.name).sort().reverse().slice(0, 7);
+      for (const name of files) {
+        const path = resolve(diaryDir, name);
+        const info = await stat(path);
+        if (!info.isFile() || info.size > OBSIDIAN_SUMMARY_MAX_BYTES) continue;
+        diary.push({ date: name.replace(/\.md$/, ''), content: (await readFile(path, 'utf8')).trim() });
+      }
+    } catch (err) {
+      if (err?.code !== 'ENOENT') throw err;
+    }
+    const goalsPath = resolve(root, 'goals', 'digest.md');
+    let goals = '';
+    try {
+      const goalInfo = await stat(goalsPath);
+      if (goalInfo.isFile() && goalInfo.size <= OBSIDIAN_SUMMARY_MAX_BYTES) goals = (await readFile(goalsPath, 'utf8')).trim();
+    } catch (err) {
+      if (err?.code !== 'ENOENT') throw err;
+    }
+    return { statusCode: 200, payload: { metadata, diary, goals, mode: 'read-only', storage: 'obsidian-summary-output' } };
+  } catch (err) {
+    if (err?.code === 'ENOENT') return { statusCode: 404, payload: { error: 'obsidian_summary_not_found', message: 'No Obsidian summary output has been generated yet.' } };
+    return { statusCode: 502, payload: { error: 'obsidian_summary_read_error', message: 'Unable to read Obsidian summary output.' } };
+  }
+}
+
 const DEFAULT_WRITING_POSTS_FILE = resolve(__dirname, '..', 'data', 'writing-posts.json');
 const WRITING_POST_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,79}$/;
 const WRITING_STATUS_VALUES = new Set(['draft', 'published', 'archived']);
@@ -3857,6 +3928,9 @@ export async function createApp(options = {}) {
   const datasetRegistry = Object.prototype.hasOwnProperty.call(options, 'datasetRegistry')
     ? options.datasetRegistry
     : DEFAULT_DATASET_REGISTRY;
+  const obsidianSummaryRoot = Object.prototype.hasOwnProperty.call(options, 'obsidianSummaryRoot')
+    ? options.obsidianSummaryRoot
+    : defaultObsidianSummaryRoot();
   const personalDataDatabaseUrl = Object.prototype.hasOwnProperty.call(options, 'personalDataDatabaseUrl')
     ? options.personalDataDatabaseUrl
     : (process.env.PERSONAL_DASHBOARD_DATABASE_URL ?? null);
@@ -4095,6 +4169,11 @@ export async function createApp(options = {}) {
         }
         if (request.method !== 'GET') return json(response, 405, { error: 'method_not_allowed' });
         const result = await readDatasetRecords({ datasetRegistry, datasetsRoot, datasetId: decodeURIComponent(datasetRecordsMatch[1]), searchParams: url.searchParams });
+        return json(response, result.statusCode, result.payload);
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/obsidian/summary') {
+        const result = await readObsidianSummary({ summaryRoot: obsidianSummaryRoot });
         return json(response, result.statusCode, result.payload);
       }
 

@@ -15,6 +15,7 @@ Kanban board freshness and mutation planning lives in [`kanban-state-bridge-plan
   - `GET /api/config/public` authenticated public dashboard config, with server-side probe targets stripped.
   - `GET /api/status` authenticated status probe results, using an in-memory TTL cache.
   - `GET /api/finnick/report` authenticated endpoint that returns the latest Finnick/Polymarket daily betting report as `{ "content": "..." }` (see [Finnick report panel](#finnick-report-panel)).
+  - `GET /api/obsidian/summary` authenticated read-only mirror of Obsidian-generated diary/goals summary output.
   - `GET /api/investment-screener/ranked` and `GET /api/investment-screener/report` authenticated endpoints that return sanitized generated investment screener output with freshness metadata and doc links (see [Investment screener panel](#investment-screener-panel)).
   - `GET /api/docs` and `GET /api/docs/:id` authenticated documentation endpoints backed by an approved committed Markdown manifest (see [Documentation panel](#documentation-panel)).
   - `GET /api/epics` authenticated completed-epics endpoint that reads Kanban via Node's in-process SQLite API and exposes only redacted task summaries and committed GitHub doc links.
@@ -111,7 +112,8 @@ Environment variables:
 | `INVESTMENT_SCREENER_RANKED_FILE` | unset | Absolute path inside the container to the latest sanitized ranked investment screener JSON export. Set to `/app/investment-screener/latest_ranked.json` in the deployment candidate. |
 | `INVESTMENT_SCREENER_DATA_ROOT` | unset | Root containing the NAS-style `investment-screener/` tree. Set to `/app` when the runtime cache is mounted at `/app/investment-screener`; API reads query immutable Parquet/JSONL artifacts under that tree without writing back to the cache. |
 | `INVESTMENT_SCREENER_HOST_DIR` | operator-provided host directory | Host-side NAS investment-screener directory copied into the runtime cache as a whole; legacy `latest_report.txt` and `latest_ranked.json` remain fallback inputs, while `manifests/`, `runs/`, and publish-time `exports/` support the file-first path. |
-| `PERSONAL_DASHBOARD_DATABASE_URL` | unset | Private Diary/Goals Postgres connection string. Render from Vaultwarden; after the stable Docker network is in place, only the URL host component should be `postgres` instead of a raw bridge IP. If unset, diary/goal APIs return 503 without creating data in surprise locations. |
+| `OBSIDIAN_SUMMARY_ROOT` | `/app/obsidian-summaries` | Read-only summary output from `services/obsidian-summarizer`; dashboard Diary/Goals renders this instead of owning writable diary/goal storage. |
+| `PERSONAL_DASHBOARD_DATABASE_URL` | unset | Legacy private Diary/Goals Postgres connection string. Deprecated for Diary/Goals after the Obsidian source-of-truth decision; keep unset unless a reviewed migration needs legacy data export. |
 | `PGSSLMODE` | `require` in Compose / fallback script | TLS mode for the shared critical Postgres service. Keep cert/key material out of this repo. |
 | `PERSONAL_DASHBOARD_DB_NETWORK` | `critical-internal` in fallback script | Docker-local internal network used for stable Postgres DNS. Live creation/attachment requires explicit approval. |
 | `PERSONAL_DASHBOARD_DB_ALIAS` | `postgres` in fallback script | Stable alias for the shared Postgres container on `critical-internal`; preserve database credentials and change only the Vaultwarden URL host. |

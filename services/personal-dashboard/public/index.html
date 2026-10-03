@@ -282,111 +282,33 @@
       </section>
 
       <section id="panel-diary-goals" class="tab-panel" role="tabpanel" aria-labelledby="tab-diary-goals" data-tab-panel="diary-goals" hidden>
-        <section class="panel" id="goals-section">
+        <section class="panel" id="obsidian-summary-panel">
           <div class="panel-heading">
             <div>
-              <h2>Goals</h2>
-              <p class="muted board-message">Goals can be created, viewed, and moved between active, paused, completed, and archived states.</p>
+              <h2>Diary &amp; Goals</h2>
+              <p class="muted board-message">Read-only mirror of Obsidian summary output. Write diary entries and goals in Obsidian; this dashboard only shows the latest generated digest.</p>
+              <p id="obsidian-summary-freshness" class="muted" aria-live="polite">Loading Obsidian summary freshness…</p>
             </div>
-            <button id="refresh-goals" type="button">Refresh</button>
+            <button id="refresh-obsidian-summary" type="button">Refresh</button>
           </div>
-
-          <form id="goal-form" class="personal-data-form" aria-label="Create or update goal">
-            <label>
-              Title
-              <input id="goal-title" name="title" type="text" maxlength="160" autocomplete="off" required>
-            </label>
-            <label>
-              Status
-              <select id="goal-status" name="status">
-                <option value="active">Active</option>
-                <option value="paused">Paused</option>
-                <option value="completed">Completed</option>
-                <option value="archived">Archived</option>
-              </select>
-            </label>
-            <label>
-              Target date <span class="muted">optional</span>
-              <input id="goal-target-date" name="target_date" type="date" autocomplete="off">
-            </label>
-            <label class="form-wide">
-              Description <span class="muted">optional</span>
-              <textarea id="goal-description" name="description" maxlength="5000" rows="5"></textarea>
-            </label>
-            <div class="form-actions form-wide">
-              <button type="submit">Save goal</button>
-              <button id="new-goal" type="button">New goal</button>
-              <p id="goal-form-message" class="muted" aria-live="polite"></p>
-            </div>
-          </form>
-
+          <div class="source-truth-card">
+            <span id="obsidian-summary-badge" class="badge" aria-live="polite"></span>
+            <span class="muted">Source: Obsidian NAS share via LiveSync</span>
+            <a href="http://192.168.0.50:5984" rel="noreferrer">LiveSync endpoint</a>
+          </div>
           <div class="personal-data-layout">
-            <div>
-              <div class="panel-heading compact-heading">
-                <h3>Goals</h3>
-                <label>
-                  Status
-                  <select id="goal-status-filter" name="status_filter">
-                    <option value="all">All</option>
-                    <option value="active">Active</option>
-                    <option value="paused">Paused</option>
-                    <option value="completed">Completed</option>
-                    <option value="archived">Archived</option>
-                  </select>
-                </label>
+            <section id="goals-section">
+              <h3>Goals digest</h3>
+              <div id="goals-list" aria-live="polite">
+                <p class="muted">Loading goals digest…</p>
               </div>
-              <div id="goals-list" class="personal-entry-list" aria-live="polite">
-                <p class="muted">Loading goals…</p>
-              </div>
-            </div>
-            <article id="goal-detail" class="personal-entry-detail" aria-live="polite">
-              <p class="muted">Select a goal to view it.</p>
-            </article>
-          </div>
-        </section>
-
-        <section class="panel" id="diary-section">
-          <div class="panel-heading">
-            <div>
-              <h2>Diary</h2>
-              <p class="muted board-message">Diary entries can be created and viewed here. Editing and deleting are not part of this MVP.</p>
-            </div>
-            <button id="refresh-diary" type="button">Refresh</button>
-          </div>
-
-          <form id="diary-entry-form" class="personal-data-form" aria-label="Create diary entry">
-            <label>
-              Entry date
-              <input id="diary-entry-date" name="entry_date" type="date" autocomplete="off">
-            </label>
-            <label>
-              Title <span class="muted">optional</span>
-              <input id="diary-entry-title" name="title" type="text" maxlength="160" autocomplete="off">
-            </label>
-            <label>
-              Mood <span class="muted">optional</span>
-              <input id="diary-entry-mood" name="mood" type="text" maxlength="64" autocomplete="off">
-            </label>
-            <label class="form-wide">
-              Entry
-              <textarea id="diary-entry-body" name="body" maxlength="20000" required rows="8"></textarea>
-            </label>
-            <div class="form-actions form-wide">
-              <button type="submit">Save diary entry</button>
-              <p id="diary-form-message" class="muted" aria-live="polite"></p>
-            </div>
-          </form>
-
-          <div class="personal-data-layout">
-            <div>
-              <h3>Recent entries</h3>
+            </section>
+            <section id="diary-section">
+              <h3>Recent diary summaries</h3>
               <div id="diary-entry-list" class="personal-entry-list" aria-live="polite">
-                <p class="muted">Loading diary entries…</p>
+                <p class="muted">Loading diary summaries…</p>
               </div>
-            </div>
-            <article id="diary-entry-detail" class="personal-entry-detail" aria-live="polite">
-              <p class="muted">Select an entry to view it. The goblin will not pretend edit/delete exists.</p>
-            </article>
+            </section>
           </div>
         </section>
       </section>

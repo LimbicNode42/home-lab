@@ -1,0 +1,13 @@
+[Unit]
+Description=Obsidian diary/goals summary pipeline
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=OBSIDIAN_VAULT_DIR=/mnt/nas/obsidian/vault
+Environment=OBSIDIAN_SUMMARY_OUTPUT_DIR=/mnt/nas/services/obsidian-livesync/summaries
+Environment=OBSIDIAN_SUMMARIZER_MODEL=local-extractive-v1
+WorkingDirectory=/root/work/home-lab/services/obsidian-summarizer
+ExecStart=/usr/bin/env python3 -m obsidian_summarizer.cli --once
+Nice=5

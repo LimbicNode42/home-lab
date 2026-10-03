@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Obsidian diary/goals summary pipeline
+
+[Timer]
+OnCalendar=*-*-* 21:30:00
+Persistent=true
+Unit=obsidian-summarizer.service
+
+[Install]
+WantedBy=timers.target

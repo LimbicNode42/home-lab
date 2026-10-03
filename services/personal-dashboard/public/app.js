@@ -87,6 +87,9 @@ const goalStatusFilter = document.querySelector('#goal-status-filter');
 const goalsList = document.querySelector('#goals-list');
 const goalDetail = document.querySelector('#goal-detail');
 const refreshGoalsButton = document.querySelector('#refresh-goals');
+const refreshObsidianSummaryButton = document.querySelector('#refresh-obsidian-summary');
+const obsidianSummaryFreshness = document.querySelector('#obsidian-summary-freshness');
+const obsidianSummaryBadge = document.querySelector('#obsidian-summary-badge');
 const newGoalButton = document.querySelector('#new-goal');
 const goalFormMessage = document.querySelector('#goal-form-message');
 let currentGoalId = null;
@@ -817,240 +820,60 @@ function bindTabNavigation() {
   });
 }
 
-function setDiaryMessage(message, kind = 'muted') {
-  if (!diaryFormMessage) return;
-  diaryFormMessage.className = kind;
-  diaryFormMessage.textContent = message;
+
+function renderObsidianMarkdownPreview(markdown) {
+  const text = String(markdown ?? '').trim();
+  if (!text) return el('p', { className: 'muted', text: 'No summary generated yet.' });
+  return el('pre', { className: 'finnick-report', text });
 }
 
-function diaryErrorMessage(error) {
-  const message = String(error?.message ?? 'Diary unavailable');
-  if (message.includes('503')) return 'Diary storage is not configured or unavailable on this instance.';
-  if (/validation|invalid/i.test(message)) return 'Check the diary entry fields and try again.';
-  return message.replace(/\/[^\s]+/g, '[redacted]');
-}
-
-function todayInputDate() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function setDiaryDefaultDate() {
-  if (diaryEntryDate && !diaryEntryDate.value) diaryEntryDate.value = todayInputDate();
-}
-
-function renderDiaryEntrySummary(entry) {
-  const title = entry.title || '(untitled)';
-  const button = el('button', { className: 'entry-view-button', type: 'button', text: 'View' });
-  button.addEventListener('click', () => loadDiaryEntry(entry));
-  const meta = [entry.entry_date, entry.mood, entry.created_at ? `created ${formatDateTime(entry.created_at)}` : null].filter(Boolean).join(' · ');
-  return el('article', { className: 'personal-entry-card' }, [
-    el('div', { className: 'personal-entry-heading' }, [
-      el('strong', { text: title }),
-      button
-    ]),
-    el('div', { className: 'muted personal-entry-meta', text: meta }),
-    el('p', { text: entry.preview || 'No preview available.' })
-  ]);
-}
-
-function renderDiaryEntryDetail(entry) {
-  if (!diaryEntryDetail) return;
-  const title = entry.title || '(untitled)';
-  const meta = [entry.entry_date, entry.mood, entry.created_at ? `created ${formatDateTime(entry.created_at)}` : null].filter(Boolean).join(' · ');
-  const linkedGoals = Array.isArray(entry.goals) && entry.goals.length > 0
-    ? el('ul', { className: 'linked-goal-list' }, entry.goals.map((goal) => el('li', { text: `${goal.title || goal.id} (${goal.status || 'unknown'})` })))
-    : el('p', { className: 'muted', text: 'No linked goals yet.' });
-  diaryEntryDetail.replaceChildren(el('div', { className: 'personal-entry-detail-card' }, [
-    el('h3', { text: title }),
-    el('p', { className: 'muted', text: meta }),
-    el('p', { className: 'diary-entry-body', text: entry.body || '' }),
-    el('h4', { text: 'Linked goals' }),
-    linkedGoals
-  ]));
-}
-
-async function loadDiaryEntry(entry) {
-  if (!entry?.id || !diaryEntryDetail) return;
-  diaryEntryDetail.replaceChildren(el('p', { className: 'muted', text: 'Loading diary entry…' }));
-  try {
-    const data = await getJson(`/api/diary/entries/${encodeURIComponent(entry.id)}`);
-    renderDiaryEntryDetail(data.entry);
-  } catch (error) {
-    diaryEntryDetail.replaceChildren(el('p', { className: 'error', text: `Diary entry unavailable: ${diaryErrorMessage(error)}` }));
+function renderObsidianSummary(data) {
+  const metadata = data.metadata ?? {};
+  const stale = metadata.stale === true || metadata.status === 'stale';
+  const generated = metadata.generated_at ? formatDateTime(metadata.generated_at) : 'never';
+  if (obsidianSummaryFreshness) {
+    const counts = metadata.file_count ? `Diary ${metadata.file_count.diary ?? 0}, goals ${metadata.file_count.goals ?? 0}` : 'File counts unavailable';
+    obsidianSummaryFreshness.textContent = `Last summary: ${generated} · ${counts} · model ${metadata.model ?? 'unknown'}`;
   }
-}
-
-async function refreshDiaryEntries() {
-  if (!diaryEntryList) return;
-  setDiaryDefaultDate();
-  if (refreshDiaryButton) refreshDiaryButton.disabled = true;
-  try {
-    const data = await getJson('/api/diary/entries?limit=20&offset=0');
-    const entries = Array.isArray(data.entries) ? data.entries : [];
+  if (obsidianSummaryBadge) {
+    obsidianSummaryBadge.textContent = stale ? 'stale' : 'current';
+    obsidianSummaryBadge.className = stale ? 'badge badge-warn' : 'badge badge-ok';
+  }
+  const diary = Array.isArray(data.diary) ? data.diary : [];
+  if (diaryEntryList) {
     diaryEntryList.replaceChildren();
-    if (entries.length === 0) {
-      diaryEntryList.append(el('p', { className: 'muted', text: 'No diary entries yet.' }));
-    } else {
-      diaryEntryList.append(...entries.map(renderDiaryEntrySummary));
-    }
+    if (diary.length === 0) diaryEntryList.append(el('p', { className: 'muted', text: 'No diary summaries generated yet.' }));
+    else diaryEntryList.append(...diary.map((entry) => el('article', { className: 'personal-entry-card' }, [
+      el('div', { className: 'personal-entry-heading' }, [el('strong', { text: entry.date || 'Diary summary' })]),
+      renderObsidianMarkdownPreview(entry.content)
+    ])));
+  }
+  if (goalsList) goalsList.replaceChildren(renderObsidianMarkdownPreview(data.goals));
+}
+
+async function refreshObsidianSummary() {
+  if (refreshObsidianSummaryButton) refreshObsidianSummaryButton.disabled = true;
+  try {
+    const data = await getJson('/api/obsidian/summary');
+    renderObsidianSummary(data);
   } catch (error) {
-    diaryEntryList.replaceChildren(el('p', { className: 'error', text: `Diary unavailable: ${diaryErrorMessage(error)}` }));
+    const message = error.message.includes('404')
+      ? 'No Obsidian summaries generated yet — run obsidian-summarizer --once.'
+      : error.message.includes('503')
+        ? 'Obsidian summaries are not configured on this dashboard instance.'
+        : `Obsidian summaries unavailable: ${error.message}`;
+    if (diaryEntryList) diaryEntryList.replaceChildren(el('p', { className: 'error', text: message }));
+    if (goalsList) goalsList.replaceChildren(el('p', { className: 'error', text: message }));
+    if (obsidianSummaryFreshness) obsidianSummaryFreshness.textContent = '';
+    if (obsidianSummaryBadge) { obsidianSummaryBadge.textContent = ''; obsidianSummaryBadge.className = 'badge'; }
   } finally {
-    if (refreshDiaryButton) refreshDiaryButton.disabled = false;
+    if (refreshObsidianSummaryButton) refreshObsidianSummaryButton.disabled = false;
   }
 }
 
-async function submitDiaryEntry(event) {
-  event.preventDefault();
-  if (!diaryEntryBody) return;
-  const payload = {
-    entry_date: diaryEntryDate?.value || undefined,
-    title: diaryEntryTitle?.value || '',
-    body: diaryEntryBody.value,
-    mood: diaryEntryMood?.value || ''
-  };
-  setDiaryMessage('Saving diary entry…');
-  try {
-    const data = await postJson('/api/diary/entries', payload);
-    if (diaryEntryTitle) diaryEntryTitle.value = '';
-    if (diaryEntryBody) diaryEntryBody.value = '';
-    if (diaryEntryMood) diaryEntryMood.value = '';
-    setDiaryDefaultDate();
-    setDiaryMessage('Saved diary entry.');
-    await refreshDiaryEntries();
-    renderDiaryEntryDetail(data.entry);
-  } catch (error) {
-    setDiaryMessage(diaryErrorMessage(error), 'error');
-  }
-}
-
-if (diaryEntryForm) diaryEntryForm.addEventListener('submit', submitDiaryEntry);
-if (refreshDiaryButton) refreshDiaryButton.addEventListener('click', refreshDiaryEntries);
-setDiaryDefaultDate();
-
-
-function setGoalMessage(message, kind = 'muted') {
-  if (!goalFormMessage) return;
-  goalFormMessage.className = kind;
-  goalFormMessage.textContent = message;
-}
-
-function goalErrorMessage(error) {
-  const message = String(error?.message ?? 'Goals unavailable');
-  if (message.includes('503')) return 'Goal storage is not configured or unavailable on this instance.';
-  if (/validation|invalid/i.test(message)) return 'Check the goal fields and try again.';
-  return message.replace(/\/[^\s]+/g, '[redacted]');
-}
-
-function goalsRequestPath() {
-  const status = goalStatusFilter?.value || 'all';
-  return `/api/goals?status=${encodeURIComponent(status)}`;
-}
-
-async function loadGoal(goal) {
-  if (!goal?.id || !goalDetail) return;
-  goalDetail.replaceChildren(el('p', { className: 'muted', text: 'Loading goal…' }));
-  try {
-    const data = await getJson(`/api/goals/${encodeURIComponent(goal.id)}`);
-    renderGoalDetail(data.goal);
-  } catch (error) {
-    goalDetail.replaceChildren(el('p', { className: 'error', text: `Goal unavailable: ${goalErrorMessage(error)}` }));
-  }
-}
-
-function renderGoalDetail(goal) {
-  if (!goalDetail) return;
-  currentGoalId = goal.id;
-  if (goalTitle) goalTitle.value = goal.title || '';
-  if (goalDescription) goalDescription.value = goal.description || '';
-  if (goalStatus) goalStatus.value = goal.status || 'active';
-  if (goalTargetDate) goalTargetDate.value = goal.target_date || '';
-  const meta = [goal.status, goal.target_date ? `target ${goal.target_date}` : null, goal.updated_at ? `updated ${formatDateTime(goal.updated_at)}` : null].filter(Boolean).join(' · ');
-  goalDetail.replaceChildren(el('div', { className: 'personal-entry-detail-card' }, [
-    el('h3', { text: goal.title || '(untitled goal)' }),
-    el('p', { className: 'muted', text: meta }),
-    el('p', { text: goal.description || 'No description yet.' })
-  ]));
-}
-
-function renderGoalSummary(goal) {
-  const view = el('button', { className: 'entry-view-button', type: 'button', text: 'View' });
-  view.addEventListener('click', () => loadGoal(goal));
-  const statusSelect = el('select', { 'aria-label': `Move goal ${goal.title || goal.id}` }, [
-    el('option', { value: 'active', text: 'active' }),
-    el('option', { value: 'paused', text: 'paused' }),
-    el('option', { value: 'completed', text: 'completed' }),
-    el('option', { value: 'archived', text: 'archived' })
-  ]);
-  statusSelect.value = goal.status || 'active';
-  statusSelect.addEventListener('change', async () => {
-    try {
-      const data = await patchJson(`/api/goals/${encodeURIComponent(goal.id)}`, { status: statusSelect.value });
-      renderGoalDetail(data.goal);
-      await refreshGoals();
-    } catch (error) {
-      setGoalMessage(goalErrorMessage(error), 'error');
-    }
-  });
-  const meta = [goal.status, goal.target_date ? `target ${goal.target_date}` : null, goal.updated_at ? `updated ${formatDateTime(goal.updated_at)}` : null].filter(Boolean).join(' · ');
-  return el('article', { className: 'personal-entry-card' }, [
-    el('div', { className: 'personal-entry-heading' }, [el('strong', { text: goal.title || '(untitled goal)' }), view]),
-    el('div', { className: `badge ${goal.status || 'unknown'}`, text: goal.status || 'unknown' }),
-    el('p', { className: 'muted personal-entry-meta', text: meta }),
-    el('p', { text: goal.description || 'No description yet.' }),
-    el('label', { className: 'inline-control' }, [document.createTextNode('Status '), statusSelect])
-  ]);
-}
-
-async function refreshGoals() {
-  if (!goalsList) return;
-  if (refreshGoalsButton) refreshGoalsButton.disabled = true;
-  try {
-    const data = await getJson(goalsRequestPath());
-    const goals = Array.isArray(data.goals) ? data.goals : [];
-    goalsList.replaceChildren();
-    if (goals.length === 0) goalsList.append(el('p', { className: 'muted', text: 'No goals yet.' }));
-    else goalsList.append(...goals.map(renderGoalSummary));
-  } catch (error) {
-    goalsList.replaceChildren(el('p', { className: 'error', text: `Goals unavailable: ${goalErrorMessage(error)}` }));
-  } finally {
-    if (refreshGoalsButton) refreshGoalsButton.disabled = false;
-  }
-}
-
-function resetGoalForm() {
-  currentGoalId = null;
-  goalForm?.reset();
-  if (goalStatus) goalStatus.value = 'active';
-  goalDetail?.replaceChildren(el('p', { className: 'muted', text: 'Select a goal to view it.' }));
-  setGoalMessage('Ready to create a new goal.');
-}
-
-async function submitGoal(event) {
-  event.preventDefault();
-  const payload = {
-    title: goalTitle?.value || '',
-    description: goalDescription?.value || '',
-    status: goalStatus?.value || 'active',
-    target_date: goalTargetDate?.value || null
-  };
-  setGoalMessage('Saving goal…');
-  try {
-    const data = currentGoalId
-      ? await patchJson(`/api/goals/${encodeURIComponent(currentGoalId)}`, payload)
-      : await postJson('/api/goals', payload);
-    setGoalMessage('Saved goal.');
-    await refreshGoals();
-    renderGoalDetail(data.goal);
-  } catch (error) {
-    setGoalMessage(goalErrorMessage(error), 'error');
-  }
-}
-
-if (goalForm) goalForm.addEventListener('submit', submitGoal);
-if (refreshGoalsButton) refreshGoalsButton.addEventListener('click', refreshGoals);
-if (newGoalButton) newGoalButton.addEventListener('click', resetGoalForm);
-if (goalStatusFilter) goalStatusFilter.addEventListener('change', refreshGoals);
+async function refreshDiaryEntries() { return refreshObsidianSummary(); }
+async function refreshGoals() { return refreshObsidianSummary(); }
+if (refreshObsidianSummaryButton) refreshObsidianSummaryButton.addEventListener('click', refreshObsidianSummary);
 
 async function boot() {
   await selectTab(tabIdFromHash() ?? DEFAULT_TAB_ID, { updateHash: false });

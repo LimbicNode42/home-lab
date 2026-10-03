@@ -16,6 +16,7 @@ METAMCP_STATUS_HOST_DIR=${METAMCP_STATUS_HOST_DIR:-/mnt/nas/services/personal-da
 MEM0_STATUS_HOST_DIR=${MEM0_STATUS_HOST_DIR:-/mnt/nas/services/personal-dashboard/mem0}
 GRAPHITI_STATUS_HOST_FILE=${GRAPHITI_STATUS_HOST_FILE:-/mnt/nas/services/graphiti/status/latest-smoke-backup.json}
 GRAPHITI_MCP_STATUS_HOST_FILE=${GRAPHITI_MCP_STATUS_HOST_FILE:-/mnt/nas/services/graphiti/status/latest-mcp-status.json}
+OBSIDIAN_SUMMARY_HOST_DIR=${OBSIDIAN_SUMMARY_HOST_DIR:-/mnt/nas/services/obsidian-livesync/summaries}
 
 copy_snapshot() {
   source_path=$1
@@ -96,7 +97,9 @@ cleanup() {
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/kanban/kanban.db.tmp.$$"
   rm -rf \
     "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/investment-screener.tmp.$$" \
-    "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/investment-screener.previous.$$"
+    "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/investment-screener.previous.$$" \
+    "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/obsidian-summaries.tmp.$$" \
+    "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/obsidian-summaries.previous.$$"
 }
 trap cleanup EXIT HUP INT TERM
 
@@ -135,5 +138,8 @@ copy_optional_snapshot "$GRAPHITI_STATUS_HOST_FILE" \
 copy_optional_snapshot "$GRAPHITI_MCP_STATUS_HOST_FILE" \
   "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/graphiti/latest-mcp-status.json" \
   "Graphiti MCP publisher snapshot"
+copy_tree_snapshot "$OBSIDIAN_SUMMARY_HOST_DIR" \
+  "$PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR/obsidian-summaries" \
+  "Obsidian summary output"
 
 printf '%s\n' "Synced personal-dashboard runtime snapshots to $PERSONAL_DASHBOARD_RUNTIME_CACHE_DIR"
