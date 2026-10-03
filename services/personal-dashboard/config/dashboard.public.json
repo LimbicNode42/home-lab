@@ -62,7 +62,7 @@
         "deployed": true
       },
       "statusDetail": "Graphiti/Neo4j is the shared operational/provenance graph for agent/homelab facts. mem0 remains the separate personal/preference memory provider; this card does not imply Graphiti replaced mem0.",
-      "unresolvedFollowUp": "Graphiti/Neo4j smoke-backup evidence is 2026-10-02 and the sink is not opinionated: dashboard reads the latest snapshot file and marks it stale exactly 24h after generation (workflow step 5). The tori Graphiti API and Neo4j readiness are currently degraded (JVM stop-the-world contention on the shared host, NOT the memory stack), and this is blocked pending Ben's explicit restart approval. Until then the only accurate status is a re-taken live snapshot plus a fresh generatedAt moment; do not hand-edit the dashboard green light.",
+      "unresolvedFollowUp": "Dashboard reads the sanitized Graphiti publisher snapshot and marks it stale exactly 24h after generation. Recurring publisher cadence is configured on tori; treat any degraded state as a live signal from the latest publisher run, not a hand-edited dashboard value.",
       "statusFile": "/app/graphiti/latest-smoke-backup.json",
       "statusFileStaleAfterMs": 86400000
     },

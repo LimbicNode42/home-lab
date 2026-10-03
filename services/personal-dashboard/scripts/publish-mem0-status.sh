@@ -7,7 +7,7 @@ set -euo pipefail
 # paths.
 
 MEM0_BASE_URL=${MEM0_BASE_URL:-http://127.0.0.1:8888}
-OUT=${OUT:-/mnt/nas/services/personal-dashboard/mem0/status.json}
+OUT=${OUT:-/mnt/pve/NAS/services/personal-dashboard/mem0/status.json}
 LOG_SINCE_SECONDS=${LOG_SINCE_SECONDS:-180}
 MEM0_CONTAINER=${MEM0_CONTAINER:-mem0-mem0-1}
 POSTGRES_CONTAINER=${POSTGRES_CONTAINER:-mem0-postgres-1}
@@ -25,7 +25,7 @@ from urllib import request, error
 
 base_url, out_path, log_since, mem0_container, postgres_container = sys.argv[1:6]
 now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
-error_pattern = re.compile(r'(datastore|pgvector|connection\s+(?:closed|refused)|(?:closed|refused)\s+connection|database\s+(?:unavailable|error|failed|failure)|psycopg.*(?:error|closed)|5(?:02|03))', re.I)
+error_pattern = re.compile(r'(datastore|pgvector|connection\s+(?:closed|refused)|(?:closed|refused)\s+connection|database\s+(?:unavailable|error|failed|failure)|psycopg.*(?:error|closed)|HTTP/[^\s]+"\s+5(?:02|03)\b)', re.I)
 benign_pattern = re.compile(r'(Connected to PostgreSQL database|PostgreSQL startup complete|Skipping initialization|ready for start up)', re.I)
 
 
