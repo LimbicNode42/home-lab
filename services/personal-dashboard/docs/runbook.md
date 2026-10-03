@@ -164,4 +164,3 @@ sanitization. Rules applied:
 3. Lines beginning with `sshpass:` or `debug1:` are stripped
 4. Lines exceeding 512 characters are stripped
 5. If the sanitized output exceeds 64 KB, the NAS write is skipped entirely
-
