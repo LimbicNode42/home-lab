@@ -13,7 +13,7 @@ This repository is being reorganized around auditable infrastructure-as-code / c
 - `infrastructure/` - future IaC/CaC for hosts, Proxmox, NAS, networking, and shared platform components.
 - `archive/legacy-tools/` - preserved legacy scripts/configs that are not current desired state.
 
-See `docs/architecture/repository-structure.md` for the full layout and promotion workflow. Delivery policy, including dashboard completion visibility requirements for agent-built/user-facing work, lives in `docs/delivery-conventions.md`.
+See `docs/architecture/repository-structure.md` for the full layout and promotion workflow. Delivery policy, including dashboard completion visibility requirements for agent-built/user-facing work, lives in `docs/delivery-conventions.md`. The mandatory push-and-push-watchdog policy (commit **and push**, plus the recurring freshness watchdog) lives in `docs/operations/git-push-watchdog.md`.
 
 ## Secrets
 
