@@ -103,6 +103,16 @@ services/graphiti/scripts/graphiti-agent-wrapper.py --base-url http://127.0.0.1:
 
 The last command intentionally verifies Graphiti-down degradation.
 
+## MCP access
+
+A read-only MCP server now wraps the same safe client contract for agents that consume tools through MetaMCP or Hermes native MCP:
+
+```bash
+services/graphiti/scripts/graphiti-mcp-server.py
+```
+
+The MCP contract, placement decision, status publisher, deploy sketch, and rollback instructions live in `services/graphiti/runbooks/mcp-server-access.md`. It exposes only status/search/provenance lookup plus curated episode validation; live ingest remains the explicit operator CLI path above.
+
 ## Agent instruction
 
 Wrapper consumers must treat Graphiti as advisory context. For homelab remediation, live state still wins: inspect the current source system before changing anything. Temporal invalidation fields are advisory until reviewed.

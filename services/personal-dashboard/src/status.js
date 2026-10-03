@@ -155,6 +155,9 @@ export class StatusService {
     if (check.type === 'graphitiNeo4jHealth') {
       return this.probeGraphitiNeo4jHealth(check, checkedAt);
     }
+    if (check.type === 'graphitiMcpHealth') {
+      return this.probeGraphitiMcpHealth(check, checkedAt);
+    }
     return this.probeHttp(check, checkedAt);
   }
 
@@ -279,6 +282,103 @@ export class StatusService {
         liveDataStorage: backup.live_data_storage?.fstype ? `${backup.live_data_storage.fstype} local disk` : undefined,
         stale: isStale
       }
+    };
+  }
+
+  async probeGraphitiMcpHealth(check, checkedAt = new Date().toISOString()) {
+    const started = Date.now();
+    const identity = {
+      id: check.id,
+      label: check.label ?? 'Graphiti MCP server',
+      component: 'graphiti-mcp',
+      ...(check.displayUrl ? { displayUrl: check.displayUrl } : {})
+    };
+    if (!check.statusFile) {
+      return this.graphStatus(identity, 'not_configured', started, 'Graphiti MCP status publisher is not configured', 'graphiti_mcp_status_not_configured', checkedAt);
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(await this.readFileImpl(check.statusFile, 'utf8'));
+    } catch (error) {
+      const message = error?.code === 'ENOENT'
+        ? 'Graphiti MCP status snapshot has not been published yet'
+        : 'Graphiti MCP status snapshot could not be read';
+      const status = error?.code === 'ENOENT' ? 'not_configured' : 'stale';
+      return this.graphStatus(identity, status, started, message, 'graphiti_mcp_status_snapshot_unavailable', checkedAt);
+    }
+    const receipt = this.summarizeGraphitiMcpStatusSnapshot(parsed, check, checkedAt);
+    const status = receipt.status;
+    const message = status === 'healthy'
+      ? `Graphiti MCP ${receipt.toolCount} safe tools verified at ${receipt.snapshotCreatedAt}`
+      : receipt.message;
+    return {
+      ...this.graphStatus(identity, status, started, message, receipt.error, checkedAt),
+      freshness: {
+        snapshotCreatedAt: receipt.snapshotCreatedAt,
+        stale: receipt.isStale,
+        statusFileStaleAfterMs: receipt.staleAfterMs
+      },
+      evidence: {
+        service: 'Graphiti read-only MCP access; mem0 remains separate personal/preference memory',
+        placement: receipt.placement,
+        toolCount: receipt.toolCount,
+        tools: receipt.tools,
+        testedTools: receipt.testedTools,
+        destructiveToolsExposed: receipt.destructiveToolsExposed,
+        unexpectedToolsExposed: receipt.unexpectedToolsExposed,
+        secretsIncluded: receipt.secretsIncluded
+      }
+    };
+  }
+
+  summarizeGraphitiMcpStatusSnapshot(snapshot, check, checkedAt) {
+    const createdAt = safeIsoTimestamp(snapshot.created_at_utc) ?? safeIsoTimestamp(snapshot.createdAt) ?? null;
+    const staleAfterMs = Number(check.statusFileStaleAfterMs ?? DEFAULT_GRAPHITI_STATUS_STALE_AFTER_MS);
+    const ageMs = createdAt ? Date.parse(checkedAt) - Date.parse(createdAt) : Number.POSITIVE_INFINITY;
+    const isStale = !Number.isFinite(staleAfterMs) || staleAfterMs <= 0 ? false : ageMs > staleAfterMs;
+    const safety = snapshot.safety ?? {};
+    const tools = Array.isArray(snapshot.tools)
+      ? snapshot.tools.filter((tool) => typeof tool === 'string' && tool.length < 80).slice(0, 16)
+      : [];
+    const testedTools = Array.isArray(snapshot.tested_tools)
+      ? snapshot.tested_tools.map((item) => ({
+        tool: typeof item?.tool === 'string' ? item.tool : 'unknown',
+        ok: item?.ok === true
+      })).slice(0, 16)
+      : [];
+    const destructiveToolsExposed = safety.destructive_tools_exposed === true;
+    const unexpectedToolsExposed = safety.unexpected_tools_exposed === true;
+    const secretsIncluded = safety.secrets_included === true;
+    let status = safeStatus(snapshot.status, 'unknown');
+    let error = typeof snapshot.error === 'string' ? snapshot.error : undefined;
+    let message = 'Graphiti MCP status is unknown';
+    if (isStale && status === 'healthy') {
+      status = 'stale';
+      error = 'graphiti_mcp_status_stale';
+    }
+    if (destructiveToolsExposed || unexpectedToolsExposed || secretsIncluded) {
+      status = 'degraded';
+      error = 'graphiti_mcp_safety_check_failed';
+    }
+    if (status === 'not_configured') message = 'Graphiti MCP server dependencies or registration are not configured';
+    else if (status === 'down') message = 'Graphiti MCP tool smoke failed or server was unreachable';
+    else if (status === 'stale') message = 'Graphiti MCP status snapshot is stale';
+    else if (status === 'degraded') message = 'Graphiti MCP contract or safety checks are degraded';
+    else if (status === 'healthy') message = 'Graphiti MCP status publisher reports safe tool calls passing';
+    return {
+      status,
+      message,
+      error,
+      isStale,
+      staleAfterMs,
+      snapshotCreatedAt: createdAt,
+      placement: typeof snapshot.placement === 'string' ? snapshot.placement : 'separate read-only MCP server',
+      toolCount: Number.isFinite(Number(snapshot.tool_count)) ? Number(snapshot.tool_count) : tools.length,
+      tools,
+      testedTools,
+      destructiveToolsExposed,
+      unexpectedToolsExposed,
+      secretsIncluded
     };
   }
 

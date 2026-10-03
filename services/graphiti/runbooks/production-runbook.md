@@ -46,6 +46,8 @@ Repository evidence:
 - `services/graphiti/patches/ingest.py`
 - `services/graphiti/agent_graphiti/`
 - `services/graphiti/scripts/graphiti-agent-wrapper.py`
+- `services/graphiti/scripts/graphiti-mcp-server.py`
+- `services/graphiti/runbooks/mcp-server-access.md`
 
 ## 3. Network exposure and access posture
 
@@ -178,6 +180,9 @@ GRAPHITI_VERIFY_HOST=root@192.168.0.20 \
   services/graphiti/scripts/verify-loopback-exposure.sh \
   /tmp/graphiti-listen-scope-after-deploy.txt
 ```
+
+- `services/graphiti/scripts/publish-graphiti-status.sh` refreshes the Graphiti/Neo4j backend snapshot for the Home Dashboard.
+- `services/graphiti/scripts/publish-graphiti-mcp-status.sh` refreshes the separate Graphiti MCP access snapshot after a real MCP client `list_tools`/tool-call smoke.
 
 Record sanitized results under `services/graphiti/receipts/`; do not commit secrets or raw graph dumps.
 

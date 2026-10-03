@@ -67,6 +67,14 @@
       "statusFileStaleAfterMs": 86400000
     },
     {
+      "id": "graphiti-mcp",
+      "label": "Graphiti MCP access",
+      "type": "graphitiMcpHealth",
+      "statusDetail": "Read-only MCP tool surface for agent access to Graphiti provenance/search. This is separate from the raw Graphiti/Neo4j backend and must not expose clear/delete/Cypher/admin tools.",
+      "statusFile": "/app/graphiti/latest-mcp-status.json",
+      "statusFileStaleAfterMs": 900000
+    },
+    {
       "id": "mem0-health",
       "label": "Mem0 memory provider",
       "type": "mem0Health",

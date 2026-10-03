@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from agent_graphiti.client import GraphitiReadOnlyClient, normalize_results
+from agent_graphiti.mcp_server import SAFE_TOOL_NAMES, tool_contract
 from agent_graphiti.episode import validate_episode
 from agent_graphiti.redaction import RedactionFailure, sanitize_text, validate_no_secret_material
 
@@ -149,6 +150,17 @@ class AgentGraphitiTests(unittest.TestCase):
         self.assertEqual(seen["method"], "POST")
         self.assertTrue(seen["url"].endswith("/episodes"))
         self.assertEqual(result["success"], True)
+
+
+    def test_mcp_contract_is_read_only_and_validation_only(self):
+        contract = tool_contract()
+        self.assertEqual(contract["destructive_tools_exposed"], False)
+        self.assertEqual(set(contract["tools"]), set(SAFE_TOOL_NAMES))
+        forbidden = ("clear", "delete", "drop", "remove", "truncate", "cypher", "admin", "write")
+        joined = " ".join(contract["tools"]).lower()
+        self.assertFalse(any(term in joined for term in forbidden))
+        self.assertIn("validation-only", contract["curated_ingest"])
+        self.assertIn("mem0", contract["memory_boundary"])
 
     def test_unsafe_paths_and_mutation_queries_rejected(self):
         with self.assertRaises(ValueError):

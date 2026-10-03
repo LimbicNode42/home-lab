@@ -473,3 +473,71 @@ test('graphitiNeo4jHealth summarizes smoke and backup snapshot without leaking a
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('graphitiMcpHealth summarizes safe MCP snapshot without leaking internals', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'graphiti-mcp-status-'));
+  try {
+    const statusFile = join(dir, 'latest-mcp-status.json');
+    await writeFile(statusFile, JSON.stringify({
+      schema: 'personal-dashboard.graphiti-mcp-status.v1',
+      created_at_utc: '2026-10-03T13:00:00Z',
+      service: 'Graphiti read-only MCP server',
+      status: 'healthy',
+      placement: 'separate stdio MCP server registered through MetaMCP/Hermes native MCP; raw Graphiti remains loopback-only',
+      tools: ['graphiti_lookup_provenance', 'graphiti_search_facts', 'graphiti_status', 'graphiti_validate_curated_episode'],
+      tool_count: 4,
+      tested_tools: [
+        { tool: 'graphiti_status', ok: true },
+        { tool: 'graphiti_search_facts', ok: true }
+      ],
+      safety: {
+        destructive_tools_exposed: false,
+        unexpected_tools_exposed: false,
+        raw_graphiti_public_route_created: false,
+        mem0_provider_changed: false,
+        secrets_included: false
+      }
+    }));
+    const service = new StatusService({
+      checks: [{
+        id: 'graphiti-mcp',
+        label: 'Graphiti MCP access',
+        type: 'graphitiMcpHealth',
+        statusFile,
+        statusFileStaleAfterMs: 600000
+      }]
+    });
+
+    const check = await service.probe(service.checks[0], '2026-10-03T13:04:00Z');
+
+    assert.equal(check.status, 'healthy');
+    assert.equal(check.evidence.toolCount, 4);
+    assert.equal(check.evidence.destructiveToolsExposed, false);
+    assert.equal(check.evidence.unexpectedToolsExposed, false);
+    assert.equal(check.evidence.secretsIncluded, false);
+    assert.match(check.evidence.service, /mem0 remains separate/);
+    const serialized = JSON.stringify(check);
+    assert.equal(serialized.includes('/opt/graphiti'), false);
+    assert.equal(serialized.includes('127.0.0.1:8000'), false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('graphitiMcpHealth degrades if the MCP tool contract exposes destructive tools', async () => {
+  const service = new StatusService({
+    checks: [{ id: 'graphiti-mcp', label: 'Graphiti MCP access', type: 'graphitiMcpHealth', statusFile: '/unused' }],
+    readFileImpl: async () => JSON.stringify({
+      created_at_utc: '2026-10-03T13:00:00Z',
+      status: 'healthy',
+      tools: ['graphiti_status', 'graphiti_delete_everything'],
+      tool_count: 2,
+      safety: { destructive_tools_exposed: true, unexpected_tools_exposed: true, secrets_included: false }
+    })
+  });
+
+  const check = await service.probe(service.checks[0], '2026-10-03T13:01:00Z');
+
+  assert.equal(check.status, 'degraded');
+  assert.equal(check.error, 'graphiti_mcp_safety_check_failed');
+});

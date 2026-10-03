@@ -42,6 +42,14 @@ const DEFAULT_CONFIG = {
       timeoutMs: 2500
     },
     {
+      id: 'graphiti-mcp',
+      label: 'Graphiti MCP access',
+      type: 'graphitiMcpHealth',
+      statusDetail: 'Read-only MCP tool surface for agent access to Graphiti provenance/search. This is separate from the raw Graphiti/Neo4j backend and must not expose clear/delete/Cypher/admin tools.',
+      statusFile: '/app/graphiti/latest-mcp-status.json',
+      statusFileStaleAfterMs: 900000
+    },
+    {
       id: 'metamcp-gateway',
       label: 'MetaMCP gateway',
       targetUrl: 'http://192.168.0.20:12008/health',
@@ -637,6 +645,19 @@ function validateStatusChecks(statusChecks) {
         if (!result.statusFile.startsWith('/')) {
           throw new Error(`Invalid statusFile for ${label}: expected an absolute in-container path`);
         }
+      }
+      if (check.statusFileStaleAfterMs !== undefined) {
+        const statusFileStaleAfterMs = Number(check.statusFileStaleAfterMs);
+        if (!Number.isInteger(statusFileStaleAfterMs) || statusFileStaleAfterMs < 60_000 || statusFileStaleAfterMs > 30 * 24 * 60 * 60 * 1000) {
+          throw new Error(`Invalid statusFileStaleAfterMs for ${label}: must be an integer between 60000 and 2592000000`);
+        }
+        result.statusFileStaleAfterMs = statusFileStaleAfterMs;
+      }
+    } else if (type === 'graphitiMcpHealth') {
+      result.type = type;
+      result.statusFile = requireText(check?.statusFile, `statusChecks[${index}].statusFile`);
+      if (!result.statusFile.startsWith('/')) {
+        throw new Error(`Invalid statusFile for ${label}: expected an absolute in-container path`);
       }
       if (check.statusFileStaleAfterMs !== undefined) {
         const statusFileStaleAfterMs = Number(check.statusFileStaleAfterMs);
