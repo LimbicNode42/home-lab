@@ -19,7 +19,7 @@ set -euo pipefail
 GRAPHITI_API_URL=${GRAPHITI_API_URL:-http://127.0.0.1:8000}
 NEO4J_HTTP_URL=${NEO4J_HTTP_URL:-http://127.0.0.1:7474}
 NEO4J_DATABASE=${NEO4J_DATABASE:-neo4j}
-OUT=${OUT:-/mnt/nas/services/graphiti/status/latest-smoke-backup.json}
+OUT=${OUT:-/mnt/pve/NAS/services/graphiti/status/latest-smoke-backup.json}
 TIMEOUT_SECONDS=${TIMEOUT_SECONDS:-8}
 
 python3 - "$GRAPHITI_API_URL" "$NEO4J_HTTP_URL" "$NEO4J_DATABASE" "$OUT" "$TIMEOUT_SECONDS" <<'PY'
