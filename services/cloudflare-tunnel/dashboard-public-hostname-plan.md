@@ -2,10 +2,12 @@
 
 Status: **APPLIED** 2026-05-28 via Cloudflare API (kobold worker).
 
+Runtime verification: **healthy after outage recovery** 2026-10-03 (`t_d59f8c9d`).
+
 ## What was applied
 
 - Tunnel ingress rule added to `nippon-overpass` (38a5cb27-6f7b-4812-999f-1e151528df38) for `dashboard.wheeler-network.com` -> `http://192.168.0.50:80`
-  - Tunnel config version bumped to 59.
+  - Tunnel config version bumped to 59 when first applied; read-only Cloudflare verification on 2026-10-03 observed version 60 with the same dashboard hostname -> origin mapping.
 - Proxied CNAME DNS record created: `dashboard.wheeler-network.com` -> `38a5cb27-6f7b-4812-999f-1e151528df38.cfargotunnel.com` (DNS record ID: 6fc97d9fb63391db64fd72ffde8e7aed)
 
 ## Route chain
@@ -19,7 +21,9 @@ https://dashboard.wheeler-network.com
 
 ## Authentication
 
-**Decision: No Cloudflare Access policy** (per Ben, 2026-05-28).
+Historical decision: **No Cloudflare Access policy** (per Ben, 2026-05-28).
+
+Current live state verified 2026-10-03: a Cloudflare Access self-hosted app named `Hermes Dashboard` protects `dashboard.wheeler-network.com`. Unauthenticated public probes return HTTP 302 to the Cloudflare Access login page with a `www-authenticate: Cloudflare-Access` header.
 
 The app enforces authentication internally in reverse-proxy mode:
 - `DASHBOARD_AUTH_MODE=reverse-proxy`
@@ -29,7 +33,19 @@ The app enforces authentication internally in reverse-proxy mode:
 
 In production, Cloudflare strips untrusted client-supplied headers, so the 401 on API calls from outside is expected without an Access policy forwarding the identity.
 
-**Note for future:** If a Cloudflare Access application is added later (to SSO-gate the app), Cloudflare will forward `cf-access-authenticated-user-email` and API endpoints will work for authenticated sessions.
+**Note for operators:** Cloudflare Access is now present, so successful unauthenticated public verification means seeing the Access redirect, not the dashboard body. Verify the local origin separately through Traefik and the dashboard container.
+
+## Outage recovery note, 2026-10-03
+
+Task `t_d59f8c9d` restored availability after the local tunnel origin was offline. Cloudflare DNS and Access were healthy, but the `nippon-overpass` tunnel had no connections because the `critical` LXC was stopped; `critical` depended on NAS storage from the stopped NAS VM.
+
+Bounded live recovery performed after operator approval:
+
+1. Start only NAS VM103 on `shogun` and verify Proxmox storage `NAS` is active.
+2. Start only CT100 `critical` on `emperor`.
+3. Verify `proxy`, `cloudflare`, and `personal-dashboard` are running, the dashboard container is healthy, the tunnel is healthy with four Cloudflare connections, and public unauthenticated requests reach Cloudflare Access.
+
+No DNS, Access policy, tunnel ingress, Traefik config, or dashboard config changes were made during the recovery.
 
 ## Vaultwarden secret refs used
 
