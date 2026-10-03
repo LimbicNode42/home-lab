@@ -219,6 +219,17 @@ Wrapper degradation was also verified by pointing the local wrapper at an unavai
 
 For future smokes, prefer the reviewed wrapper/curated ingest path in `services/graphiti/scripts/graphiti-agent-wrapper.py` and `services/graphiti/agent_graphiti/`. Keep groups scoped and source references explicit.
 
+### Backend publisher smoke target: unexpiring operational fact (not a disposable smoke episode)
+
+The recurring backend publisher (`services/graphiti/scripts/publish-graphiti-status.sh`, installed as `/usr/local/sbin/publish-personal-dashboard-graphiti-status` on tori) re-runs its live query half every poll and must target a fact that does not expire from the graph. The original smoke ingested a disposable fact under a timestamped `services_graphiti_prod_smoke_*` group and re-queried it; once that fact fell out of the search window the carry-forward-only logic dropped `curated_ingest_and_query_smoke` to `null` and the Overview card flipped to `degraded` permanently even though Graphiti/Neo4j were healthy.
+
+Two candidate fixes were considered:
+
+- Re-ingesting a fresh smoke fact on every poll: rejected. This is off-policy (curated ingest is a manual/seed-batched operation, max one reviewed batch per day) and non-viable as a health signal (live `/episodes` ingest depends on the LLM/embedding path, which is not something a 5-minute liveness poll should exercise).
+- Re-querying an unexpiring operational fact: adopted. The publisher queries the reviewed deployment-posture seed fact in group `services.graphiti` (`service:graphiti-deployment-posture:2026-10-01`, `valid_at` 2026-10-01, `invalid_at`/`expired_at` null) with `group_ids: [services_graphiti]`, `max_facts: 1`. Its live HTTP status and non-zero result count are the honest proof the search path works right now; the `count > 0` gate and `passed` gate are preserved so a real ingest/query failure still degrades the card truthfully.
+
+The publisher snapshot's `curated_ingest_and_query_smoke.ingest_actual` describes this reviewed seed-set ingest (HTTP 201) rather than a per-poll ingest, and `evidence_kind` is set to `unexpiring-operational-fact-requery`. If the seed fact is ever superseded/invalidated, the query target in the publisher must be updated to a new unexpiring operational fact in the same group, not to a timestamped disposable smoke.
+
 ## 9. Backup and restore-test procedure
 
 Neo4j Community dumps are offline dumps. The approved method may stop/restart Graphiti/Neo4j through Docker Compose, so run it in an approved maintenance window.
