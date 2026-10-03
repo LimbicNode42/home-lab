@@ -1,0 +1,31 @@
+# Non-secret render map for the memory-reconciler runtime.
+# Values live in Ben's personal Vaultwarden vault. NEVER commit values.
+# Folder is case-sensitive (operator audit observed `Homelab`).
+vaultwarden:
+  server: http://192.168.0.50:8084
+  folder: Homelab
+
+items:
+  memory-reconciler/mem0:
+    fields:
+      api_key: MEM0_API_KEY            # X-API-Key header for the self-hosted mem0 server
+  memory-reconciler/graphiti:
+    fields:
+      api_key: GRAPHITI_OPENROUTER_API_KEY   # dedicated OpenRouter key for Graphiti ingest
+  # Reuse the existing Graphiti items for the model/embedding allowlist shape.
+  graphiti/openrouter:
+    fields:
+      password: OPENROUTER_API_KEY
+      completion_model: GRAPHITI_COMPLETION_MODEL
+      rerank_model: GRAPHITI_RERANK_MODEL
+      embedding_model: GRAPHITI_EMBEDDING_MODEL
+      embedding_dim: GRAPHITI_EMBEDDING_DIM
+
+rendering_rules:
+  destination: /opt/memory-reconciler/.env
+  mode: "0600"
+  owner: root
+  never_commit:
+    - MEM0_API_KEY
+    - GRAPHITI_OPENROUTER_API_KEY
+    - OPENROUTER_API_KEY
