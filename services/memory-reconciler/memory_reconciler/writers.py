@@ -37,6 +37,7 @@ class Mem0Writer:
         user_id: str = cfg.DEFAULT_MEM0_USER_ID,
         agent_id: str = cfg.DEFAULT_MEM0_AGENT_ID,
         dry_run: bool = True,
+        timeout_seconds: float = cfg.DEFAULT_MEM0_TIMEOUT_SECONDS,
         opener: Any = None,
     ) -> None:
         self.host = host.rstrip("/")
@@ -44,6 +45,7 @@ class Mem0Writer:
         self.user_id = user_id
         self.agent_id = agent_id
         self.dry_run = dry_run
+        self.timeout_seconds = timeout_seconds
         self._opener = opener or (lambda req, timeout: urllib.request.urlopen(req, timeout=timeout))
 
     def _require_key(self) -> None:
@@ -75,7 +77,7 @@ class Mem0Writer:
             },
         )
         try:
-            with self._opener(req, 30.0) as response:
+            with self._opener(req, self.timeout_seconds) as response:
                 payload = response.read().decode("utf-8")
         except (TimeoutError, OSError, urllib.error.URLError, urllib.error.HTTPError) as exc:
             raise WriterError("mem0 write unavailable") from exc
@@ -94,10 +96,12 @@ class GraphitiWriter:
         *,
         base_url: str = cfg.DEFAULT_GRAPHITI_BASE_URL,
         dry_run: bool = True,
+        timeout_seconds: float = cfg.DEFAULT_GRAPHITI_TIMEOUT_SECONDS,
         client: Any = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.dry_run = dry_run
+        self.timeout_seconds = timeout_seconds
         self._client = client
 
     def _make_client(self) -> Any:
@@ -114,7 +118,7 @@ class GraphitiWriter:
             sys.path.insert(0, str(agent_dir))
         from agent_graphiti.client import GraphitiReadOnlyClient
 
-        return GraphitiReadOnlyClient(self.base_url)
+        return GraphitiReadOnlyClient(self.base_url, timeout_seconds=self.timeout_seconds)
 
     def ingest(self, payload: dict[str, Any]) -> dict[str, Any]:
         if self.dry_run:

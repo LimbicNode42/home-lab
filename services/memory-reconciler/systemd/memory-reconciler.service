@@ -1,0 +1,20 @@
+[Unit]
+Description=Memory reconciler: curated Kanban completion -> mem0 + Graphiti
+Documentation=https://github.com/LimbicNode42/home-lab/tree/master/services/memory-reconciler
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# One bounded daily batch (25 episodes max) via the timer. No per-minute loop.
+ExecStart=/opt/memory-reconciler/.venv/bin/python /opt/memory-reconciler/bin/graceful-memory-reconciler reconcile --apply --once
+User=root
+Group=root
+WorkingDirectory=/opt/memory-reconciler
+EnvironmentFile=/opt/memory-reconciler/.env
+RuntimeMaxSec=900
+# dry-run is NOT the default here; the timer deliberately runs --apply to drain
+# the backlog idempotently. Manual safety valve: drop --apply for a dry run.
+
+[Install]
+WantedBy=multi-user.target

@@ -79,9 +79,12 @@ class Reconciler:
             user_id=config.mem0_user_id,
             agent_id=config.mem0_agent_id,
             dry_run=config.dry_run,
+            timeout_seconds=config.mem0_timeout_seconds,
         )
         self.graphiti = graphiti_writer or GraphitiWriter(
-            base_url=config.graphiti_base_url, dry_run=config.dry_run
+            base_url=config.graphiti_base_url,
+            dry_run=config.dry_run,
+            timeout_seconds=config.graphiti_timeout_seconds,
         )
 
     def _preflight(self) -> None:

@@ -40,6 +40,14 @@ DEFAULT_MEM0_AGENT_ID = os.environ.get("MEMORY_RECONCILER_MEM0_AGENT_ID", "memor
 # --- Graphiti API (loopback-only target, no public route) -----------------
 DEFAULT_GRAPHITI_BASE_URL = os.environ.get("MEMORY_RECONCILER_GRAPHITI_URL", "http://127.0.0.1:8000")
 
+# --- Ingest timeouts -------------------------------------------------------
+# Graphiti episode ingest performs LLM entity extraction per episode and can
+# take on the order of minutes under load; the read-only client's 8s default is
+# far too short for the ingest path. mem0 writes are also slower than a trivial
+# POST (fact extraction on the mem0 side). Both override the client defaults.
+DEFAULT_GRAPHITI_TIMEOUT_SECONDS = int(os.environ.get("MEMORY_RECONCILER_GRAPHITI_TIMEOUT", "300"))
+DEFAULT_MEM0_TIMEOUT_SECONDS = int(os.environ.get("MEMORY_RECONCILER_MEM0_TIMEOUT", "90"))
+
 
 @dataclass
 class ReconcilerConfig:
@@ -57,6 +65,8 @@ class ReconcilerConfig:
 
     graphiti_base_url: str = DEFAULT_GRAPHITI_BASE_URL
     graphiti_api_key: str = field(default_factory=lambda: os.environ.get("GRAPHITI_OPENROUTER_API_KEY", ""))
+    graphiti_timeout_seconds: float = DEFAULT_GRAPHITI_TIMEOUT_SECONDS
+    mem0_timeout_seconds: float = DEFAULT_MEM0_TIMEOUT_SECONDS
     completion_model: str = ALLOWED_COMPLETION_MODEL
     rerank_model: str = ALLOWED_RERANK_MODEL
     embedding_model: str = ALLOWED_EMBEDDING_MODEL

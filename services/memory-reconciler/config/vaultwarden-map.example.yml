@@ -6,20 +6,24 @@ vaultwarden:
   folder: Homelab
 
 items:
-  memory-reconciler/mem0:
+  # Ops note (kobold deploy t_1bdadf8f): the original map referenced items
+  # `memory-reconciler/mem0` and `memory-reconciler/graphiti`, which do not
+  # exist in the `Homelab` folder. The real items are below.
+  mem0/server:
     fields:
       api_key: MEM0_API_KEY            # X-API-Key header for the self-hosted mem0 server
-  memory-reconciler/graphiti:
-    fields:
-      api_key: GRAPHITI_OPENROUTER_API_KEY   # dedicated OpenRouter key for Graphiti ingest
-  # Reuse the existing Graphiti items for the model/embedding allowlist shape.
+  # graphiti/openrouter holds the homelab OpenRouter key. NOTE: the v1
+  # GraphitiWriter does NOT attach this key to the loopback /episodes ingest
+  # POST (graphiti-api holds its own OpenRouter key). Rendered for completeness
+  # and future header support; empty is not a blocker for a reconcile run.
   graphiti/openrouter:
     fields:
-      password: OPENROUTER_API_KEY
-      completion_model: GRAPHITI_COMPLETION_MODEL
-      rerank_model: GRAPHITI_RERANK_MODEL
-      embedding_model: GRAPHITI_EMBEDDING_MODEL
-      embedding_dim: GRAPHITI_EMBEDDING_DIM
+      password: GRAPHITI_OPENROUTER_API_KEY
+
+# Model/embedding allowlist shape is NON-secret literal config, held in
+# .env.example (openai/gpt-4o-mini + openai/text-embedding-3-small, dim 1536);
+# it does not come from the vault. The earlier map incorrectly listed these as
+# custom fields on graphiti/openrouter, which has none.
 
 rendering_rules:
   destination: /opt/memory-reconciler/.env
@@ -28,4 +32,3 @@ rendering_rules:
   never_commit:
     - MEM0_API_KEY
     - GRAPHITI_OPENROUTER_API_KEY
-    - OPENROUTER_API_KEY
