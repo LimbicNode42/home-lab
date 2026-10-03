@@ -1,0 +1,43 @@
+# Compose desired state for the self-hosted Obsidian LiveSync backend (CouchDB).
+#
+# Status: LIVE (deployed on `critical`, LXC 100, 192.168.0.50).
+#       Deployment is via raw `docker run` (the host has no docker compose
+#       plugin; vaultwarden/postgres/traefik are the same). This file is the
+#       committed desired-state record; the live container is reconciled to it.
+#
+# Exposure: LAN-ONLY. Port 5984 is bound to 192.168.0.50 only. There is NO
+#           Traefik router, TLS, Cloudflare Tunnel, or public hostname for this
+#           service. Remote access is deferred to a later task.
+#
+# Data/config: NAS at /mnt/nas/services/obsidian-livesync/ (data + config).
+# Vault (Obsidian markdown): /mnt/nas/obsidian/vault/ (separate, owned by the
+#           human's Obsidian client — not this container).
+#
+# Secrets: rendered into .env (mode 0600, untracked) from Vaultwarden folder
+#          `Homelab` via scripts/secrets/render-env-from-vaultwarden.sh using
+#          obsidian-livesync.env.map.example in this directory. See B.4 in
+#          docs/obsidian-source-of-truth.md. NEVER commit secret values.
+
+services:
+  couchdb:
+    # Pinned to the digest resolved at deploy time on 2026-10-03 (aarch64 host).
+    image: couchdb@sha256:307a3f5276f64c0db28f226b7b5c180b8f2c851afa681cfb4fbb1b1fe7fd5587
+    container_name: obsidian-couchdb
+    restart: unless-stopped
+    environment:
+      COUCHDB_USER: ${COUCHDB_USER}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD}
+      # NOTE: single-node mode is set via a local.d config file (see
+      # config/10-single-node.ini), NOT via COUCHDB_SINGLE_NODE. The couchdb
+      # entrypoint (docker-entrypoint.sh) only reads COUCHDB_USER/_PASSWORD/
+      # _SECRET/_ERLANG_COOKIE/NODENAME; it ignores COUCHDB_SINGLE_NODE.
+    ports:
+      - "192.168.0.50:5984:5984"    # LAN-only bind — NOT 0.0.0.0
+    volumes:
+      - /mnt/nas/services/obsidian-livesync/data:/opt/couchdb/data
+      - /mnt/nas/services/obsidian-livesync/config:/opt/couchdb/etc/local.d
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5984/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
