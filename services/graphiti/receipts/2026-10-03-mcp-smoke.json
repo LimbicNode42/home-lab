@@ -1,0 +1,45 @@
+{
+  "schema": "graphiti-mcp-implementation-smoke.v1",
+  "created_at_utc": "2026-10-03T13:00:00Z",
+  "kanban_task": "t_f41559d5",
+  "mcp_contract": {
+    "tool_names": [
+      "graphiti_lookup_provenance",
+      "graphiti_search_facts",
+      "graphiti_status",
+      "graphiti_validate_curated_episode"
+    ],
+    "destructive_tools_exposed": false,
+    "curated_ingest_apply_exposed": false
+  },
+  "real_mcp_client_smoke": {
+    "client": "Python mcp ClientSession over stdio via uv run --with mcp",
+    "upstream": "local fake Graphiti-compatible read-only fixture",
+    "status_tool_is_error": false,
+    "search_tool_is_error": false,
+    "provenance_tool_is_error": false,
+    "search_status": "ok",
+    "result_count": 1,
+    "sample_source_ref": "kanban:t_f41559d5:mcp-smoke"
+  },
+  "live_boundary_checks": {
+    "tori_loopback_healthcheck": "healthy",
+    "lan_raw_graphiti_healthcheck": "connection_refused",
+    "listen_scope": [
+      "127.0.0.1:8000",
+      "127.0.0.1:7474",
+      "127.0.0.1:7687"
+    ]
+  },
+  "notes": [
+    "Live raw Graphiti /search timed out during an SSH-tunneled read-only probe, so live backend query usability remains represented by the existing Graphiti/Neo4j status lane rather than this MCP contract smoke.",
+    "No live MetaMCP/Hermes registration, cron, gateway restart, or raw Graphiti exposure change was performed in this implementation run."
+  ],
+  "safety": {
+    "mem0_provider_changed": false,
+    "public_route_created": false,
+    "raw_destructive_endpoints_agent_facing": false,
+    "secrets_included": false,
+    "live_mutation_performed": false
+  }
+}

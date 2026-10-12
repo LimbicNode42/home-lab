@@ -1,0 +1,29 @@
+{
+  "base_url": "https://openrouter.ai/api/v1",
+  "checked_at": "2026-09-21T15:48:39Z",
+  "completion_model": "openai/gpt-4o-mini",
+  "credential_present": true,
+  "embedding_dim_expected": 1536,
+  "embedding_model": "openai/text-embedding-3-small",
+  "overall": "passed_exact_models_available",
+  "results": {
+    "chat_completion": {
+      "classification": null,
+      "model": "openai/gpt-4o-mini",
+      "ok": true,
+      "status": 200,
+      "usage": {
+        "completion_tokens": 3,
+        "prompt_tokens": 13,
+        "total_tokens": 16
+      }
+    },
+    "embedding": {
+      "classification": null,
+      "embedding_dim_observed": 1536,
+      "model": "openai/text-embedding-3-small",
+      "ok": true,
+      "status": 200
+    }
+  }
+}

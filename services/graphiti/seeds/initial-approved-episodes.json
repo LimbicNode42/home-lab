@@ -1,0 +1,142 @@
+{
+  "episodes": [
+    {
+      "episode_id": "decision:graphiti-memory-boundary:2026-09-30",
+      "title": "Graphiti is advisory and mem0 remains active",
+      "domain": "decisions",
+      "group_id": "decisions.graphiti-memory-boundary",
+      "source_type": "decision_supersession",
+      "source_ref": "t_87852d3e curated ingest policy",
+      "source_path": "services/graphiti/runbooks/curated-ingest-policy.md",
+      "source_timestamp": "2026-09-30T00:00:00Z",
+      "curated_by": "gremlin",
+      "curated_at": "2026-10-01T00:00:00Z",
+      "status": "current",
+      "summary": "Graphiti/Neo4j is a shared operational/provenance graph layer for source-backed homelab and agent facts. It does not replace Hermes mem0 personal/preference memory unless Ben explicitly approves a later provider change.",
+      "facts": [
+        {
+          "text": "mem0 remains the active personal/preference memory provider; Graphiti is advisory operational provenance only.",
+          "confidence": "high",
+          "caveat": "Policy fact; verify live Hermes configuration before changing any memory-provider setting.",
+          "valid_at": "2026-09-30T00:00:00Z",
+          "invalid_at": null,
+          "supersedes": []
+        }
+      ],
+      "tags": ["graphiti", "mem0", "policy"],
+      "redaction": {"reviewed": true, "secret_values_removed": true, "private_memory_excluded": true}
+    },
+    {
+      "episode_id": "service:graphiti-deployment-posture:2026-10-01",
+      "title": "Graphiti deployment posture is tori-local and non-public",
+      "domain": "services",
+      "group_id": "services.graphiti",
+      "source_type": "deployment_summary",
+      "source_ref": "t_5a650bed infra handoff",
+      "source_path": "services/graphiti/runbooks/production-architecture-rollout.md",
+      "source_timestamp": "2026-10-01T00:00:00Z",
+      "curated_by": "gremlin",
+      "curated_at": "2026-10-01T00:00:00Z",
+      "status": "current",
+      "summary": "The reviewed production posture is a tori-local Graphiti + Neo4j deployment with no public route, loopback raw services, local Neo4j live data, and NAS used only for dumps, snapshots, manifests, and restore-test evidence.",
+      "facts": [
+        {
+          "text": "Raw Graphiti and Neo4j services must not be publicly exposed; agent access must go through the read-only wrapper.",
+          "confidence": "high",
+          "caveat": "Deployment is still gated on Vaultwarden/BW unlock and reviewed preflight before live apply.",
+          "valid_at": "2026-10-01T00:00:00Z",
+          "invalid_at": null,
+          "supersedes": []
+        },
+        {
+          "text": "Neo4j live data belongs on tori-local disk; NAS is for dumps, config snapshots, manifests, and restore-test evidence only.",
+          "confidence": "high",
+          "caveat": "Do not infer current deployment state from this policy; inspect live host state before remediation.",
+          "valid_at": "2026-10-01T00:00:00Z",
+          "invalid_at": null,
+          "supersedes": []
+        }
+      ],
+      "tags": ["graphiti", "neo4j", "deployment", "tori"],
+      "redaction": {"reviewed": true, "secret_values_removed": true, "private_memory_excluded": true}
+    },
+    {
+      "episode_id": "homelab:nippon-qdevice-risk:2026-05-25",
+      "title": "Nippon qdevice dependency can deadlock NAS recovery",
+      "domain": "homelab",
+      "group_id": "homelab.nippon-quorum",
+      "source_type": "incident_summary",
+      "source_ref": "homelab operations memory and recovery runbook",
+      "source_path": "homelab-operations skill references/ben-proxmox-nas-recovery-2026-05-25.md",
+      "source_timestamp": "2026-05-25T00:00:00Z",
+      "curated_by": "gremlin",
+      "curated_at": "2026-10-01T00:00:00Z",
+      "status": "current",
+      "summary": "The Nippon Proxmox cluster had a qdevice/qnetd dependency hosted at the NAS VM IP, creating a risk that the NAS VM cannot start when quorum depends on a service inside that VM path.",
+      "facts": [
+        {
+          "text": "Hosting qdevice/qnetd on cluster-dependent NAS VM infrastructure can deadlock quorum recovery and should be moved off that dependency path.",
+          "confidence": "high",
+          "caveat": "Safety-critical; inspect current cluster quorum and qdevice state before taking action.",
+          "valid_at": "2026-05-25T00:00:00Z",
+          "invalid_at": null,
+          "supersedes": []
+        }
+      ],
+      "tags": ["proxmox", "quorum", "qdevice", "nas"],
+      "redaction": {"reviewed": true, "secret_values_removed": true, "private_memory_excluded": true}
+    },
+    {
+      "episode_id": "service:vaultwarden-secrets-convention:2026-05-22",
+      "title": "Vaultwarden homelab secrets convention",
+      "domain": "services",
+      "group_id": "services.vaultwarden",
+      "source_type": "dependency_ownership_note",
+      "source_ref": "Vaultwarden IaC import runbook and current homelab convention",
+      "source_path": "homelab-operations skill references/ben-vaultwarden-iac-import-2026-05-22.md",
+      "source_timestamp": "2026-05-22T00:00:00Z",
+      "curated_by": "gremlin",
+      "curated_at": "2026-10-01T00:00:00Z",
+      "status": "current",
+      "summary": "Homelab Git artifacts should store Vaultwarden folder/item/field references only. Ben selected his personal Vaultwarden vault with a flat folder named homelab and hierarchical item names for runtime secrets.",
+      "facts": [
+        {
+          "text": "Git should contain Vaultwarden references such as folder, item, and field names, never rendered secret values.",
+          "confidence": "high",
+          "caveat": "Use runtime secret transport for actual values; do not paste credentials into Kanban comments, logs, dashboard JSON, or docs.",
+          "valid_at": "2026-05-22T00:00:00Z",
+          "invalid_at": null,
+          "supersedes": []
+        }
+      ],
+      "tags": ["vaultwarden", "secrets", "gitops"],
+      "redaction": {"reviewed": true, "secret_values_removed": true, "private_memory_excluded": true}
+    },
+    {
+      "episode_id": "incident:media-stale-nfs-handles:2026-05-25",
+      "title": "Jellyfin media stack stale NFS handle incident pattern",
+      "domain": "incidents",
+      "group_id": "incidents.media-stack",
+      "source_type": "incident_summary",
+      "source_ref": "Jellyfin stale NFS handles runbook",
+      "source_path": "homelab-operations skill references/ben-jellyfin-stale-nfs-handles-2026-05-25.md",
+      "source_timestamp": "2026-05-25T00:00:00Z",
+      "curated_by": "gremlin",
+      "curated_at": "2026-10-01T00:00:00Z",
+      "status": "historical",
+      "summary": "A prior Jellyfin playback failure involved host NAS access being healthy while the long-running container saw stale NFS bind-mount handles. The safe diagnostic path compared host and container file access before restarting only the affected container after approval.",
+      "facts": [
+        {
+          "text": "For Jellyfin/media playback failures after NAS disruption, compare host path access with container bind-mount access before redesigning storage or deleting media.",
+          "confidence": "high",
+          "caveat": "Historical incident pattern; inspect current host, container, and NAS state before remediation.",
+          "valid_at": "2026-05-25T00:00:00Z",
+          "invalid_at": null,
+          "supersedes": []
+        }
+      ],
+      "tags": ["jellyfin", "nas", "nfs", "incident"],
+      "redaction": {"reviewed": true, "secret_values_removed": true, "private_memory_excluded": true}
+    }
+  ]
+}

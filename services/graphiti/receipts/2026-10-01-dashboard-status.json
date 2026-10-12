@@ -1,0 +1,57 @@
+{
+  "created_at_utc": "2026-10-01T10:00:00Z",
+  "task": "t_f0892c64",
+  "status": "dashboard_status_card_wired_blocked",
+  "commit": "6cea223",
+  "branch": "wt/t_f0892c64",
+  "changed_files": [
+    "services/personal-dashboard/src/status.js",
+    "services/personal-dashboard/src/config.js",
+    "services/personal-dashboard/public/styles.css",
+    "services/personal-dashboard/config/dashboard.public.json",
+    "services/personal-dashboard/config/dashboard.public.example.json",
+    "services/personal-dashboard/test/status.test.js",
+    "services/personal-dashboard/test/config.test.js"
+  ],
+  "dashboard_surface": {
+    "card_id": "knowledge-graph",
+    "type": "graphitiNeo4jHealth",
+    "graphiti": { "state": "not_deployed" },
+    "neo4j": { "state": "not_deployed" },
+    "blocked_narrative": "Graphiti/Neo4j shared operational/provenance graph is not deployed yet: live service remains blocked on the Vaultwarden/OpenRouter preflight prerequisite. Config, deploy, backup, and restore-test automation are committed but have not been run live.",
+    "unblock_path": "Unlock Vaultwarden (Homelab graphiti/openrouter), rerun services/graphiti/scripts/deploy-tori-local.sh --preflight-only, then deploy, run backup/restore-test, and flip these cards to live loopback probes.",
+    "signals_represented": [
+      "service reachability (loopback Graphiti /health, /ready)",
+      "Neo4j availability (browser HTTP + Bolt TCP)",
+      "backup/restore-test evidence (instance lives in infra receipts; card flips to live probes once deployed)"
+    ],
+    "blocked_degraded_states": ["not_deployed", "not_configured", "degraded", "down", "stale", "healthy"]
+  },
+  "safety": {
+    "secrets_exposed": false,
+    "raw_credentials_in_public_json": false,
+    "internal_probe_urls_in_public_json": false,
+    "destructive_endpoints_exposed": false,
+    "public_route_created": false,
+    "raw_dashboard_loopback_probe_urls": ["127.0.0.1:8000 Graphiti", "127.0.0.1:7474 Neo4j HTTP", "127.0.0.1:7687 Neo4j Bolt"],
+    "public_config_hides_internals": true
+  },
+  "verification": {
+    "config_tests_pass": "25/25",
+    "status_tests_pass": "25/25 (incl. new blocked-narrative test)",
+    "full_suite": "280/281 passing; 1 unrelated pre-existing investment-screener fixture failure (removed external /root/.hermes/kanban/artifacts/investment-screener-t_6d63d69b)",
+    "live_verification": {
+      "method": "bounded local server run (PORT=4455, DASHBOARD_AUTH_MODE=disabled) with DASHBOARD_CONFIG_FILE pointing at repo config",
+      "/api/config/public": "returns knowledge-graph card with statusDetail + unresolvedFollowUp only (no probe URLs/credentials)",
+      "/api/status": "returns two cards (knowledge-graph-graphiti, knowledge-graph-neo4j) both not_deployed with blocked narrative + follow-up; no 127.0.0.1/credential leak"
+    },
+    "json_valid": ["dashboard.public.json", "dashboard.public.example.json"],
+    "git_diff_check": "clean",
+    "secret_shape_scan": "no matches across changed files"
+  },
+  "push": {
+    "attempted": true,
+    "result": "blocked",
+    "reason": "worker host has no Git credential helper, invalid gh token, and git@github.com ssh publickey denied; branch wt/t_f0892c64 committed locally at 6cea223 but not pushed"
+  }
+}

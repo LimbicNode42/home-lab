@@ -1,0 +1,64 @@
+{
+  "task_id": "t_ac7cd9dc",
+  "run_id": 2250,
+  "payload_id": "graphiti-catchup-2026-10-03-recurated",
+  "recuration_authorized_by": "Ben decision 2026-10-03 (operator-mediated, comment #BenApproved)",
+  "recuration_scope": "single episode t_e044df92 only (group incidents.memory-reconciler.2026-10); re-phrased negative/hedged facts into positive extractable durable facts; other 18 episodes untouched",
+  "curated_payload_path": "/root/work/home-lab/services/memory-reconciler/curated/t_e044df92-recurated-2026-10-03.json",
+  "ingest_path": "reviewed agent_graphiti.cli ingest --apply -> Graphiti /episodes on tori loopback",
+  "episodes_ingested_this_run": 1,
+  "groups_verified": ["incidents.memory-reconciler.2026-10"],
+  "facts_extracted": 2,
+  "query_verification": {
+    "group_id": "incidents.memory-reconciler.2026-10",
+    "query": "memory-reconciler systemd root hardening dashboard freshness sentinel review",
+    "query_status": "ok",
+    "query_result_count": 2,
+    "samples": [
+      {
+        "fact": "The memory-reconciler systemd unit runs as the root user and requires non-root hardening before unattended operation is approved.",
+        "source_ref": "t_e044df92",
+        "valid_at": "2026-10-03T09:26:38+00:00",
+        "group_id": "incidents.memory-reconciler.2026-10",
+        "caveat": null
+      },
+      {
+        "fact": "The memory-reconciler pipeline requires a direct Home Dashboard freshness signal before unattended operation is approved.",
+        "source_ref": "t_e044df92",
+        "valid_at": "2026-10-03T09:26:38+00:00",
+        "group_id": "incidents.memory-reconciler.2026-10",
+        "caveat": null
+      }
+    ]
+  },
+  "vector_index": {
+    "online": true,
+    "name": "fact_embedding_vector",
+    "state": "ONLINE",
+    "type": "VECTOR",
+    "populationPercent": 100.0,
+    "labelsOrTypes": ["RELATES_TO"],
+    "properties": ["fact_embedding"]
+  },
+  "exposure": {
+    "loopback_only": true,
+    "listeners": ["127.0.0.1:7474", "127.0.0.1:7687", "127.0.0.1:8000"]
+  },
+  "temporal_invalidation_spot_check": {
+    "invalid_at_values_seen": [],
+    "over_aggressive_invalidation_observed": false
+  },
+  "redaction": {
+    "redaction_replacements": 0,
+    "secret_values_removed": true,
+    "private_memory_excluded": true
+  },
+  "operational_notes": [
+    "Root cause of the block: original episode t_e044df92 was phrased entirely as negative/hedged facts ('not approved', 'did not reject', 'treat as blocking'), which Graphiti's LLM extracted as zero entities/relationships (mentioned_nodes=0). Re-curated into positive durable facts; extractable now.",
+    "Re-ingest first attempt returned HTTP 500 BookmarkTimeout (Neo4j causal bookmark drift: driver held txn 172 vs committed 171) after the API restart cleared a stale bookmark; the write actually landed once before the 500 surfaced. A second successful ingest call produced a duplicate recurated episode with edges=0 (no new entities). Both are the same content; the duplicate is benign and additive.",
+    "graphiti-api (only) was restarted to clear the stale causal bookmark; graphiti-neo4j and its data were untouched.",
+    "No raw write/delete/clear endpoints used; no wipe/migrate/provider switch; no secrets recorded."
+  ],
+  "verified": true,
+  "timestamp": "2026-10-03T12:59:00Z"
+}

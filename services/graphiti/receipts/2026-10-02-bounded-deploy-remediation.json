@@ -1,0 +1,64 @@
+{
+  "task_id": "t_e2563c26",
+  "created_at_utc": "2026-10-02T10:12:00Z",
+  "status": "deployed_bounded_ingest_remediation_verified",
+  "scope": {
+    "mem0_provider_changed": false,
+    "public_route_created": false,
+    "neo4j_or_graphiti_raw_public_exposure": false,
+    "secrets_committed_or_logged": false,
+    "neo4j_live_data_on_nas": false,
+    "live_mutation": "recreated graphiti-api with reviewed bind-mounted ingest patch; restarted graphiti-neo4j only after the graphiti-api restart exposed a stale Neo4j HTTP/Bolt response hang"
+  },
+  "live_services": {
+    "host": "tori / 192.168.0.20",
+    "containers": {
+      "graphiti-api": {
+        "image": "zepai/graphiti@sha256:21818c8a8e3b0513fe167370527fec32ed117e98bcc3423f9eb3bc6c73af7d43",
+        "status": "healthy",
+        "published_port": "127.0.0.1:8000->8000/tcp",
+        "patch_mount": "/opt/graphiti/patches/ingest.py -> /app/graph_service/routers/ingest.py (read-only)"
+      },
+      "graphiti-neo4j": {
+        "image": "neo4j:5.26.2",
+        "status": "healthy",
+        "published_ports": ["127.0.0.1:7474->7474/tcp", "127.0.0.1:7687->7687/tcp"]
+      }
+    },
+    "paths": {
+      "runtime_root": "/opt/graphiti",
+      "runtime_env": "/opt/graphiti/.env mode 0600 (values not copied)",
+      "compose_file": "/opt/graphiti/docker-compose.yml",
+      "ingest_patch": "/opt/graphiti/patches/ingest.py",
+      "neo4j_live_data": "/var/lib/graphiti/neo4j/data on local ext4 /dev/sda2",
+      "neo4j_logs": "/var/log/graphiti/neo4j",
+      "nas_evidence_root": "/mnt/pve/NAS/services/graphiti for dumps/snapshots/restore-test evidence only"
+    }
+  },
+  "remediation": {
+    "upstream_bug": "zepai/graphiti:0.30.2 /messages async worker accepted 202 but did not process queued episodes because the router lifespan did not start the worker and the queued closure captured a request-scoped Graphiti client that was closed after response.",
+    "deployed_fix": "Bind-mounted a read-only tori-local ingest.py patch that processes /messages synchronously and adds /episodes for the reviewed curated ingest wrapper payload.",
+    "wrapper_fix": "The agent wrapper now sends Graphiti-compatible search fields (group_ids/max_facts) and maps dotted policy group ids such as services.graphiti to upstream-safe ids such as services_graphiti. The human-facing policy group contract remains dotted."
+  },
+  "verification": {
+    "unit_tests": "python3 -m unittest discover -s services/graphiti/tests -v -> 7/7 OK",
+    "py_compile": "services/graphiti Python files and tori ingest patch compile cleanly",
+    "healthcheck": "curl http://127.0.0.1:8000/healthcheck -> {status: healthy}",
+    "network_scope": "ss confirmed listeners for 8000/7474/7687 are bound to 127.0.0.1 only",
+    "mount_scope": "docker inspect confirmed /opt/graphiti/patches/ingest.py is bind-mounted read-only into graphiti-api",
+    "ingest_smoke": "POST /episodes to disposable group services_graphiti_deploy_smoke returned success=true",
+    "query_smoke": "POST /search for the disposable group returned expected facts with episode UUID provenance",
+    "cleanup": "DELETE /group/services_graphiti_deploy_smoke returned success=true; destructive cleanup was limited to explicitly disposable test data"
+  },
+  "rollback": [
+    "On tori: cd /opt/graphiti && docker compose stop graphiti-api",
+    "Restore the prior /opt/graphiti/docker-compose.yml from /opt/graphiti/backups/docker-compose.yml.<stamp> captured before this deployment, or remove the ingest.py bind mount from docker-compose.yml.",
+    "Remove or ignore /opt/graphiti/patches/ingest.py after compose rollback; it contains no secrets.",
+    "Run cd /opt/graphiti && docker compose up -d graphiti-api; verify curl http://127.0.0.1:8000/healthcheck and loopback-only listeners.",
+    "If Neo4j becomes unresponsive but the container is still marked healthy, restart only the graphiti-neo4j service and wait for health before starting graphiti-api. Preserve /var/lib/graphiti/neo4j/data unless a separately approved restore is underway."
+  ],
+  "downstream_notes": [
+    "Production smoke/backup/restore evidence remains delegated to t_8a57f068.",
+    "The raw Graphiti API still contains DELETE and /clear endpoints inside the upstream app, but they are bound only to loopback and are not exposed through the agent wrapper; agents must use services/graphiti/scripts/graphiti-agent-wrapper.py."
+  ]
+}

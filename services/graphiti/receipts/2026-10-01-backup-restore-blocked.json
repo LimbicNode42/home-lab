@@ -1,0 +1,57 @@
+{
+  "created_at_utc": "2026-10-01T09:40:58Z",
+  "task": "t_34adeeb4",
+  "status": "automation_durable_restore_test_blocked_on_live_prerequisite",
+  "changed_files": [
+    "services/graphiti/scripts/backup-neo4j-dump.sh",
+    "services/graphiti/scripts/restore-neo4j-dump.sh",
+    "services/graphiti/scripts/restore-test-neo4j.sh",
+    "services/graphiti/runbooks/backup-restore.md",
+    "services/graphiti/README.md"
+  ],
+  "backup_automation": {
+    "script": "services/graphiti/scripts/backup-neo4j-dump.sh",
+    "dry_run_validated": true,
+    "apply_gates": [
+      "GRAPHITI_ENABLE_LIVE_MUTATION=reviewed-approved",
+      "GRAPHITI_BACKUP_ALLOW_SERVICE_STOP=approved"
+    ],
+    "outputs": [
+      "/mnt/pve/NAS/services/graphiti/backups/neo4j-dumps/<stamp>/",
+      "/mnt/pve/NAS/services/graphiti/config-snapshots/<stamp>/",
+      "/mnt/pve/NAS/services/graphiti/manifests/neo4j-backup-<stamp>.manifest.json"
+    ],
+    "secrets_included": false,
+    "live_data_policy": "Script verifies live Neo4j data path is not NFS/CIFS/fuse before apply."
+  },
+  "restore_test_automation": {
+    "script": "services/graphiti/scripts/restore-test-neo4j.sh",
+    "dry_run_validated": true,
+    "apply_gate": "GRAPHITI_ENABLE_LIVE_MUTATION=reviewed-approved",
+    "target": "Disposable Docker container and temporary local data path only; production compose/data is not touched.",
+    "evidence_output": "/mnt/pve/NAS/services/graphiti/restore-tests/<stamp>/restore-test-result.json",
+    "secrets_included": false
+  },
+  "live_restore_boundary": {
+    "script": "services/graphiti/scripts/restore-neo4j-dump.sh",
+    "dry_run_validated": true,
+    "destructive": true,
+    "required_gates": [
+      "GRAPHITI_ENABLE_LIVE_MUTATION=reviewed-approved",
+      "GRAPHITI_RESTORE_TARGET=live-neo4j",
+      "GRAPHITI_RESTORE_PRE_SNAPSHOT_CONFIRMED=approved"
+    ]
+  },
+  "blocked_execution_path": {
+    "reason": "Live Graphiti/Neo4j service is not deployed in this lane because Vaultwarden/BW is locked for the worker and the required OpenRouter/Vaultwarden preflight cannot be rerun here.",
+    "missing_prerequisite": "Unlock/provide ephemeral BW_SESSION or BW_PASSWORD, rerun deploy-tori-local.sh --preflight-only, deploy service after the preflight passes, then run backup and restore-test automation.",
+    "live_backup_taken": false,
+    "restore_test_passed_against_live_dump": false
+  },
+  "validations": [
+    "bash -n < services/graphiti/scripts/backup-neo4j-dump.sh; bash -n < services/graphiti/scripts/restore-neo4j-dump.sh; bash -n < services/graphiti/scripts/restore-test-neo4j.sh",
+    "services/graphiti/scripts/backup-neo4j-dump.sh --dry-run",
+    "services/graphiti/scripts/restore-test-neo4j.sh --dry-run /mnt/pve/NAS/services/graphiti/backups/neo4j-dumps/NOT-YET-CREATED/neo4j.dump",
+    "services/graphiti/scripts/restore-neo4j-dump.sh --dry-run /mnt/pve/NAS/services/graphiti/backups/neo4j-dumps/NOT-YET-CREATED/neo4j.dump"
+  ]
+}
