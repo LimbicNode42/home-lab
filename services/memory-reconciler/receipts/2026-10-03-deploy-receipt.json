@@ -1,0 +1,77 @@
+{
+  "deployment": "memory-reconciler",
+  "task": "t_1bdadf8f",
+  "host": "tori (192.168.0.20)",
+  "date": "2026-10-03",
+  "status": "deployed_first_gated_ingest_done",
+  "runtime_root": "/opt/memory-reconciler/",
+  "state_db": "/var/lib/memory-reconciler/state.db (tori-local ext4, NOT NAS/NFS)",
+  "venv": "/opt/memory-reconciler/.venv (uv, CPython 3.11.15, stdlib-only deps)",
+  "sibling_graphiti_package": "/opt/graphiti/agent_graphiti/ (durable copy, byte-identical to repo)",
+  "env_file": "/opt/memory-reconciler/.env (mode 0600, root)",
+  "secret_references": [
+    {"env": "MEM0_API_KEY", "folder": "Homelab", "item": "mem0/server", "field": "api_key"},
+    {"env": "GRAPHITI_OPENROUTER_API_KEY", "folder": "Homelab", "item": "graphiti/openrouter", "field": "login.password"}
+  ],
+  "systemd": {
+    "service": "memory-reconciler.service",
+    "timer": "memory-reconciler.timer",
+    "service_path": "/etc/systemd/system/memory-reconciler.service",
+    "timer_path": "/etc/systemd/system/memory-reconciler.timer",
+    "schedule": "OnCalendar=*-*-* 04:15:00, RandomizedDelaySec=300, Persistent=true",
+    "exec": "/opt/memory-reconciler/.venv/bin/python /opt/memory-reconciler/bin/graceful-memory-reconciler reconcile --apply --once",
+    "environment_file": "/opt/memory-reconciler/.env",
+    "runtime_max_sec": 900,
+    "timer_state": "enabled + active"
+  },
+  "cost_bounds_enforced": {
+    "max_episodes_per_batch": 25,
+    "max_words_per_episode": 1500,
+    "completion_model": "openai/gpt-4o-mini",
+    "embedding_model": "openai/text-embedding-3-small",
+    "embedding_dim": 1536,
+    "fail_closed": true
+  },
+  "dry_run_verification": {
+    "state_rows_before": 4,
+    "state_rows_after": 4,
+    "writes": "ZERO (confirmed: no state ledger writes, no network writes)"
+  },
+  "first_ingest": {
+    "bounded_limit": 25,
+    "report": {
+      "processed": 25,
+      "graphiti_written": 14,
+      "mem0_written_first_pass": 0,
+      "failed_first_pass": 2,
+      "review_bucket_first_pass": ["t_f9114100 (mem0_write_failed)", "t_10f39f54 (mem0_write_failed)"]
+    },
+    "retry_after_env_fix": {
+      "mem0_written": 2,
+      "failed": 0,
+      "review_bucket": []
+    },
+    "final_state_rows": {"graphiti": 26, "mem0": 3, "total": 29},
+    "mem0_facts_landed": 8,
+    "graphiti_searchable_facts": 50,
+    "graphiti_distinct_episodes": 29,
+    "mem0_namespace": "ben-gremlin / memory-reconciler",
+    "graphiti_group": "services.memory-reconciler (wire: services_memory_reconciler)"
+  },
+  "root_cause_notes": [
+    "First --apply run omitted .env (manual invocation), so MEM0_API_KEY was empty and both durable-fact writes fail-closed as mem0_write_failed. Re-ran with env sourced; dedup correctly retried ONLY the 2 missing mem0 targets.",
+    "Graphiti /episodes is POST; /episode/{uuid} is POST. Raw GET group-listing returns 0 while the wrapper query path (agent_graphiti.client.GraphitiReadOnlyClient) correctly resolves group/domain/source — episodes ARE landing, verified via POST /search (50 facts)."
+  ],
+  "rollback": "supersession/invalid_at + mem0 correction (add-only), NOT raw delete. No destructive path exists in code. See runbooks/operate.md §5.",
+  "dashboard_freshness": {
+    "applicable": "not_applicable_directly",
+    "reason": "No dedicated memory-reconciler card exists in dashboard statusChecks (only mem0Health, graphitiNeo4jHealth, graphitiMcpHealth). The reconciler's effect surfaces INDIRECTLY: mem0 status snapshot healthy (generated 2026-10-03T09:15:01Z), graphiti status snapshot 'ok' with live query smoke result_count=1.",
+    "evidence": {
+      "mem0_status_json": "/mnt/pve/NAS/services/personal-dashboard/mem0/status.json",
+      "graphiti_status_json": "/mnt/pve/NAS/services/graphiti/status/latest-smoke-backup.json",
+      "graphiti_healthcheck": "healthy",
+      "reconciler_fact_timestamps": "2026-10-03T08:22..08:57Z (post-ingest search results)"
+    }
+  },
+  "secrets_committed": false
+}
