@@ -65,7 +65,7 @@ def pve_api(path):
         try:
             with urllib.request.urlopen(req, context=ctx, timeout=20) as response:
                 return json.load(response)["data"]
-        except (urllib.error.URLError, TimeoutError, ssl.SSLError) as exc:
+        except (urllib.error.URLError, TimeoutError, ssl.SSLError, ConnectionError) as exc:
             last_error = exc
             if attempt == 3:
                 break
